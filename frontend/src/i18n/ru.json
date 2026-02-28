@@ -1,0 +1,106 @@
+{
+  "app": {
+    "title": "HomeSite",
+    "version": "v2.0"
+  },
+  "nav": {
+    "dashboard": "Панель",
+    "heating": "Отопление",
+    "waterSupply": "Водоснабжение",
+    "statistics": "Статистика",
+    "events": "Журнал",
+    "settings": "Настройки",
+    "about": "О сайте",
+    "logout": "Выход"
+  },
+  "auth": {
+    "login": "Вход",
+    "username": "Имя пользователя",
+    "password": "Пароль",
+    "loginButton": "Войти",
+    "loginError": "Неверное имя пользователя или пароль",
+    "welcome": "Добро пожаловать"
+  },
+  "dashboard": {
+    "title": "Панель управления",
+    "climate": "Климат",
+    "heating": "Отопление",
+    "waterSupply": "Водоснабжение",
+    "stats24h": "Статистика за 24ч",
+    "room": "Помещение",
+    "temperature": "Температура",
+    "humidity": "Влажность",
+    "pressure": "Давление",
+    "circuit": "Контур",
+    "tempSet": "Уставка",
+    "tempSupply": "Подача",
+    "tempReturn": "Обратка",
+    "pump": "Насос",
+    "on": "ВКЛ",
+    "off": "ВЫКЛ",
+    "noData": "Нет данных"
+  },
+  "heating": {
+    "title": "Отопление",
+    "boiler": "Котёл",
+    "boilerTemp": "Температура котла",
+    "boilerPower": "Питание котла",
+    "radiators": "Радиаторы",
+    "floorHeating": "Тёплый пол",
+    "pzaCurve": "Кривая ПЗА",
+    "outdoorTemp": "Температура улицы",
+    "autoMode": "Авторежим"
+  },
+  "waterSupply": {
+    "title": "Водоснабжение",
+    "ihb": "ИГВ",
+    "ihbTemp": "Температура ИГВ",
+    "coldPump": "Насос ХВС",
+    "hotPump": "Насос ГВС",
+    "antiLegionella": "Антилегионелла"
+  },
+  "statistics": {
+    "title": "Статистика",
+    "temperatureChart": "Температура",
+    "pressureChart": "Давление",
+    "humidityChart": "Влажность"
+  },
+  "events": {
+    "title": "Журнал событий",
+    "timestamp": "Время",
+    "level": "Уровень",
+    "source": "Источник",
+    "message": "Сообщение",
+    "export": "Экспорт CSV",
+    "noEvents": "Нет событий"
+  },
+  "settings": {
+    "title": "Настройки",
+    "mqtt": "MQTT Брокер",
+    "mqttHost": "Хост",
+    "mqttPort": "Порт",
+    "mqttUser": "Пользователь",
+    "mqttPass": "Пароль",
+    "users": "Пользователи",
+    "save": "Сохранить",
+    "saved": "Сохранено",
+    "addUser": "Добавить",
+    "deleteUser": "Удалить",
+    "changePassword": "Сменить пароль"
+  },
+  "about": {
+    "title": "О сайте",
+    "description": "HomeSite — система мониторинга и управления инженерными системами загородного дома.",
+    "version": "Версия",
+    "tech": "Технологии"
+  },
+  "common": {
+    "loading": "Загрузка...",
+    "error": "Ошибка",
+    "retry": "Повторить",
+    "cancel": "Отмена",
+    "confirm": "Подтвердить",
+    "save": "Сохранить",
+    "delete": "Удалить"
+  }
+}
