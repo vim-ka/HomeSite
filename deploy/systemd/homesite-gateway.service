@@ -1,0 +1,19 @@
+[Unit]
+Description=HomeSite v2 DeviceGateway (MQTT)
+After=network.target mosquitto.service
+Wants=mosquitto.service
+
+[Service]
+Type=exec
+User=homesite
+Group=homesite
+WorkingDirectory=/opt/homesite/backend
+EnvironmentFile=/opt/homesite/.env
+ExecStart=/opt/homesite/venv/bin/python -m device_gateway
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
