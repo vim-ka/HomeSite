@@ -1,0 +1,48 @@
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    depends_on:
+      - mosquitto
+    env_file: .env
+    volumes:
+      - db-data:/app/data
+    restart: unless-stopped
+
+  device_gateway:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.gateway
+    depends_on:
+      - mosquitto
+    env_file: .env
+    volumes:
+      - db-data:/app/data
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  mosquitto:
+    image: eclipse-mosquitto:2
+    ports:
+      - "1883:1883"
+    volumes:
+      - ./mosquitto/config:/mosquitto/config
+      - mosquitto-data:/mosquitto/data
+      - mosquitto-log:/mosquitto/log
+    restart: unless-stopped
+
+volumes:
+  db-data:
+  mosquitto-data:
+  mosquitto-log:

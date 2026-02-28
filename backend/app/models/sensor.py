@@ -1,0 +1,148 @@
+from datetime import datetime
+
+from sqlalchemy import DateTime, Float, ForeignKey, Index, String, func
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.schema import PrimaryKeyConstraint
+
+from app.models.base import Base, TimestampMixin
+
+
+class SystemType(Base):
+    """System categories: Heating, Water Supply, Climate."""
+
+    __tablename__ = "system_types"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(64), nullable=False)
+
+    mount_points: Mapped[list["MountPoint"]] = relationship(back_populates="system_type")
+
+    def __repr__(self) -> str:
+        return f"<SystemType {self.name}>"
+
+
+class Place(Base):
+    """Physical locations: rooms, outdoor, etc."""
+
+    __tablename__ = "places"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(64), nullable=False)
+
+    mount_points: Mapped[list["MountPoint"]] = relationship(back_populates="place")
+
+    def __repr__(self) -> str:
+        return f"<Place {self.name}>"
+
+
+class SensorType(Base):
+    """Hardware sensor types: 18B10, A2, ff4, etc."""
+
+    __tablename__ = "sensor_types"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(64), nullable=False)
+
+    sensors: Mapped[list["Sensor"]] = relationship(back_populates="sensor_type")
+
+    def __repr__(self) -> str:
+        return f"<SensorType {self.name}>"
+
+
+class SensorDataType(Base):
+    """Measurement categories: Temperature, Pressure, Humidity, Temperature&Humidity."""
+
+    __tablename__ = "sensor_data_types"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(64), nullable=False)
+    code: Mapped[str] = mapped_column(String(3), nullable=False)
+
+    def __repr__(self) -> str:
+        return f"<SensorDataType {self.name} ({self.code})>"
+
+
+class MountPoint(Base):
+    """Installation point: links a sensor to a system type and physical place."""
+
+    __tablename__ = "mount_points"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(128), nullable=False)
+    system_id: Mapped[int] = mapped_column(ForeignKey("system_types.id"), nullable=False)
+    place_id: Mapped[int] = mapped_column(ForeignKey("places.id"), nullable=False)
+
+    system_type: Mapped["SystemType"] = relationship(back_populates="mount_points")
+    place: Mapped["Place"] = relationship(back_populates="mount_points")
+    sensors: Mapped[list["Sensor"]] = relationship(back_populates="mount_point")
+
+    def __repr__(self) -> str:
+        return f"<MountPoint {self.name}>"
+
+
+class Sensor(Base):
+    """A physical sensor device."""
+
+    __tablename__ = "sensors"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(64), nullable=False)
+    sensor_type_id: Mapped[int] = mapped_column(ForeignKey("sensor_types.id"), nullable=False)
+    mount_point_id: Mapped[int] = mapped_column(ForeignKey("mount_points.id"), nullable=False)
+
+    sensor_type: Mapped["SensorType"] = relationship(back_populates="sensors")
+    mount_point: Mapped["MountPoint"] = relationship(back_populates="sensors")
+    current_data: Mapped[list["SensorData"]] = relationship(back_populates="sensor")
+    history: Mapped[list["SensorDataHistory"]] = relationship(back_populates="sensor")
+
+    def __repr__(self) -> str:
+        return f"<Sensor {self.name}>"
+
+
+class SensorData(Base):
+    """Current sensor value. Composite PK (sensor_id, datatype_id) — one row per measurement type."""
+
+    __tablename__ = "sensor_data"
+
+    sensor_id: Mapped[int] = mapped_column(ForeignKey("sensors.id"), nullable=False)
+    datatype_id: Mapped[int] = mapped_column(ForeignKey("sensor_data_types.id"), nullable=False)
+    value: Mapped[float] = mapped_column(Float, nullable=False)
+    timestamp: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
+
+    __table_args__ = (PrimaryKeyConstraint("sensor_id", "datatype_id"),)
+
+    sensor: Mapped["Sensor"] = relationship(back_populates="current_data")
+    data_type: Mapped["SensorDataType"] = relationship()
+
+    def __repr__(self) -> str:
+        return f"<SensorData sensor={self.sensor_id} type={self.datatype_id} val={self.value}>"
+
+
+class SensorDataHistory(Base, TimestampMixin):
+    """Time-series sensor readings for charting."""
+
+    __tablename__ = "sensor_data_history"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    sensor_id: Mapped[int] = mapped_column(ForeignKey("sensors.id"), nullable=False)
+    datatype_id: Mapped[int] = mapped_column(ForeignKey("sensor_data_types.id"), nullable=False)
+    value: Mapped[float] = mapped_column(Float, nullable=False)
+    timestamp: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
+
+    __table_args__ = (
+        Index("ix_history_sensor_datatype_ts", "sensor_id", "datatype_id", "timestamp"),
+    )
+
+    sensor: Mapped["Sensor"] = relationship(back_populates="history")
+    data_type: Mapped["SensorDataType"] = relationship()
+
+    def __repr__(self) -> str:
+        return f"<SensorDataHistory sensor={self.sensor_id} val={self.value} ts={self.timestamp}>"
