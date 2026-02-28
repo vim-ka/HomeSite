@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 # Set test env before any app imports
 os.environ["APP_ENV"] = "test"
 os.environ["JWT_SECRET_KEY"] = "test-secret-key-for-testing-only"
+os.environ["INTERNAL_API_SECRET"] = "test-internal-secret"
 
 _test_db = f"test_{uuid.uuid4().hex[:8]}.db"
 os.environ["DATABASE_URL"] = f"sqlite+aiosqlite:///./{_test_db}"
