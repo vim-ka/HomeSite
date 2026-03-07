@@ -19,16 +19,18 @@ export interface HeatingCircuit {
 
 export interface WaterSupplyItem {
   type: string;
-  tempSet: number | null;
-  tempFact: number | null;
+  temp_set: number | null;
+  temp_fact: number | null;
   pressure: number | null;
-  Pump: string | null;
+  pump: string | null;
 }
 
 export interface Stats24h {
-  heating_hours: number;
-  climate_avg_temp: number | null;
-  climate_avg_humidity: number | null;
+  whk24: number;
+  whb24: number;
+  whr24: number;
+  whf24: number;
+  avght24: number;
 }
 
 export interface DashboardData {

@@ -25,6 +25,7 @@ from app.models.sensor import (
     SensorDataType,
     SensorType,
     SystemType,
+    sensor_datatype_link,
 )
 from app.models.user import User
 
@@ -71,7 +72,6 @@ async def seed(session: AsyncSession) -> None:
         {"id": 1, "name": "Temperature", "code": "tmp"},
         {"id": 2, "name": "Pressure", "code": "prs"},
         {"id": 3, "name": "Humidity", "code": "hmt"},
-        {"id": 4, "name": "Temperature&Humidity", "code": "prt"},
     ]
 
     mount_points = [
@@ -112,6 +112,17 @@ async def seed(session: AsyncSession) -> None:
         {"id": 15, "name": "clm_boiler_th", "sensor_type_id": 3, "mount_point_id": 15},
         {"id": 16, "name": "clm_gost_th", "sensor_type_id": 3, "mount_point_id": 16},
         {"id": 17, "name": "clm_kitchen_th", "sensor_type_id": 3, "mount_point_id": 17},
+    ]
+
+    # sensor_id → list of datatype_ids
+    sensor_datatype_links = [
+        # 18B10 (DS18B20) sensors → Temperature only
+        *[{"sensor_id": sid, "datatype_id": 1} for sid in range(1, 11)],
+        # ff4 (climate) sensors → Temperature + Humidity
+        *[link for sid in range(11, 18) for link in [
+            {"sensor_id": sid, "datatype_id": 1},
+            {"sensor_id": sid, "datatype_id": 3},
+        ]],
     ]
 
     # --- Users (bcrypt instead of werkzeug scrypt) ---
@@ -248,6 +259,18 @@ async def seed(session: AsyncSession) -> None:
     await session.flush()
 
     await merge_if_missing(session, Sensor, sensors)
+    await session.flush()
+
+    # Sensor ↔ DataType links (skip existing)
+    from sqlalchemy import select
+    existing_links = set(
+        (r[0], r[1]) for r in
+        (await session.execute(select(sensor_datatype_link))).all()
+    )
+    for link in sensor_datatype_links:
+        key = (link["sensor_id"], link["datatype_id"])
+        if key not in existing_links:
+            await session.execute(sensor_datatype_link.insert().values(**link))
     await session.flush()
 
     await merge_if_missing(session, User, users)

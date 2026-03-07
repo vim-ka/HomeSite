@@ -29,7 +29,11 @@ CHART_DATATYPE_MAP = {
     "ChartTemperature": 1,
     "ChartPressure": 2,
     "ChartHumidity": 3,
+    "ChartHeating": 1,  # temperature, but filtered to heating sensors
 }
+
+# Heating sensor IDs (supply sensors for 4 circuits)
+HEATING_SENSOR_IDS = [1, 3, 5, 7]
 
 
 class ChartService:
@@ -59,4 +63,5 @@ class ChartService:
         if start is None:
             start = end - timedelta(days=100)
 
-        return await self.chart_repo.get_history(datatype_id, start, end)
+        sensor_ids = HEATING_SENSOR_IDS if chart_type == "ChartHeating" else None
+        return await self.chart_repo.get_history(datatype_id, start, end, sensor_ids)

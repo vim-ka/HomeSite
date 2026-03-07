@@ -1,6 +1,218 @@
 import { useTranslation } from "react-i18next";
+import {
+  Thermometer,
+  Droplets,
+  Gauge,
+  Sofa,
+  CookingPot,
+  Baby,
+  BedDouble,
+  Monitor,
+  TreePine,
+  Flame,
+  Home,
+  ArrowUpFromLine,
+  ArrowDownToLine,
+  Power,
+  ShowerHead,
+  type LucideIcon,
+} from "lucide-react";
 import { useDashboard } from "@/hooks/useDashboard";
-import { fmt } from "@/lib/utils";
+import type { ClimateRoom, HeatingCircuit, WaterSupplyItem } from "@/hooks/useDashboard";
+import { fmt, cn } from "@/lib/utils";
+import CollapsibleSection from "@/components/CollapsibleSection";
+
+const ROOM_ICONS: Record<string, LucideIcon> = {
+  "Гостиная": Sofa,
+  "Кухня": CookingPot,
+  "Детская": Baby,
+  "Спальня": BedDouble,
+  "Кабинет": Monitor,
+  "Улица": TreePine,
+  "Котельная": Flame,
+};
+
+function ClimateCard({ room }: { room: ClimateRoom }) {
+  const { t } = useTranslation();
+  const RoomIcon = ROOM_ICONS[room.room] ?? Home;
+
+  return (
+    <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+      {/* Room name + icon */}
+      <div className="mb-4 flex items-center justify-between">
+        <h4 className="text-lg font-semibold text-gray-800">{room.room}</h4>
+        <RoomIcon className="h-5 w-5 text-gray-400" />
+      </div>
+
+      {/* Metrics */}
+      <div className="space-y-3">
+        {/* Temperature */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 text-sm text-gray-500">
+            <Thermometer className="h-4 w-4 text-orange-500" />
+            <span>{t("dashboard.temperature")}</span>
+          </div>
+          <span className="text-xl font-bold text-orange-500">
+            {room.temperature != null ? `${fmt(room.temperature)}°` : "—"}
+          </span>
+        </div>
+
+        {/* Humidity */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 text-sm text-gray-500">
+            <Droplets className="h-4 w-4 text-sky-500" />
+            <span>{t("dashboard.humidity")}</span>
+          </div>
+          <span className="text-xl font-bold text-sky-500">
+            {room.humidity != null ? `${fmt(room.humidity)}%` : "—"}
+          </span>
+        </div>
+
+        {/* Pressure */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 text-sm text-gray-500">
+            <Gauge className="h-4 w-4 text-emerald-500" />
+            <span>{t("dashboard.pressure")}</span>
+          </div>
+          <span className="text-xl font-bold text-emerald-500">
+            {room.pressure != null ? fmt(room.pressure) : "—"}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function HeatingCard({ circuit: c }: { circuit: HeatingCircuit }) {
+  const { t } = useTranslation();
+  const pumpOn = c.pump === "1";
+
+  return (
+    <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+      {/* Header */}
+      <div className="mb-3 flex items-center justify-between">
+        <h4 className="text-lg font-semibold text-gray-800">{c.circuit}</h4>
+        <Flame className="h-5 w-5 text-gray-400" />
+      </div>
+
+      {/* Set temp — prominent */}
+      <div className="mb-4 flex items-center justify-between">
+        <span className="text-sm text-gray-500">{t("dashboard.tempSet")}</span>
+        <span className="text-2xl font-bold text-orange-500">
+          {c.temp_set != null ? `${fmt(c.temp_set)}°` : "—"}
+        </span>
+      </div>
+
+      {/* Supply / Return */}
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 text-sm text-gray-500">
+            <ArrowUpFromLine className="h-4 w-4 text-red-400" />
+            <span>{t("dashboard.tempSupply")}</span>
+          </div>
+          <span className="font-semibold text-gray-700">
+            {c.temp_supply != null ? `${fmt(c.temp_supply)}°` : "—"}
+          </span>
+        </div>
+
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 text-sm text-gray-500">
+            <ArrowDownToLine className="h-4 w-4 text-blue-400" />
+            <span>{t("dashboard.tempReturn")}</span>
+          </div>
+          <span className="font-semibold text-gray-700">
+            {c.temp_return != null ? `${fmt(c.temp_return)}°` : "—"}
+          </span>
+        </div>
+
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 text-sm text-gray-500">
+            <Gauge className="h-4 w-4 text-emerald-500" />
+            <span>{t("dashboard.pressure")}</span>
+          </div>
+          <span className="font-semibold text-gray-700">
+            {c.pressure != null ? `${fmt(c.pressure)} бар` : "—"}
+          </span>
+        </div>
+
+        {/* Pump status */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 text-sm text-gray-500">
+            <Power className="h-4 w-4 text-gray-400" />
+            <span>{t("dashboard.pump")}</span>
+          </div>
+          <span
+            className={cn(
+              "inline-block rounded-full px-2.5 py-0.5 text-xs font-medium",
+              pumpOn
+                ? "bg-green-100 text-green-700"
+                : "bg-gray-100 text-gray-500",
+            )}
+          >
+            {pumpOn ? t("dashboard.on") : t("dashboard.off")}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function WaterCard({ item: w }: { item: WaterSupplyItem }) {
+  const { t } = useTranslation();
+  const pumpOn = w.pump === "1";
+
+  return (
+    <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+      {/* Header */}
+      <div className="mb-3 flex items-center justify-between">
+        <h4 className="text-lg font-semibold text-gray-800">{w.type}</h4>
+        <ShowerHead className="h-5 w-5 text-gray-400" />
+      </div>
+
+      <div className="space-y-2">
+        {/* Temp Set */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 text-sm text-gray-500">
+            <Thermometer className="h-4 w-4 text-orange-500" />
+            <span>{t("dashboard.tempSet")}</span>
+          </div>
+          <span className="text-xl font-bold text-orange-500">
+            {w.temp_set != null ? `${fmt(w.temp_set)}°` : "—"}
+          </span>
+        </div>
+
+        {/* Temp Fact */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 text-sm text-gray-500">
+            <Thermometer className="h-4 w-4 text-sky-500" />
+            <span>{t("dashboard.temperature")}</span>
+          </div>
+          <span className="text-xl font-bold text-sky-500">
+            {w.temp_fact != null ? `${fmt(w.temp_fact)}°` : "—"}
+          </span>
+        </div>
+
+        {/* Pump */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 text-sm text-gray-500">
+            <Power className="h-4 w-4 text-gray-400" />
+            <span>{t("dashboard.pump")}</span>
+          </div>
+          <span
+            className={cn(
+              "inline-block rounded-full px-2.5 py-0.5 text-xs font-medium",
+              pumpOn
+                ? "bg-green-100 text-green-700"
+                : "bg-gray-100 text-gray-500",
+            )}
+          >
+            {pumpOn ? t("dashboard.on") : t("dashboard.off")}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function DashboardPage() {
   const { t } = useTranslation();
@@ -15,138 +227,36 @@ export default function DashboardPage() {
       <h2 className="text-xl font-bold text-gray-800">{t("dashboard.title")}</h2>
 
       {/* Climate */}
-      <section>
-        <h3 className="text-lg font-semibold text-gray-700 mb-3">{t("dashboard.climate")}</h3>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm bg-white rounded-lg shadow">
-            <thead className="bg-gray-50 text-gray-600">
-              <tr>
-                <th className="px-4 py-2 text-left">{t("dashboard.room")}</th>
-                <th className="px-4 py-2 text-right">{t("dashboard.temperature")}</th>
-                <th className="px-4 py-2 text-right">{t("dashboard.humidity")}</th>
-                <th className="px-4 py-2 text-right">{t("dashboard.pressure")}</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {data.climate.map((room) => (
-                <tr key={room.room} className="hover:bg-gray-50">
-                  <td className="px-4 py-2 font-medium">{room.room}</td>
-                  <td className="px-4 py-2 text-right">{fmt(room.temperature)}°C</td>
-                  <td className="px-4 py-2 text-right">{fmt(room.humidity)}%</td>
-                  <td className="px-4 py-2 text-right">{fmt(room.pressure)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      <CollapsibleSection title={t("dashboard.climate")} icon={Thermometer}>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          {data.climate.map((room) => (
+            <ClimateCard key={room.room} room={room} />
+          ))}
         </div>
-      </section>
+      </CollapsibleSection>
 
       {/* Heating */}
-      <section>
-        <h3 className="text-lg font-semibold text-gray-700 mb-3">{t("dashboard.heating")}</h3>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm bg-white rounded-lg shadow">
-            <thead className="bg-gray-50 text-gray-600">
-              <tr>
-                <th className="px-4 py-2 text-left">{t("dashboard.circuit")}</th>
-                <th className="px-4 py-2 text-right">{t("dashboard.tempSet")}</th>
-                <th className="px-4 py-2 text-right">{t("dashboard.tempSupply")}</th>
-                <th className="px-4 py-2 text-right">{t("dashboard.tempReturn")}</th>
-                <th className="px-4 py-2 text-right">{t("dashboard.pressure")}</th>
-                <th className="px-4 py-2 text-center">{t("dashboard.pump")}</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {data.heating.map((c) => (
-                <tr key={c.circuit} className="hover:bg-gray-50">
-                  <td className="px-4 py-2 font-medium">{c.circuit}</td>
-                  <td className="px-4 py-2 text-right">{fmt(c.temp_set)}°C</td>
-                  <td className="px-4 py-2 text-right">{fmt(c.temp_supply)}°C</td>
-                  <td className="px-4 py-2 text-right">{fmt(c.temp_return)}°C</td>
-                  <td className="px-4 py-2 text-right">{fmt(c.pressure)} бар</td>
-                  <td className="px-4 py-2 text-center">
-                    <span
-                      className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${
-                        c.pump === "1"
-                          ? "bg-green-100 text-green-700"
-                          : "bg-gray-100 text-gray-500"
-                      }`}
-                    >
-                      {c.pump === "1" ? t("dashboard.on") : t("dashboard.off")}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      <CollapsibleSection title={t("dashboard.heating")} icon={Flame}>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          {data.heating.map((c) => (
+            <HeatingCard key={c.circuit} circuit={c} />
+          ))}
         </div>
-      </section>
+      </CollapsibleSection>
 
       {/* Water Supply */}
-      <section>
-        <h3 className="text-lg font-semibold text-gray-700 mb-3">{t("dashboard.waterSupply")}</h3>
+      <CollapsibleSection title={t("dashboard.waterSupply")} icon={Droplets}>
         {data.water_supply.length > 0 ? (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm bg-white rounded-lg shadow">
-              <thead className="bg-gray-50 text-gray-600">
-                <tr>
-                  <th className="px-4 py-2 text-left">Тип</th>
-                  <th className="px-4 py-2 text-right">{t("dashboard.tempSet")}</th>
-                  <th className="px-4 py-2 text-right">{t("dashboard.temperature")}</th>
-                  <th className="px-4 py-2 text-center">{t("dashboard.pump")}</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {data.water_supply.map((w) => (
-                  <tr key={w.type} className="hover:bg-gray-50">
-                    <td className="px-4 py-2 font-medium">{w.type}</td>
-                    <td className="px-4 py-2 text-right">{fmt(w.tempSet)}°C</td>
-                    <td className="px-4 py-2 text-right">{fmt(w.tempFact)}°C</td>
-                    <td className="px-4 py-2 text-center">
-                      <span
-                        className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${
-                          w.Pump === "1"
-                            ? "bg-green-100 text-green-700"
-                            : "bg-gray-100 text-gray-500"
-                        }`}
-                      >
-                        {w.Pump === "1" ? t("dashboard.on") : t("dashboard.off")}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            {data.water_supply.map((w) => (
+              <WaterCard key={w.type} item={w} />
+            ))}
           </div>
         ) : (
           <p className="text-gray-500 text-sm">{t("dashboard.noData")}</p>
         )}
-      </section>
+      </CollapsibleSection>
 
-      {/* 24h Stats */}
-      <section>
-        <h3 className="text-lg font-semibold text-gray-700 mb-3">{t("dashboard.stats24h")}</h3>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div className="bg-white rounded-lg shadow p-4 text-center">
-            <p className="text-sm text-gray-500">Работа отопления</p>
-            <p className="text-2xl font-bold text-primary-700">
-              {fmt(data.stats.heating_hours)} ч
-            </p>
-          </div>
-          <div className="bg-white rounded-lg shadow p-4 text-center">
-            <p className="text-sm text-gray-500">Ср. температура</p>
-            <p className="text-2xl font-bold text-primary-700">
-              {fmt(data.stats.climate_avg_temp)}°C
-            </p>
-          </div>
-          <div className="bg-white rounded-lg shadow p-4 text-center">
-            <p className="text-sm text-gray-500">Ср. влажность</p>
-            <p className="text-2xl font-bold text-primary-700">
-              {fmt(data.stats.climate_avg_humidity)}%
-            </p>
-          </div>
-        </div>
-      </section>
     </div>
   );
 }

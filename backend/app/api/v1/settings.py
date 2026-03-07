@@ -1,11 +1,21 @@
-from fastapi import APIRouter, Depends
+import re
+
+from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, require_role
+from app.core.config import get_settings as get_app_settings
 from app.db.session import get_db
+from app.models.event import EventLog
 from app.models.user import User, UserRole
 from app.repositories.settings_repository import SettingsRepository
 from app.schemas.settings import (
+    BackupResponse,
+    BackupScheduleRequest,
+    BackupScheduleResponse,
+    DatabaseInfoResponse,
+    DatabaseUpdateRequest,
     MqttSettingsRequest,
     MqttSettingsResponse,
     SettingResponse,
@@ -13,6 +23,7 @@ from app.schemas.settings import (
     ToggleRequest,
     ToggleResponse,
 )
+from app.services.backup_service import BackupService
 from app.services.gateway_client import GatewayClient
 from app.services.settings_service import SettingsService
 
@@ -21,6 +32,10 @@ router = APIRouter()
 
 def get_settings_service(db: AsyncSession = Depends(get_db)) -> SettingsService:
     return SettingsService(SettingsRepository(db), GatewayClient())
+
+
+def get_backup_service(db: AsyncSession = Depends(get_db)) -> BackupService:
+    return BackupService(SettingsRepository(db))
 
 
 @router.get("", response_model=list[SettingResponse])
@@ -39,9 +54,22 @@ async def update_settings(
     payload: SettingUpdateRequest,
     user: User = Depends(require_role([UserRole.ADMIN, UserRole.OPERATOR])),
     service: SettingsService = Depends(get_settings_service),
+    db: AsyncSession = Depends(get_db),
 ):
     """Update settings and dispatch to DeviceGateway. RBAC: admin/operator."""
     await service.update_settings(payload.settings)
+
+    summary = ", ".join(f"{k}={v}" for k, v in payload.settings.items())
+    db.add(EventLog(
+        level="INFO",
+        source="settings",
+        method="PUT",
+        path="/api/v1/settings",
+        message=f"Settings updated: {summary}",
+        user_id=user.id,
+    ))
+    await db.commit()
+
     return {"success": True}
 
 
@@ -75,3 +103,114 @@ async def toggle_device(
     new_status = "1" if payload.toggle else "0"
     await service.update_settings({payload.id: new_status})
     return ToggleResponse(id=payload.id, status="ON" if payload.toggle else "OFF")
+
+
+# --- Database info ---
+
+
+def _mask_url(url: str) -> str:
+    """Mask password in database URL for display."""
+    return re.sub(r"://([^:]+):([^@]+)@", r"://\1:****@", url)
+
+
+@router.get("/database", response_model=DatabaseInfoResponse)
+async def get_database_info(
+    user: User = Depends(require_role([UserRole.ADMIN])),
+):
+    """Get database type and masked connection URL. Admin only."""
+    settings = get_app_settings()
+    db_type = "sqlite" if settings.is_sqlite else "postgresql"
+    return DatabaseInfoResponse(type=db_type, url=_mask_url(settings.database_url))
+
+
+@router.put("/database")
+async def update_database(
+    payload: DatabaseUpdateRequest,
+    user: User = Depends(require_role([UserRole.ADMIN])),
+):
+    """Save new database URL. Requires app restart. Admin only."""
+    if payload.type == "sqlite":
+        new_url = f"sqlite+aiosqlite:///./sensors.db"
+    else:
+        new_url = (
+            f"postgresql+asyncpg://{payload.user}:{payload.password}"
+            f"@{payload.host}:{payload.port}/{payload.dbname}"
+        )
+
+    env_path = ".env"
+    lines: list[str] = []
+    found = False
+    try:
+        with open(env_path, "r", encoding="utf-8") as f:
+            for line in f:
+                if line.startswith("DATABASE_URL="):
+                    lines.append(f"DATABASE_URL={new_url}\n")
+                    found = True
+                else:
+                    lines.append(line)
+    except FileNotFoundError:
+        lines = []
+
+    if not found:
+        lines.append(f"DATABASE_URL={new_url}\n")
+
+    with open(env_path, "w", encoding="utf-8") as f:
+        f.writelines(lines)
+
+    return {"success": True, "restart_required": True}
+
+
+# --- Backup ---
+
+
+@router.post("/backup", response_model=BackupResponse)
+async def create_backup(
+    user: User = Depends(require_role([UserRole.ADMIN])),
+    service: BackupService = Depends(get_backup_service),
+):
+    """Create a database backup now. Admin only."""
+    return await service.create_backup()
+
+
+@router.get("/backups", response_model=list[BackupResponse])
+async def list_backups(
+    user: User = Depends(require_role([UserRole.ADMIN])),
+    service: BackupService = Depends(get_backup_service),
+):
+    """List all backup files. Admin only."""
+    return await service.list_backups()
+
+
+@router.get("/backups/{filename}")
+async def download_backup(
+    filename: str,
+    user: User = Depends(require_role([UserRole.ADMIN])),
+    service: BackupService = Depends(get_backup_service),
+):
+    """Download a specific backup file. Admin only."""
+    path = await service.get_backup_path(filename)
+    if path is None:
+        raise HTTPException(status_code=404, detail="Backup not found")
+    return FileResponse(path, filename=filename, media_type="application/octet-stream")
+
+
+# --- Backup schedule ---
+
+
+@router.get("/backup-schedule", response_model=BackupScheduleResponse)
+async def get_backup_schedule(
+    user: User = Depends(require_role([UserRole.ADMIN])),
+    service: BackupService = Depends(get_backup_service),
+):
+    """Get backup schedule settings. Admin only."""
+    return await service.get_schedule()
+
+
+@router.put("/backup-schedule", response_model=BackupScheduleResponse)
+async def update_backup_schedule(
+    payload: BackupScheduleRequest,
+    user: User = Depends(require_role([UserRole.ADMIN])),
+    service: BackupService = Depends(get_backup_service),
+):
+    """Update backup schedule. Admin only."""
+    return await service.update_schedule(payload.enabled, payload.interval, payload.time)

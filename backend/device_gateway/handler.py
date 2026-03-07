@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 
 import aiomqtt
 import httpx
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from device_gateway.config import (
@@ -108,7 +108,7 @@ class MQTTHandler:
         async with self.session_factory() as session:
             device_id = await self._get_device_id(session, device_name)
             if device_id is None:
-                logger.warning("mqtt_unknown_device", device_name=device_name)
+                await self._register_pending(session, device_name, data)
                 return
 
             updated_params = []
@@ -132,6 +132,43 @@ class MQTTHandler:
         # Notify backend about the update
         if updated_params:
             await self._notify_backend(device_name, device_id, data)
+
+    async def _register_pending(self, session: AsyncSession, device_name: str, data: dict) -> None:
+        """Record an unknown device in pending_sensors for user review."""
+        from app.models.pending_sensor import PendingSensor
+
+        now = datetime.now(UTC)
+        payload_str = json.dumps(data)
+        first_value = None
+        for v in data.values():
+            try:
+                first_value = float(v)
+                break
+            except (ValueError, TypeError):
+                pass
+
+        existing = await session.execute(
+            select(PendingSensor).where(PendingSensor.device_name == device_name)
+        )
+        pending = existing.scalar_one_or_none()
+
+        if pending:
+            pending.last_payload = payload_str
+            pending.last_value = first_value
+            pending.last_seen = now
+            pending.message_count += 1
+        else:
+            session.add(PendingSensor(
+                device_name=device_name,
+                last_payload=payload_str,
+                last_value=first_value,
+                first_seen=now,
+                last_seen=now,
+                message_count=1,
+            ))
+            logger.info("pending_sensor_discovered", device_name=device_name, payload=data)
+
+        await session.commit()
 
     async def _get_device_id(self, session: AsyncSession, name: str) -> int | None:
         """Look up sensor ID by name."""

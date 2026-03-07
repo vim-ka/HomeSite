@@ -1,0 +1,118 @@
+#include "mqtt_client.h"
+#include <ArduinoJson.h>
+
+MqttClient* MqttClient::_instance = nullptr;
+
+void MqttClient::begin(ConfigManager& config) {
+    _config = &config;
+    _instance = this;
+    _nodeName = config.nodeName();
+
+    _mqttClient.setClient(_wifiClient);
+    _mqttClient.setServer(config.mqttHost().c_str(), config.mqttPort());
+    _mqttClient.setCallback(_staticCallback);
+    _mqttClient.setBufferSize(512);
+}
+
+void MqttClient::setCommandCallback(CommandCallback cb) {
+    _cmdCallback = cb;
+}
+
+bool MqttClient::isConnected() {
+    return _mqttClient.connected();
+}
+
+bool MqttClient::ensureConnected() {
+    if (_mqttClient.connected()) return true;
+
+    unsigned long now = millis();
+    if (now - _lastReconnectAttempt < 5000) return false;
+    _lastReconnectAttempt = now;
+
+    String clientId = "homesite-" + _nodeName;
+
+    bool ok;
+    if (_config->mqttUser().length() > 0) {
+        ok = _mqttClient.connect(
+            clientId.c_str(),
+            _config->mqttUser().c_str(),
+            _config->mqttPass().c_str()
+        );
+    } else {
+        ok = _mqttClient.connect(clientId.c_str());
+    }
+
+    if (ok) {
+        Serial.println("MQTT connected");
+        // Subscribe to command topic for this node
+        String cmdTopic = "home/devices/" + _nodeName + "/cmd";
+        _mqttClient.subscribe(cmdTopic.c_str());
+    } else {
+        Serial.print("MQTT connect failed, rc=");
+        Serial.println(_mqttClient.state());
+    }
+
+    return ok;
+}
+
+void MqttClient::publish(const String& sensorName, const String& paramKey, float value) {
+    if (!_mqttClient.connected()) return;
+
+    JsonDocument doc;
+    doc[paramKey] = serialized(String(value, 2));
+
+    String payload;
+    serializeJson(doc, payload);
+
+    String topic = "home/devices/" + sensorName;
+    _mqttClient.publish(topic.c_str(), payload.c_str());
+}
+
+void MqttClient::publishGrouped(const String& sensorName, const std::vector<std::pair<String, float>>& params) {
+    if (!_mqttClient.connected()) return;
+
+    JsonDocument doc;
+    for (auto& p : params) {
+        doc[p.first] = serialized(String(p.second, 2));
+    }
+
+    String payload;
+    serializeJson(doc, payload);
+
+    String topic = "home/devices/" + sensorName;
+    _mqttClient.publish(topic.c_str(), payload.c_str());
+}
+
+void MqttClient::loop() {
+    _mqttClient.loop();
+}
+
+void MqttClient::_staticCallback(char* topic, byte* payload, unsigned int length) {
+    if (_instance) {
+        _instance->_handleMessage(topic, payload, length);
+    }
+}
+
+void MqttClient::_handleMessage(char* topic, byte* payload, unsigned int length) {
+    String msg;
+    msg.reserve(length);
+    for (unsigned int i = 0; i < length; i++) {
+        msg += (char)payload[i];
+    }
+
+    Serial.print("CMD received [");
+    Serial.print(topic);
+    Serial.print("]: ");
+    Serial.println(msg);
+
+    if (!_cmdCallback) return;
+
+    // Parse JSON command: {"key": "value", ...}
+    JsonDocument doc;
+    DeserializationError err = deserializeJson(doc, msg);
+    if (err) return;
+
+    for (JsonPair kv : doc.as<JsonObject>()) {
+        _cmdCallback(String(kv.key().c_str()), String(kv.value().as<const char*>()));
+    }
+}

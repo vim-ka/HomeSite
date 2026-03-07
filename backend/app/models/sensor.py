@@ -1,10 +1,18 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, Float, ForeignKey, Index, String, func
+from sqlalchemy import Column, DateTime, Float, ForeignKey, Index, String, Table, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.schema import PrimaryKeyConstraint
 
 from app.models.base import Base, TimestampMixin
+
+# Many-to-many: which data types a sensor provides
+sensor_datatype_link = Table(
+    "sensor_datatype_link",
+    Base.metadata,
+    Column("sensor_id", ForeignKey("sensors.id", ondelete="CASCADE"), primary_key=True),
+    Column("datatype_id", ForeignKey("sensor_data_types.id", ondelete="CASCADE"), primary_key=True),
+)
 
 
 class SystemType(Base):
@@ -50,7 +58,7 @@ class SensorType(Base):
 
 
 class SensorDataType(Base):
-    """Measurement categories: Temperature, Pressure, Humidity, Temperature&Humidity."""
+    """Measurement categories: Temperature, Pressure, Humidity."""
 
     __tablename__ = "sensor_data_types"
 
@@ -92,6 +100,9 @@ class Sensor(Base):
 
     sensor_type: Mapped["SensorType"] = relationship(back_populates="sensors")
     mount_point: Mapped["MountPoint"] = relationship(back_populates="sensors")
+    data_types: Mapped[list["SensorDataType"]] = relationship(
+        secondary=sensor_datatype_link, lazy="selectin",
+    )
     current_data: Mapped[list["SensorData"]] = relationship(back_populates="sensor")
     history: Mapped[list["SensorDataHistory"]] = relationship(back_populates="sensor")
 

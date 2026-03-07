@@ -19,7 +19,8 @@ interface PaginatedEvents {
   items: EventLog[];
   total: number;
   page: number;
-  per_page: number;
+  page_size: number;
+  total_pages: number;
 }
 
 const LEVEL_STYLES: Record<string, string> = {
@@ -59,7 +60,7 @@ export default function EventsPage() {
     }
   };
 
-  const totalPages = data ? Math.ceil(data.total / data.per_page) : 0;
+  const totalPages = data?.total_pages ?? 0;
 
   return (
     <div className="space-y-4">

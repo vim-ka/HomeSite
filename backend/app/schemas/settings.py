@@ -1,3 +1,6 @@
+from datetime import datetime
+from typing import Literal
+
 from pydantic import BaseModel
 
 
@@ -36,3 +39,38 @@ class ToggleRequest(BaseModel):
 class ToggleResponse(BaseModel):
     id: str
     status: str
+
+
+# --- Database & Backup schemas ---
+
+
+class DatabaseInfoResponse(BaseModel):
+    type: Literal["sqlite", "postgresql"]
+    url: str  # masked
+
+
+class DatabaseUpdateRequest(BaseModel):
+    type: Literal["sqlite", "postgresql"]
+    host: str = ""
+    port: int = 5432
+    dbname: str = ""
+    user: str = ""
+    password: str = ""
+
+
+class BackupResponse(BaseModel):
+    filename: str
+    size_bytes: int
+    created_at: datetime
+
+
+class BackupScheduleResponse(BaseModel):
+    enabled: bool = False
+    interval: Literal["daily", "weekly"] = "daily"
+    time: str = "03:00"
+
+
+class BackupScheduleRequest(BaseModel):
+    enabled: bool
+    interval: Literal["daily", "weekly"] = "daily"
+    time: str = "03:00"
