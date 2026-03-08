@@ -25,9 +25,11 @@ export function useWebSocket() {
 
     ws.onmessage = (event) => {
       try {
-        const msg = JSON.parse(event.data) as SensorUpdate;
+        const msg = JSON.parse(event.data);
         if (msg.type === "sensor_update") {
-          // Invalidate dashboard query to trigger refetch
+          queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+        } else if (msg.type === "settings_update") {
+          queryClient.invalidateQueries({ queryKey: ["settings"] });
           queryClient.invalidateQueries({ queryKey: ["dashboard"] });
         }
       } catch {

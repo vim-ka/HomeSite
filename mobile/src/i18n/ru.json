@@ -1,0 +1,115 @@
+{
+  "app": { "title": "HomeSite" },
+  "tabs": {
+    "dashboard": "Панель",
+    "heating": "Отопление",
+    "water": "Вода",
+    "stats": "Статистика",
+    "settings": "Ещё"
+  },
+  "auth": {
+    "login": "Вход в систему",
+    "username": "Имя пользователя",
+    "password": "Пароль",
+    "loginButton": "Войти",
+    "serverUrl": "Адрес сервера",
+    "loginError": "Неверные учётные данные",
+    "connectionError": "Нет подключения к серверу"
+  },
+  "dashboard": {
+    "title": "Панель управления",
+    "climate": "Климат",
+    "heating": "Отопление",
+    "waterSupply": "Водоснабжение",
+    "temperature": "Температура",
+    "humidity": "Влажность",
+    "pressure": "Давление",
+    "tempSet": "Уставка",
+    "tempSupply": "Подача",
+    "tempReturn": "Обратка",
+    "pump": "Насос",
+    "on": "ВКЛ",
+    "off": "ВЫКЛ",
+    "noData": "Нет данных"
+  },
+  "heating": {
+    "title": "Отопление",
+    "boiler": "Котёл",
+    "boilerTemp": "Температура котла",
+    "boilerPower": "Нагрев",
+    "autoRegulation": "Авторегулирование",
+    "radiators": "Радиаторы",
+    "floorHeating": "Тёплый пол",
+    "pzaMode": "Режим ПЗА",
+    "pzaCurve": "Кривая ПЗА",
+    "supplyTemp": "Подача",
+    "disableDuringIHB": "Откл. при нагреве БКН",
+    "ihb": "БКН",
+    "circuitsStatus": "Контуры",
+    "schedule": "Расписание",
+    "scheduleEnabled": "По расписанию",
+    "scheduleDelta": "Дельта",
+    "autofill": "Автоподпитка",
+    "autofillEnabled": "Автоподпитка",
+    "pressureMin": "Давление мин.",
+    "pressureMax": "Давление макс.",
+    "bar": "бар"
+  },
+  "waterSupply": {
+    "title": "Водоснабжение",
+    "currentReadings": "Текущие показания",
+    "ihb": "БКН",
+    "ihbAutoMode": "Автонагрев",
+    "ihbPump": "Насос БКН",
+    "ihbTemp": "Температура БКН",
+    "ten": "ТЭН",
+    "tenAutoMode": "Автонагрев ТЭН",
+    "tenDelay": "Задержка",
+    "tenPower": "Питание ТЭН",
+    "pumps": "Насосы",
+    "coldPump": "Насос ХВС",
+    "hotPump": "Циркуляция ГВС",
+    "antiLegionella": "Антилегионелла",
+    "almEnabled": "Включён",
+    "almTemp": "Температура",
+    "almDays": "Дни недели",
+    "almStartTime": "Время",
+    "almDuration": "Длительность",
+    "actual": "Факт"
+  },
+  "statistics": {
+    "title": "Статистика",
+    "climate": "Климат",
+    "heatingCharts": "Отопление",
+    "noData": "Нет данных"
+  },
+  "events": {
+    "title": "Журнал",
+    "noEvents": "Нет событий"
+  },
+  "settings": {
+    "title": "Настройки",
+    "serverUrl": "Адрес сервера",
+    "logout": "Выйти",
+    "events": "Журнал событий",
+    "about": "О приложении",
+    "version": "Версия"
+  },
+  "common": {
+    "loading": "Загрузка...",
+    "error": "Ошибка",
+    "retry": "Повторить",
+    "cancel": "Отмена",
+    "save": "Сохранить",
+    "min": "мин"
+  },
+  "days": {
+    "1": "Пн",
+    "2": "Вт",
+    "3": "Ср",
+    "4": "Чт",
+    "5": "Пт",
+    "6": "Сб",
+    "7": "Вс"
+  }
+}

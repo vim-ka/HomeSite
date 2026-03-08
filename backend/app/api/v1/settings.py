@@ -25,6 +25,7 @@ from app.schemas.settings import (
 )
 from app.services.backup_service import BackupService
 from app.services.gateway_client import GatewayClient
+from app.api.v1.ws import manager as ws_manager
 from app.services.settings_service import SettingsService
 
 router = APIRouter()
@@ -69,6 +70,12 @@ async def update_settings(
         user_id=user.id,
     ))
     await db.commit()
+
+    # Notify all WebSocket clients about the settings change
+    await ws_manager.broadcast({
+        "type": "settings_update",
+        "settings": {k: str(v) for k, v in payload.settings.items()},
+    })
 
     return {"success": True}
 
