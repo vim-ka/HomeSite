@@ -93,8 +93,8 @@ async def test_heating_circuit_with_sensors(db_session):
 
     circuit = HeatingCircuit(
         circuit_name="Test Circuit",
-        supply_sensor_id=200,
-        return_sensor_id=201,
+        supply_mount_point_id=200,
+        return_mount_point_id=201,
         delta_threshold=5.0,
         config_temp_key="heating_test_temp",
         config_pump_key="heating_test_pump",
@@ -106,6 +106,6 @@ async def test_heating_circuit_with_sensors(db_session):
         select(HeatingCircuit).where(HeatingCircuit.circuit_name == "Test Circuit")
     )
     fetched = result.scalar_one()
-    assert fetched.supply_sensor_id == 200
-    assert fetched.return_sensor_id == 201
+    assert fetched.supply_mount_point_id == 200
+    assert fetched.return_mount_point_id == 201
     assert fetched.delta_threshold == 5.0

@@ -1,8 +1,9 @@
 from sqlalchemy import delete as sa_delete
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
+from app.models.heating import HeatingCircuit
 from app.models.pending_sensor import PendingSensor
 from app.models.sensor import (
     MountPoint,
@@ -31,11 +32,49 @@ class CatalogRepository:
         result = await self.db.execute(select(SensorType).order_by(SensorType.id))
         return list(result.scalars().all())
 
+    async def get_sensor_type_by_id(self, st_id: int) -> SensorType | None:
+        result = await self.db.execute(select(SensorType).where(SensorType.id == st_id))
+        return result.scalar_one_or_none()
+
+    async def create_sensor_type(self, name: str) -> SensorType:
+        st = SensorType(name=name)
+        self.db.add(st)
+        await self.db.commit()
+        await self.db.refresh(st)
+        return st
+
+    async def update_sensor_type(self, st_id: int, name: str) -> SensorType | None:
+        st = await self.get_sensor_type_by_id(st_id)
+        if st is None:
+            return None
+        st.name = name
+        await self.db.commit()
+        await self.db.refresh(st)
+        return st
+
+    async def delete_sensor_type(self, st_id: int) -> bool:
+        st = await self.get_sensor_type_by_id(st_id)
+        if st is None:
+            return False
+        await self.db.delete(st)
+        await self.db.commit()
+        return True
+
+    async def sensor_type_has_sensors(self, st_id: int) -> bool:
+        result = await self.db.execute(
+            select(func.count()).select_from(Sensor).where(Sensor.sensor_type_id == st_id)
+        )
+        return (result.scalar() or 0) > 0
+
     async def get_sensor_data_types(self) -> list[SensorDataType]:
         result = await self.db.execute(select(SensorDataType).order_by(SensorDataType.id))
         return list(result.scalars().all())
 
     async def get_mount_points(self) -> list[dict]:
+        s_temp = Sensor.__table__.alias("s_temp")
+        s_pres = Sensor.__table__.alias("s_pres")
+        s_hum = Sensor.__table__.alias("s_hum")
+
         stmt = (
             select(
                 MountPoint.id,
@@ -44,9 +83,18 @@ class CatalogRepository:
                 MountPoint.place_id,
                 SystemType.name.label("system_name"),
                 Place.name.label("place_name"),
+                MountPoint.temperature_sensor_id,
+                MountPoint.pressure_sensor_id,
+                MountPoint.humidity_sensor_id,
+                s_temp.c.name.label("temperature_sensor_name"),
+                s_pres.c.name.label("pressure_sensor_name"),
+                s_hum.c.name.label("humidity_sensor_name"),
             )
             .join(SystemType, MountPoint.system_id == SystemType.id)
             .join(Place, MountPoint.place_id == Place.id)
+            .outerjoin(s_temp, MountPoint.temperature_sensor_id == s_temp.c.id)
+            .outerjoin(s_pres, MountPoint.pressure_sensor_id == s_pres.c.id)
+            .outerjoin(s_hum, MountPoint.humidity_sensor_id == s_hum.c.id)
             .order_by(MountPoint.id)
         )
         result = await self.db.execute(stmt)
@@ -98,22 +146,19 @@ class CatalogRepository:
         result = await self.db.execute(select(MountPoint).where(MountPoint.id == mp_id))
         return result.scalar_one_or_none()
 
-    async def create_mount_point(self, name: str, system_id: int, place_id: int) -> MountPoint:
-        mp = MountPoint(name=name, system_id=system_id, place_id=place_id)
+    async def create_mount_point(self, **kwargs) -> MountPoint:
+        mp = MountPoint(**kwargs)
         self.db.add(mp)
         await self.db.commit()
         await self.db.refresh(mp)
         return mp
 
-    async def update_mount_point(
-        self, mp_id: int, name: str, system_id: int, place_id: int
-    ) -> MountPoint | None:
+    async def update_mount_point(self, mp_id: int, **kwargs) -> MountPoint | None:
         mp = await self.get_mount_point_by_id(mp_id)
         if mp is None:
             return None
-        mp.name = name
-        mp.system_id = system_id
-        mp.place_id = place_id
+        for k, v in kwargs.items():
+            setattr(mp, k, v)
         await self.db.commit()
         await self.db.refresh(mp)
         return mp
@@ -131,6 +176,36 @@ class CatalogRepository:
             select(func.count()).select_from(Sensor).where(Sensor.mount_point_id == mp_id)
         )
         return (result.scalar() or 0) > 0
+
+    async def check_sensor_binding_conflicts(
+        self,
+        mp_id: int | None,
+        temperature_sensor_id: int | None,
+        pressure_sensor_id: int | None,
+        humidity_sensor_id: int | None,
+    ) -> str | None:
+        """Check if any sensor is already bound to another mount point for the same data type.
+
+        Returns error message or None if no conflict.
+        """
+        checks = [
+            (temperature_sensor_id, MountPoint.temperature_sensor_id, "температуры"),
+            (pressure_sensor_id, MountPoint.pressure_sensor_id, "давления"),
+            (humidity_sensor_id, MountPoint.humidity_sensor_id, "влажности"),
+        ]
+        for sensor_id, col, label in checks:
+            if sensor_id is None:
+                continue
+            stmt = select(MountPoint.id, MountPoint.name).where(
+                col == sensor_id,
+            )
+            if mp_id is not None:
+                stmt = stmt.where(MountPoint.id != mp_id)
+            result = await self.db.execute(stmt)
+            row = result.first()
+            if row:
+                return f"Датчик {label} (id={sensor_id}) уже привязан к точке \"{row.name}\""
+        return None
 
     # ---- Sensor CRUD ----
 
@@ -262,6 +337,63 @@ class CatalogRepository:
         if ps is None:
             return False
         await self.db.delete(ps)
+        await self.db.commit()
+        return True
+
+    # ---- Heating Circuits CRUD ----
+
+    async def get_heating_circuits(self) -> list[dict]:
+        mp_supply = MountPoint.__table__.alias("mp_supply")
+        mp_return = MountPoint.__table__.alias("mp_return")
+
+        stmt = (
+            select(
+                HeatingCircuit.id,
+                HeatingCircuit.circuit_name,
+                HeatingCircuit.supply_mount_point_id,
+                HeatingCircuit.return_mount_point_id,
+                mp_supply.c.name.label("supply_mount_point_name"),
+                mp_return.c.name.label("return_mount_point_name"),
+                HeatingCircuit.config_temp_key,
+                HeatingCircuit.config_pump_key,
+                HeatingCircuit.delta_threshold,
+                HeatingCircuit.display_order,
+            )
+            .outerjoin(mp_supply, HeatingCircuit.supply_mount_point_id == mp_supply.c.id)
+            .outerjoin(mp_return, HeatingCircuit.return_mount_point_id == mp_return.c.id)
+            .order_by(HeatingCircuit.display_order)
+        )
+        result = await self.db.execute(stmt)
+        return [row._asdict() for row in result.all()]
+
+    async def get_heating_circuit_by_id(self, circuit_id: int) -> HeatingCircuit | None:
+        result = await self.db.execute(
+            select(HeatingCircuit).where(HeatingCircuit.id == circuit_id)
+        )
+        return result.scalar_one_or_none()
+
+    async def create_heating_circuit(self, **kwargs) -> HeatingCircuit:
+        circuit = HeatingCircuit(**kwargs)
+        self.db.add(circuit)
+        await self.db.commit()
+        await self.db.refresh(circuit)
+        return circuit
+
+    async def update_heating_circuit(self, circuit_id: int, **kwargs) -> HeatingCircuit | None:
+        circuit = await self.get_heating_circuit_by_id(circuit_id)
+        if circuit is None:
+            return None
+        for k, v in kwargs.items():
+            setattr(circuit, k, v)
+        await self.db.commit()
+        await self.db.refresh(circuit)
+        return circuit
+
+    async def delete_heating_circuit(self, circuit_id: int) -> bool:
+        circuit = await self.get_heating_circuit_by_id(circuit_id)
+        if circuit is None:
+            return False
+        await self.db.delete(circuit)
         await self.db.commit()
         return True
 

@@ -9,3 +9,26 @@
     -webkit-font-smoothing: antialiased;
   }
 }
+
+@layer utilities {
+  .temp-glow-red {
+    color: #ef4444;
+    text-shadow: 0 0 8px rgba(239, 68, 68, 0.5);
+    animation: pulse-red 2s ease-in-out infinite;
+  }
+  .temp-glow-blue {
+    color: #3b82f6;
+    text-shadow: 0 0 8px rgba(59, 130, 246, 0.5);
+    animation: pulse-blue 2s ease-in-out infinite;
+  }
+}
+
+@keyframes pulse-red {
+  0%, 100% { text-shadow: 0 0 6px rgba(239, 68, 68, 0.3); }
+  50% { text-shadow: 0 0 14px rgba(239, 68, 68, 0.7), 0 0 24px rgba(239, 68, 68, 0.3); }
+}
+
+@keyframes pulse-blue {
+  0%, 100% { text-shadow: 0 0 6px rgba(59, 130, 246, 0.3); }
+  50% { text-shadow: 0 0 14px rgba(59, 130, 246, 0.7), 0 0 24px rgba(59, 130, 246, 0.3); }
+}

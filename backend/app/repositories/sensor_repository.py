@@ -83,7 +83,7 @@ class SensorRepository:
         return list(merged.values())
 
     async def get_heating_status(self) -> list[dict]:
-        """Get heating circuit status using HeatingCircuit config (no hardcoded IDs)."""
+        """Get heating circuit status using mount point bindings (sensors resolved dynamically)."""
         circuits = (
             await self.db.execute(
                 select(HeatingCircuit).order_by(HeatingCircuit.display_order)
@@ -92,10 +92,11 @@ class SensorRepository:
 
         results = []
         for c in circuits:
-            # Get supply temp
-            temp_sup = await self._get_sensor_value(c.supply_sensor_id, 1)
-            temp_ret = await self._get_sensor_value(c.return_sensor_id, 1)
-            pressure = await self._get_sensor_value(c.pressure_sensor_id, 2)
+            # Resolve sensors through mount points (explicit sensor bindings)
+            temp_sup = await self._get_mount_point_value(c.supply_mount_point_id, 1)
+            temp_ret = await self._get_mount_point_value(c.return_mount_point_id, 1)
+            # Pressure sensor is on the supply mount point
+            pressure = await self._get_mount_point_value(c.supply_mount_point_id, 2)
 
             # Get config values
             temp_set = await self._get_config_value(c.config_temp_key)
@@ -176,6 +177,32 @@ class SensorRepository:
         result = await self.db.execute(stmt)
         row = result.scalar_one_or_none()
         return float(row) if row is not None else None
+
+    async def _get_mount_point_value(self, mount_point_id: int | None, datatype_id: int) -> float | None:
+        """Get sensor value using explicit sensor binding on the mount point.
+
+        datatype_id: 1=Temperature, 2=Pressure, 3=Humidity
+        """
+        if mount_point_id is None:
+            return None
+
+        # Map datatype_id to the corresponding sensor_id column on MountPoint
+        col_map = {
+            1: MountPoint.temperature_sensor_id,
+            2: MountPoint.pressure_sensor_id,
+            3: MountPoint.humidity_sensor_id,
+        }
+        sensor_col = col_map.get(datatype_id)
+        if sensor_col is None:
+            return None
+
+        # Get the explicit sensor_id from the mount point
+        mp_stmt = select(sensor_col).where(MountPoint.id == mount_point_id)
+        sensor_id = (await self.db.execute(mp_stmt)).scalar_one_or_none()
+        if sensor_id is None:
+            return None
+
+        return await self._get_sensor_value(sensor_id, datatype_id)
 
     async def _get_config_value(self, key: str | None) -> str | None:
         if key is None:

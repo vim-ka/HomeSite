@@ -1,7 +1,7 @@
 import { Tabs } from "expo-router";
 import { useTranslation } from "react-i18next";
 import { Platform } from "react-native";
-import Ionicons from "@expo/vector-icons/Ionicons";
+import { Ionicons } from "@expo/vector-icons";
 import { colors } from "../../src/theme/colors";
 
 type IconName = React.ComponentProps<typeof Ionicons>["name"];

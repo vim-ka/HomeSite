@@ -20,6 +20,14 @@ class SensorTypeResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class SensorTypeCreateRequest(BaseModel):
+    name: str
+
+
+class SensorTypeUpdateRequest(BaseModel):
+    name: str
+
+
 class MountPointResponse(BaseModel):
     id: int
     name: str
@@ -27,6 +35,12 @@ class MountPointResponse(BaseModel):
     place_id: int
     system_name: str
     place_name: str
+    temperature_sensor_id: int | None = None
+    pressure_sensor_id: int | None = None
+    humidity_sensor_id: int | None = None
+    temperature_sensor_name: str | None = None
+    pressure_sensor_name: str | None = None
+    humidity_sensor_name: str | None = None
 
     model_config = {"from_attributes": True}
 
@@ -56,12 +70,18 @@ class MountPointCreateRequest(BaseModel):
     name: str
     system_id: int
     place_id: int
+    temperature_sensor_id: int | None = None
+    pressure_sensor_id: int | None = None
+    humidity_sensor_id: int | None = None
 
 
 class MountPointUpdateRequest(BaseModel):
     name: str
     system_id: int
     place_id: int
+    temperature_sensor_id: int | None = None
+    pressure_sensor_id: int | None = None
+    humidity_sensor_id: int | None = None
 
 
 # ---- Sensor CRUD ----
@@ -122,3 +142,41 @@ class AcceptPendingSensorRequest(BaseModel):
     sensor_type_id: int
     mount_point_id: int
     datatype_ids: list[int] = []
+
+
+# ---- Heating Circuit CRUD ----
+
+
+class HeatingCircuitResponse(BaseModel):
+    id: int
+    circuit_name: str
+    supply_mount_point_id: int | None
+    return_mount_point_id: int | None
+    supply_mount_point_name: str | None = None
+    return_mount_point_name: str | None = None
+    config_temp_key: str | None
+    config_pump_key: str | None
+    delta_threshold: float
+    display_order: int
+
+    model_config = {"from_attributes": True}
+
+
+class HeatingCircuitCreateRequest(BaseModel):
+    circuit_name: str
+    supply_mount_point_id: int | None = None
+    return_mount_point_id: int | None = None
+    config_temp_key: str | None = None
+    config_pump_key: str | None = None
+    delta_threshold: float = 5.0
+    display_order: int = 0
+
+
+class HeatingCircuitUpdateRequest(BaseModel):
+    circuit_name: str
+    supply_mount_point_id: int | None = None
+    return_mount_point_id: int | None = None
+    config_temp_key: str | None = None
+    config_pump_key: str | None = None
+    delta_threshold: float = 5.0
+    display_order: int = 0

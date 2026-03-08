@@ -19,12 +19,29 @@ class GatewayClient:
         self.base_url = base_url or settings.device_gateway_url
 
     async def dispatch_command(self, device_id: str, params: dict[str, Any]) -> bool:
-        """Send command to DeviceGateway for MQTT publishing."""
+        """Send command to DeviceGateway for MQTT publishing to a specific device."""
         try:
             async with httpx.AsyncClient(base_url=self.base_url, timeout=5.0) as client:
                 response = await client.post(
                     "/commands",
                     json={"device_id": device_id, "params": params},
+                    headers={"X-Internal-Secret": settings.internal_api_secret},
+                )
+                return response.status_code == 200
+        except httpx.ConnectError:
+            logger.warning("gateway_unreachable", base_url=self.base_url)
+            return False
+        except Exception as e:
+            logger.error("gateway_dispatch_error", error=str(e))
+            return False
+
+    async def dispatch_settings(self, updates: dict[str, Any]) -> bool:
+        """Broadcast settings update to DeviceGateway for routing to relevant devices."""
+        try:
+            async with httpx.AsyncClient(base_url=self.base_url, timeout=5.0) as client:
+                response = await client.post(
+                    "/settings",
+                    json={"settings": updates},
                     headers={"X-Internal-Secret": settings.internal_api_secret},
                 )
                 return response.status_code == 200

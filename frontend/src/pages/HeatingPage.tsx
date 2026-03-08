@@ -30,6 +30,19 @@ import {
 import { fmt } from "@/lib/utils";
 import CollapsibleSection from "@/components/CollapsibleSection";
 
+function supplyGlow(actual: number | null | undefined, setpoint: number | null | undefined): string {
+  if (actual == null || setpoint == null) return "font-semibold text-gray-800";
+  if (actual > setpoint) return "font-bold temp-glow-red";
+  if (actual < setpoint) return "font-bold temp-glow-blue";
+  return "font-semibold text-gray-800";
+}
+
+function returnGlow(ret: number | null | undefined, supply: number | null | undefined): string {
+  if (ret == null) return "font-semibold text-gray-800";
+  if (supply != null && ret >= supply) return "font-bold temp-glow-red";
+  return "font-bold text-blue-500";
+}
+
 /* ------------------------------------------------------------------ */
 /*  Reusable UI primitives                                            */
 /* ------------------------------------------------------------------ */
@@ -103,15 +116,19 @@ function TempSlider({
   min,
   max,
   unit,
+  step,
   onChange,
   disabled,
+  formatValue,
 }: {
   value: number;
   min: number;
   max: number;
   unit?: string;
+  step?: number;
   onChange: (v: number) => void;
   disabled?: boolean;
+  formatValue?: (v: number) => string;
 }) {
   return (
     <div className="flex items-center gap-3">
@@ -119,16 +136,52 @@ function TempSlider({
         type="range"
         min={min}
         max={max}
-        step={1}
+        step={step ?? 1}
         value={value}
         disabled={disabled}
         onChange={(e) => onChange(Number(e.target.value))}
         className="w-32 sm:w-48 accent-primary-600 disabled:opacity-50"
       />
       <span className="min-w-[3.5rem] text-right text-sm font-medium text-gray-800">
-        {value}
+        {formatValue ? formatValue(value) : value}
         {unit ?? "°C"}
       </span>
+    </div>
+  );
+}
+
+function TimeWheel({ value, options, onChange }: { value: number; options: number[]; onChange: (v: number) => void }) {
+  const idx = options.indexOf(value);
+  const prev = () => onChange(options[(idx - 1 + options.length) % options.length]!);
+  const next = () => onChange(options[(idx + 1) % options.length]!);
+  return (
+    <div className="flex flex-col items-center leading-none">
+      <button onClick={prev} className="text-gray-400 hover:text-gray-600 text-[10px]">▲</button>
+      <span className="text-base font-semibold text-gray-800 tabular-nums w-7 text-center">
+        {String(value).padStart(2, "0")}
+      </span>
+      <button onClick={next} className="text-gray-400 hover:text-gray-600 text-[10px]">▼</button>
+    </div>
+  );
+}
+
+function TimeInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [h, m] = value.split(":").map(Number);
+  const hours = Array.from({ length: 24 }, (_, i) => i);
+  const minutes = [0, 15, 30, 45];
+  return (
+    <div className="inline-flex items-center gap-0 rounded-lg border border-gray-200 bg-white px-2 py-0.5">
+      <TimeWheel
+        value={h ?? 0}
+        options={hours}
+        onChange={(v) => onChange(`${String(v).padStart(2, "0")}:${String(m ?? 0).padStart(2, "0")}`)}
+      />
+      <span className="text-gray-400 font-bold text-base mx-0.5">:</span>
+      <TimeWheel
+        value={m ?? 0}
+        options={minutes}
+        onChange={(v) => onChange(`${String(h ?? 0).padStart(2, "0")}:${String(v).padStart(2, "0")}`)}
+      />
     </div>
   );
 }
@@ -332,7 +385,7 @@ export default function HeatingPage() {
 
   /* ---- helpers ---- */
   const toggle = (key: string) =>
-    update({ [key]: bool(key) ? "0" : "1" });
+    update({ [key]: bool(key) ? "0" : "1" }, true);
 
   const set = (key: string, value: string | number) =>
     update({ [key]: String(value) });
@@ -394,13 +447,13 @@ export default function HeatingPage() {
                     </div>
                     <div className="flex justify-between">
                       <span>{t("dashboard.tempSupply")}</span>
-                      <span className="font-semibold text-gray-800">
+                      <span className={supplyGlow(c.temp_supply, tempSet)}>
                         {fmt(c.temp_supply)}°C
                       </span>
                     </div>
                     <div className="flex justify-between">
                       <span>{t("dashboard.tempReturn")}</span>
-                      <span className="font-semibold text-gray-800">
+                      <span className={returnGlow(c.temp_return, c.temp_supply)}>
                         {fmt(c.temp_return)}°C
                       </span>
                     </div>
@@ -609,20 +662,74 @@ export default function HeatingPage() {
                   onChange={() => toggle("heating_schedule_enabled")}
                 />
               </SettingRow>
-              <SettingRow label={t("heating.scheduleDelta")}>
+              <SettingRow label={t("heating.scheduleDeltaRadiators")}>
                 <TempSlider
-                  value={num("heating_schedule_delta", "-10")}
+                  value={num("heating_schedule_delta_radiators", "-10")}
                   min={-20}
                   max={0}
-                  onChange={(v) => set("heating_schedule_delta", v)}
+                  onChange={(v) => set("heating_schedule_delta_radiators", v)}
+                  disabled={!bool("heating_schedule_enabled")}
+                />
+              </SettingRow>
+              <SettingRow label={t("heating.scheduleDeltaFloor")}>
+                <TempSlider
+                  value={num("heating_schedule_delta_floor", "-5")}
+                  min={-20}
+                  max={0}
+                  onChange={(v) => set("heating_schedule_delta_floor", v)}
                   disabled={!bool("heating_schedule_enabled")}
                 />
               </SettingRow>
             </div>
             {bool("heating_schedule_enabled") && (
-              <p className="mt-2 text-xs text-gray-500">
-                {t("heating.scheduleDeltaHint")}
-              </p>
+              <>
+                <div className="mt-3 flex items-center justify-between gap-3 flex-wrap">
+                  <div>
+                    <p className="text-xs font-medium text-gray-600 mb-1.5">{t("heating.scheduleDays")}</p>
+                    <div className="flex gap-1.5">
+                      {[1, 2, 3, 4, 5, 6, 7].map((d) => {
+                        const days = (settings?.["heating_schedule_days"] ?? "1,2,3,4,5").split(",").filter(Boolean);
+                        const active = days.includes(String(d));
+                        const labels = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
+                        return (
+                          <button
+                            key={d}
+                            onClick={() => {
+                              const ds = new Set(days.map(Number));
+                              if (ds.has(d)) ds.delete(d); else ds.add(d);
+                              set("heating_schedule_days", Array.from(ds).sort().join(","));
+                            }}
+                            className={`px-2.5 py-1 rounded-lg text-xs font-semibold border transition-colors ${
+                              active
+                                ? "bg-primary-600 text-white border-primary-600"
+                                : "bg-gray-50 text-gray-500 border-gray-200 hover:border-gray-300"
+                            }`}
+                          >
+                            {labels[d - 1]}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-xs font-medium text-gray-600 mb-1.5">{t("heating.scheduleHours")}</p>
+                    <div className="flex items-center gap-1.5">
+                      <TimeInput
+                        value={settings?.["heating_schedule_start"] ?? "23:00"}
+                        onChange={(v) => set("heating_schedule_start", v)}
+                      />
+                      <span className="text-gray-400 text-sm">—</span>
+                      <TimeInput
+                        value={settings?.["heating_schedule_end"] ?? "06:00"}
+                        onChange={(v) => set("heating_schedule_end", v)}
+                      />
+                    </div>
+                  </div>
+                </div>
+                <p className="mt-2 text-xs text-gray-500">
+                  {t("heating.scheduleDeltaHint")}
+                </p>
+              </>
             )}
           </CollapsibleSection>
         </section>
@@ -640,21 +747,29 @@ export default function HeatingPage() {
               <SettingRow label={t("heating.pressureMin")}>
                 <TempSlider
                   value={num("heating_pressure_min", "1.0") * 10}
-                  min={5}
-                  max={20}
+                  min={1}
+                  max={30}
                   unit=" бар"
-                  onChange={(v) => set("heating_pressure_min", (v / 10).toFixed(1))}
+                  onChange={(v) => {
+                    if (v / 10 >= num("heating_pressure_max", "1.8")) return;
+                    set("heating_pressure_min", (v / 10).toFixed(1));
+                  }}
                   disabled={!bool("heating_autofill_enabled")}
+                  formatValue={(v) => (v / 10).toFixed(1)}
                 />
               </SettingRow>
               <SettingRow label={t("heating.pressureMax")}>
                 <TempSlider
                   value={num("heating_pressure_max", "1.8") * 10}
-                  min={10}
+                  min={1}
                   max={30}
                   unit=" бар"
-                  onChange={(v) => set("heating_pressure_max", (v / 10).toFixed(1))}
+                  onChange={(v) => {
+                    if (v / 10 <= num("heating_pressure_min", "1.0")) return;
+                    set("heating_pressure_max", (v / 10).toFixed(1));
+                  }}
                   disabled={!bool("heating_autofill_enabled")}
+                  formatValue={(v) => (v / 10).toFixed(1)}
                 />
               </SettingRow>
             </div>

@@ -24,16 +24,15 @@ PZA_FLOOR = {
     ],
 }
 
-# Mapping: chart param → SensorDataType.id
-CHART_DATATYPE_MAP = {
-    "ChartTemperature": 1,
-    "ChartPressure": 2,
-    "ChartHumidity": 3,
-    "ChartHeating": 1,  # temperature, but filtered to heating sensors
+# Mapping: chart param → (SensorDataType.id, system_id or None)
+CHART_CONFIG = {
+    "ChartTemperature": {"datatype_id": 1, "system_id": 3},          # Climate temperatures
+    "ChartPressureAtmo": {"datatype_id": 2, "system_id": 3},         # Atmospheric pressure (climate)
+    "ChartPressureSystem": {"datatype_id": 2, "system_id": 1},       # Heating system pressure
+    "ChartPressure": {"datatype_id": 2},                              # Legacy: all pressure (backwards compat)
+    "ChartHumidity": {"datatype_id": 3, "system_id": 3},             # Humidity (climate)
+    "ChartHeating": {"datatype_id": 1, "system_id": 1},               # Heating system temperatures
 }
-
-# Heating sensor IDs (supply sensors for 4 circuits)
-HEATING_SENSOR_IDS = [1, 3, 5, 7]
 
 
 class ChartService:
@@ -54,8 +53,8 @@ class ChartService:
         if chart_type == "ChartHeatFloor":
             return PZA_FLOOR
 
-        datatype_id = CHART_DATATYPE_MAP.get(chart_type)
-        if datatype_id is None:
+        config = CHART_CONFIG.get(chart_type)
+        if config is None:
             return {"labels": [], "datasets": []}
 
         if end is None:
@@ -63,5 +62,10 @@ class ChartService:
         if start is None:
             start = end - timedelta(days=100)
 
-        sensor_ids = HEATING_SENSOR_IDS if chart_type == "ChartHeating" else None
-        return await self.chart_repo.get_history(datatype_id, start, end, sensor_ids)
+        return await self.chart_repo.get_history(
+            datatype_id=config["datatype_id"],
+            start=start,
+            end=end,
+            sensor_ids=config.get("sensor_ids"),
+            system_id=config.get("system_id"),
+        )

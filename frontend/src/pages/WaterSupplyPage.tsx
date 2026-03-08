@@ -12,6 +12,13 @@ import { useSettingUpdate } from "@/hooks/useSettingUpdate";
 import { fmt } from "@/lib/utils";
 import CollapsibleSection from "@/components/CollapsibleSection";
 
+function supplyGlow(actual: number | null | undefined, setpoint: number | null | undefined): string {
+  if (actual == null || setpoint == null) return "font-semibold text-gray-800";
+  if (actual > setpoint) return "font-bold temp-glow-red";
+  if (actual < setpoint) return "font-bold temp-glow-blue";
+  return "font-semibold text-gray-800";
+}
+
 /* ------------------------------------------------------------------ */
 /*  Reusable UI primitives (same style as HeatingPage)                */
 /* ------------------------------------------------------------------ */
@@ -107,6 +114,42 @@ function TempSlider({
   );
 }
 
+function TimeWheel({ value, options, onChange }: { value: number; options: number[]; onChange: (v: number) => void }) {
+  const idx = options.indexOf(value);
+  const prev = () => onChange(options[(idx - 1 + options.length) % options.length]!);
+  const next = () => onChange(options[(idx + 1) % options.length]!);
+  return (
+    <div className="flex flex-col items-center leading-none">
+      <button onClick={prev} className="text-gray-400 hover:text-gray-600 text-[10px]">▲</button>
+      <span className="text-base font-semibold text-gray-800 tabular-nums w-7 text-center">
+        {String(value).padStart(2, "0")}
+      </span>
+      <button onClick={next} className="text-gray-400 hover:text-gray-600 text-[10px]">▼</button>
+    </div>
+  );
+}
+
+function TimeInput({ value, onChange, disabled }: { value: string; onChange: (v: string) => void; disabled?: boolean }) {
+  const [h, m] = value.split(":").map(Number);
+  const hours = Array.from({ length: 24 }, (_, i) => i);
+  const minutes = [0, 15, 30, 45];
+  return (
+    <div className={`inline-flex items-center gap-0 rounded-lg border border-gray-200 bg-white px-2 py-0.5 ${disabled ? "opacity-50 pointer-events-none" : ""}`}>
+      <TimeWheel
+        value={h ?? 0}
+        options={hours}
+        onChange={(v) => onChange(`${String(v).padStart(2, "0")}:${String(m ?? 0).padStart(2, "0")}`)}
+      />
+      <span className="text-gray-400 font-bold text-base mx-0.5">:</span>
+      <TimeWheel
+        value={m ?? 0}
+        options={minutes}
+        onChange={(v) => onChange(`${String(h ?? 0).padStart(2, "0")}:${String(v).padStart(2, "0")}`)}
+      />
+    </div>
+  );
+}
+
 const DAYS = [
   { key: "1", label: "Пн" },
   { key: "2", label: "Вт" },
@@ -143,7 +186,7 @@ export default function WaterSupplyPage() {
   const num = (key: string, fallback = "0") => Number(s(key, fallback));
 
   const toggle = (key: string) =>
-    update({ [key]: bool(key) ? "0" : "1" });
+    update({ [key]: bool(key) ? "0" : "1" }, true);
 
   const set = (key: string, value: string | number) =>
     update({ [key]: String(value) });
@@ -201,7 +244,7 @@ export default function WaterSupplyPage() {
                     </div>
                     <div className="flex justify-between">
                       <span>{t("waterSupply.actual")}</span>
-                      <span className="font-semibold text-gray-800">
+                      <span className={supplyGlow(w.temp_fact, w.temp_set)}>
                         {fmt(w.temp_fact)}°C
                       </span>
                     </div>
@@ -350,12 +393,10 @@ export default function WaterSupplyPage() {
                 </div>
               </div>
               <SettingRow label={t("waterSupply.almStartTime")}>
-                <input
-                  type="time"
+                <TimeInput
                   value={s("watersupply_alm_start_time", "03:00")}
+                  onChange={(v) => set("watersupply_alm_start_time", v)}
                   disabled={!almEnabled}
-                  onChange={(e) => set("watersupply_alm_start_time", e.target.value)}
-                  className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm disabled:opacity-50"
                 />
               </SettingRow>
               <SettingRow label={t("waterSupply.almDuration")}>

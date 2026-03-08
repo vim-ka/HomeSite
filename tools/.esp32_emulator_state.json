@@ -1,0 +1,109 @@
+[
+  {
+    "name": "clm_street_thp",
+    "preset": "full",
+    "paused": false,
+    "values": {
+      "tmp": 19.6,
+      "hmt": 66.4,
+      "prs": 1013.9
+    }
+  },
+  {
+    "name": "clm_chl_th",
+    "preset": "climate",
+    "paused": false,
+    "values": {
+      "tmp": 22.3,
+      "hmt": 44.5
+    }
+  },
+  {
+    "name": "tsboiler_s_t",
+    "preset": "temp",
+    "paused": false,
+    "values": {
+      "tmp": 66.1
+    }
+  },
+  {
+    "name": "tsrad_s_t",
+    "preset": "temp",
+    "paused": false,
+    "values": {
+      "tmp": 43.7
+    }
+  },
+  {
+    "name": "tsboiler_b_t",
+    "preset": "temp",
+    "paused": false,
+    "values": {
+      "tmp": 48.6
+    }
+  },
+  {
+    "name": "tsrad_b_t",
+    "preset": "temp",
+    "paused": false,
+    "values": {
+      "tmp": 37.4
+    }
+  },
+  {
+    "name": "tsboiler_s_p",
+    "preset": "pressure",
+    "paused": false,
+    "values": {
+      "prs": 1.6
+    }
+  },
+  {
+    "name": "tsfloor_s_t",
+    "preset": "temp",
+    "paused": false,
+    "values": {
+      "tmp": 32.4
+    }
+  },
+  {
+    "name": "tsfloor_b_t",
+    "preset": "temp",
+    "paused": false,
+    "values": {
+      "tmp": 28.1
+    }
+  },
+  {
+    "name": "tsihb_s_t",
+    "preset": "temp",
+    "paused": false,
+    "values": {
+      "tmp": 58.3
+    }
+  },
+  {
+    "name": "tsihb_b_t",
+    "preset": "temp",
+    "paused": false,
+    "values": {
+      "tmp": 41.7
+    }
+  },
+  {
+    "name": "tsfloor_s_p",
+    "preset": "pressure",
+    "paused": false,
+    "values": {
+      "prs": 1.42
+    }
+  },
+  {
+    "name": "tsihb_s_p",
+    "preset": "pressure",
+    "paused": false,
+    "values": {
+      "prs": 1.55
+    }
+  }
+]

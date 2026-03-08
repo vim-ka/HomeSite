@@ -43,12 +43,11 @@ async def seeded_data(db_session):
     ])
     await db_session.flush()
 
-    # Mount points
-    db_session.add_all([
-        MountPoint(id=1, name="Котел, подача", system_id=1, place_id=1),
-        MountPoint(id=2, name="Котел, возврат", system_id=1, place_id=1),
-        MountPoint(id=16, name="У камина", system_id=3, place_id=2),
-    ])
+    # Mount points (create without sensor bindings first)
+    mp1 = MountPoint(id=1, name="Котел, подача", system_id=1, place_id=1)
+    mp2 = MountPoint(id=2, name="Котел, возврат", system_id=1, place_id=1)
+    mp16 = MountPoint(id=16, name="У камина", system_id=3, place_id=2)
+    db_session.add_all([mp1, mp2, mp16])
     await db_session.flush()
 
     # Sensors
@@ -57,6 +56,12 @@ async def seeded_data(db_session):
         Sensor(id=2, name="tsboiler_b", sensor_type_id=1, mount_point_id=2),
         Sensor(id=16, name="clm_gost_th", sensor_type_id=1, mount_point_id=16),
     ])
+    await db_session.flush()
+
+    # Set explicit sensor bindings on mount points
+    mp1.temperature_sensor_id = 1
+    mp2.temperature_sensor_id = 2
+    mp16.temperature_sensor_id = 16
     await db_session.flush()
 
     # Sensor data (current values)
@@ -78,8 +83,8 @@ async def seeded_data(db_session):
     # Heating circuit
     db_session.add(HeatingCircuit(
         circuit_name="Котёл",
-        supply_sensor_id=1,
-        return_sensor_id=2,
+        supply_mount_point_id=1,
+        return_mount_point_id=2,
         delta_threshold=5.0,
         config_temp_key="heating_boiler_temp",
         config_pump_key="heating_boiler_power",

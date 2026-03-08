@@ -80,7 +80,7 @@ function formatLabel(label: string, period: Period): string {
 }
 
 /* ------------------------------------------------------------------ */
-/*  Chart component                                                   */
+/*  Chart component with per-sensor checkboxes                        */
 /* ------------------------------------------------------------------ */
 
 function SensorChart({
@@ -100,6 +100,7 @@ function SensorChart({
 }) {
   const { t } = useTranslation();
   const { start, end } = periodDates(period);
+  const [enabledSensors, setEnabledSensors] = useState<Record<string, boolean>>({});
 
   const { data, isLoading } = useQuery<ChartData>({
     queryKey: ["chart", type, period],
@@ -135,12 +136,20 @@ function SensorChart({
     );
   }
 
-  const chartData = data.labels.map((label, i) => ({
-    name: formatLabel(label, period),
-    ...Object.fromEntries(
-      data.datasets.map((ds) => [ds.label, ds.data[i]]),
-    ),
-  }));
+  const toggle = (label: string) =>
+    setEnabledSensors((prev) => ({ ...prev, [label]: !prev[label] }));
+
+  const visibleDatasets = data.datasets.filter((ds) => enabledSensors[ds.label]);
+  const hasVisible = visibleDatasets.length > 0;
+
+  const chartData = hasVisible
+    ? data.labels.map((label, i) => ({
+        name: formatLabel(label, period),
+        ...Object.fromEntries(
+          visibleDatasets.map((ds) => [ds.label, ds.data[i]]),
+        ),
+      }))
+    : [];
 
   const Chart = area ? AreaChart : LineChart;
 
@@ -149,59 +158,85 @@ function SensorChart({
       <div className="flex items-center gap-2 mb-3">
         <Icon className="h-5 w-5 text-gray-400" />
         <h3 className="text-sm font-semibold text-gray-700">{title}</h3>
-        <span className="ml-auto text-xs text-gray-400">
-          {data.datasets.length} {data.datasets.length === 1 ? "датчик" : "датчиков"}
-        </span>
       </div>
-      <ResponsiveContainer width="100%" height={260}>
-        <Chart data={chartData}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-          <XAxis
-            dataKey="name"
-            tick={{ fontSize: 10 }}
-            interval="preserveStartEnd"
-          />
-          <YAxis
-            tick={{ fontSize: 10 }}
-            width={45}
-            tickFormatter={(v) => `${v}${unit}`}
-          />
-          <Tooltip
-            contentStyle={{ fontSize: 12, borderRadius: 8 }}
-            formatter={(v: number) => [`${fmt(v)}${unit}`, ""]}
-          />
-          <Legend
-            wrapperStyle={{ fontSize: 11 }}
-            iconType="circle"
-            iconSize={8}
-          />
-          {data.datasets.map((ds, i) =>
-            area ? (
-              <Area
-                key={ds.label}
-                type="monotone"
-                dataKey={ds.label}
-                stroke={COLORS[i % COLORS.length]}
-                fill={COLORS[i % COLORS.length]}
-                fillOpacity={0.1}
-                strokeWidth={2}
-                dot={false}
-                connectNulls
-              />
-            ) : (
-              <Line
-                key={ds.label}
-                type="monotone"
-                dataKey={ds.label}
-                stroke={COLORS[i % COLORS.length]}
-                strokeWidth={2}
-                dot={false}
-                connectNulls
-              />
-            ),
-          )}
-        </Chart>
-      </ResponsiveContainer>
+
+      {/* Sensor checkboxes */}
+      <div className="flex flex-wrap gap-x-4 gap-y-1.5 mb-3">
+        {data.datasets.map((ds, i) => (
+          <label key={ds.label} className="flex items-center gap-1.5 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={!!enabledSensors[ds.label]}
+              onChange={() => toggle(ds.label)}
+              className="rounded border-gray-300 h-3.5 w-3.5"
+              style={{ accentColor: COLORS[i % COLORS.length] }}
+            />
+            <span
+              className="w-2.5 h-2.5 rounded-full inline-block"
+              style={{ backgroundColor: COLORS[i % COLORS.length] }}
+            />
+            <span className="text-xs text-gray-600">{ds.label}</span>
+          </label>
+        ))}
+      </div>
+
+      {hasVisible ? (
+        <ResponsiveContainer width="100%" height={260}>
+          <Chart data={chartData}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+            <XAxis
+              dataKey="name"
+              tick={{ fontSize: 10 }}
+              interval="preserveStartEnd"
+            />
+            <YAxis
+              tick={{ fontSize: 10 }}
+              width={45}
+              tickFormatter={(v) => `${v}${unit}`}
+            />
+            <Tooltip
+              contentStyle={{ fontSize: 12, borderRadius: 8 }}
+              formatter={(v: number, name: string) => [`${fmt(v)}${unit}`, name]}
+            />
+            <Legend
+              wrapperStyle={{ fontSize: 11 }}
+              iconType="circle"
+              iconSize={8}
+            />
+            {visibleDatasets.map((ds) => {
+              const colorIdx = data.datasets.findIndex((d) => d.label === ds.label);
+              const color = COLORS[colorIdx % COLORS.length];
+              return area ? (
+                <Area
+                  key={ds.label}
+                  type="monotone"
+                  dataKey={ds.label}
+                  stroke={color}
+                  fill={color}
+                  fillOpacity={0.1}
+                  strokeWidth={2}
+                  dot={false}
+                  connectNulls
+                />
+              ) : (
+                <Line
+                  key={ds.label}
+                  type="monotone"
+                  dataKey={ds.label}
+                  stroke={color}
+                  strokeWidth={2}
+                  dot={false}
+                  connectNulls
+                />
+              );
+            })}
+          </Chart>
+        </ResponsiveContainer>
+      ) : (
+        <div className="h-[260px] flex items-center justify-center text-sm text-gray-400">
+          Выберите датчики для отображения
+        </div>
+      )}
     </div>
   );
 }
@@ -324,6 +359,13 @@ export default function StatisticsPage() {
             period={period}
             area
           />
+          <SensorChart
+            type="ChartPressureAtmo"
+            title={t("statistics.pressureAtmoChart")}
+            unit=" гПа"
+            icon={Gauge}
+            period={period}
+          />
         </div>
       </CollapsibleSection>
 
@@ -331,7 +373,7 @@ export default function StatisticsPage() {
       <CollapsibleSection title={t("statistics.heatingCharts")} icon={Flame}>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
           <SensorChart
-            type="ChartPressure"
+            type="ChartPressureSystem"
             title={t("statistics.pressureChart")}
             unit=" бар"
             icon={Gauge}

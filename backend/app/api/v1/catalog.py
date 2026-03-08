@@ -7,6 +7,9 @@ from app.models.user import User, UserRole
 from app.repositories.catalog_repository import CatalogRepository
 from app.schemas.catalog import (
     AcceptPendingSensorRequest,
+    HeatingCircuitCreateRequest,
+    HeatingCircuitResponse,
+    HeatingCircuitUpdateRequest,
     MountPointCreateRequest,
     MountPointResponse,
     MountPointUpdateRequest,
@@ -17,7 +20,9 @@ from app.schemas.catalog import (
     SensorCreateRequest,
     SensorDataTypeResponse,
     SensorDetailResponse,
+    SensorTypeCreateRequest,
     SensorTypeResponse,
+    SensorTypeUpdateRequest,
     SensorUpdateRequest,
     SystemTypeResponse,
 )
@@ -51,6 +56,34 @@ async def list_sensor_types(
     return await service.get_sensor_types()
 
 
+@router.post("/sensor-types", response_model=SensorTypeResponse, status_code=201)
+async def create_sensor_type(
+    payload: SensorTypeCreateRequest,
+    _user: User = Depends(admin_only),
+    service: CatalogService = Depends(get_catalog_service),
+):
+    return await service.create_sensor_type(payload.name)
+
+
+@router.put("/sensor-types/{st_id}", response_model=SensorTypeResponse)
+async def update_sensor_type(
+    st_id: int,
+    payload: SensorTypeUpdateRequest,
+    _user: User = Depends(admin_only),
+    service: CatalogService = Depends(get_catalog_service),
+):
+    return await service.update_sensor_type(st_id, payload.name)
+
+
+@router.delete("/sensor-types/{st_id}", status_code=204)
+async def delete_sensor_type(
+    st_id: int,
+    _user: User = Depends(admin_only),
+    service: CatalogService = Depends(get_catalog_service),
+):
+    await service.delete_sensor_type(st_id)
+
+
 @router.get("/data-types", response_model=list[SensorDataTypeResponse])
 async def list_data_types(
     _user: User = Depends(admin_only),
@@ -76,7 +109,7 @@ async def create_mount_point(
     _user: User = Depends(admin_only),
     service: CatalogService = Depends(get_catalog_service),
 ):
-    await service.create_mount_point(payload.name, payload.system_id, payload.place_id)
+    await service.create_mount_point(**payload.model_dump())
     mps = await service.get_mount_points()
     return mps[-1]
 
@@ -88,7 +121,7 @@ async def update_mount_point(
     _user: User = Depends(admin_only),
     service: CatalogService = Depends(get_catalog_service),
 ):
-    await service.update_mount_point(mp_id, payload.name, payload.system_id, payload.place_id)
+    await service.update_mount_point(mp_id, **payload.model_dump())
     mps = await service.get_mount_points()
     return next(m for m in mps if m["id"] == mp_id)
 
@@ -221,3 +254,46 @@ async def dismiss_pending_sensor(
     service: CatalogService = Depends(get_catalog_service),
 ):
     await service.dismiss_pending_sensor(ps_id)
+
+
+# ---- Heating Circuits CRUD ----
+
+
+@router.get("/heating-circuits", response_model=list[HeatingCircuitResponse])
+async def list_heating_circuits(
+    _user: User = Depends(admin_only),
+    service: CatalogService = Depends(get_catalog_service),
+):
+    return await service.get_heating_circuits()
+
+
+@router.post("/heating-circuits", response_model=HeatingCircuitResponse, status_code=201)
+async def create_heating_circuit(
+    payload: HeatingCircuitCreateRequest,
+    _user: User = Depends(admin_only),
+    service: CatalogService = Depends(get_catalog_service),
+):
+    await service.create_heating_circuit(**payload.model_dump())
+    circuits = await service.get_heating_circuits()
+    return circuits[-1]
+
+
+@router.put("/heating-circuits/{circuit_id}", response_model=HeatingCircuitResponse)
+async def update_heating_circuit(
+    circuit_id: int,
+    payload: HeatingCircuitUpdateRequest,
+    _user: User = Depends(admin_only),
+    service: CatalogService = Depends(get_catalog_service),
+):
+    await service.update_heating_circuit(circuit_id, **payload.model_dump())
+    circuits = await service.get_heating_circuits()
+    return next(c for c in circuits if c["id"] == circuit_id)
+
+
+@router.delete("/heating-circuits/{circuit_id}", status_code=204)
+async def delete_heating_circuit(
+    circuit_id: int,
+    _user: User = Depends(admin_only),
+    service: CatalogService = Depends(get_catalog_service),
+):
+    await service.delete_heating_circuit(circuit_id)

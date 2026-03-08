@@ -144,18 +144,17 @@ def migrate(v1_path: str, v2_path: str) -> None:
 
     # --- HeatingCircuit (new in v2 — seed from known v1 config) ---
     circuits = [
-        ("Котёл", 1, 2, None, 5.0, "heating_boiler_temp", "heating_boiler_power", 1),
-        ("Радиаторы", 3, 4, 5, 5.0, "heating_radiator_temp", "heating_radiator_power", 2),
-        ("Тёплый пол 1 эт.", 6, 7, None, 3.0, "heating_floor1_temp", "heating_floor1_power", 3),
-        ("Тёплый пол 2 эт.", 8, 9, None, 3.0, "heating_floor2_temp", "heating_floor2_power", 4),
+        ("Котёл", 5.0, "heating_boiler_temp", "heating_boiler_power", 1),
+        ("Радиаторы", 5.0, "heating_radiator_temp", "heating_radiator_power", 2),
+        ("Тёплый пол 1 эт.", 3.0, "heating_floor1_temp", "heating_floor1_power", 3),
+        ("Тёплый пол 2 эт.", 3.0, "heating_floor2_temp", "heating_floor2_power", 4),
     ]
     for c in circuits:
         try:
             v2.execute(
                 "INSERT OR IGNORE INTO heating_circuits "
-                "(circuit_name, supply_sensor_id, return_sensor_id, pressure_sensor_id, "
-                "delta_threshold, config_temp_key, config_pump_key, display_order) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                "(circuit_name, delta_threshold, config_temp_key, config_pump_key, display_order) "
+                "VALUES (?, ?, ?, ?, ?)",
                 c,
             )
         except Exception as e:

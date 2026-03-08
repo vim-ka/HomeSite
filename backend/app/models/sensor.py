@@ -71,7 +71,12 @@ class SensorDataType(Base):
 
 
 class MountPoint(Base):
-    """Installation point: links a sensor to a system type and physical place."""
+    """Installation point: links a sensor to a system type and physical place.
+
+    Each mount point explicitly stores which sensor provides each data type.
+    If one sensor (e.g. BME280) provides all three, the same sensor_id goes
+    in all three fields.
+    """
 
     __tablename__ = "mount_points"
 
@@ -80,9 +85,22 @@ class MountPoint(Base):
     system_id: Mapped[int] = mapped_column(ForeignKey("system_types.id"), nullable=False)
     place_id: Mapped[int] = mapped_column(ForeignKey("places.id"), nullable=False)
 
+    # Explicit sensor bindings per data type
+    temperature_sensor_id: Mapped[int | None] = mapped_column(
+        ForeignKey("sensors.id", use_alter=True), nullable=True
+    )
+    pressure_sensor_id: Mapped[int | None] = mapped_column(
+        ForeignKey("sensors.id", use_alter=True), nullable=True
+    )
+    humidity_sensor_id: Mapped[int | None] = mapped_column(
+        ForeignKey("sensors.id", use_alter=True), nullable=True
+    )
+
     system_type: Mapped["SystemType"] = relationship(back_populates="mount_points")
     place: Mapped["Place"] = relationship(back_populates="mount_points")
-    sensors: Mapped[list["Sensor"]] = relationship(back_populates="mount_point")
+    sensors: Mapped[list["Sensor"]] = relationship(
+        back_populates="mount_point", foreign_keys="[Sensor.mount_point_id]"
+    )
 
     def __repr__(self) -> str:
         return f"<MountPoint {self.name}>"
@@ -99,7 +117,9 @@ class Sensor(Base):
     mount_point_id: Mapped[int] = mapped_column(ForeignKey("mount_points.id"), nullable=False)
 
     sensor_type: Mapped["SensorType"] = relationship(back_populates="sensors")
-    mount_point: Mapped["MountPoint"] = relationship(back_populates="sensors")
+    mount_point: Mapped["MountPoint"] = relationship(
+        back_populates="sensors", foreign_keys=[mount_point_id]
+    )
     data_types: Mapped[list["SensorDataType"]] = relationship(
         secondary=sensor_datatype_link, lazy="selectin",
     )

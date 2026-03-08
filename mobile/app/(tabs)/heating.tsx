@@ -1,4 +1,4 @@
-import { ScrollView, View, Text, StyleSheet, RefreshControl } from "react-native";
+import { ScrollView, View, Text, TouchableOpacity, StyleSheet, RefreshControl } from "react-native";
 import { useTranslation } from "react-i18next";
 import { useSettings, useSettingUpdate } from "../../src/hooks/useSettings";
 import { useDashboard } from "../../src/hooks/useDashboard";
@@ -8,6 +8,8 @@ import Toggle from "../../src/components/Toggle";
 import TempSlider from "../../src/components/TempSlider";
 import StatusBadge from "../../src/components/StatusBadge";
 import { colors } from "../../src/theme/colors";
+
+const DAYS = [1, 2, 3, 4, 5, 6, 7];
 
 function fmt(v: number | null): string {
   return v != null ? v.toFixed(1) : "—";
@@ -173,13 +175,50 @@ export default function HeatingScreen() {
             onValueChange={(v) => update("heating_schedule_enabled", v ? "1" : "0")}
           />
           <TempSlider
-            label={t("heating.scheduleDelta")}
-            value={parseInt(s.heating_schedule_delta ?? "-10")}
+            label={t("heating.scheduleDeltaRadiators")}
+            value={parseInt(s.heating_schedule_delta_radiators ?? "-10")}
             min={-20}
             max={0}
-            onValueChange={(v) => update("heating_schedule_delta", String(v))}
+            onValueChange={(v) => update("heating_schedule_delta_radiators", String(v))}
             disabled={!schedEnabled}
           />
+          <TempSlider
+            label={t("heating.scheduleDeltaFloor")}
+            value={parseInt(s.heating_schedule_delta_floor ?? "-5")}
+            min={-20}
+            max={0}
+            onValueChange={(v) => update("heating_schedule_delta_floor", String(v))}
+            disabled={!schedEnabled}
+          />
+          {schedEnabled && (
+            <>
+              <Text style={styles.smallLabel}>{t("heating.scheduleDays")}</Text>
+              <View style={styles.daysRow}>
+                {DAYS.map((d) => {
+                  const days = (s.heating_schedule_days ?? "1,2,3,4,5").split(",").filter(Boolean);
+                  const active = days.includes(String(d));
+                  return (
+                    <TouchableOpacity
+                      key={d}
+                      style={[styles.dayBtn, active && styles.dayBtnActive]}
+                      onPress={() => {
+                        const ds = new Set(days.map(Number));
+                        if (ds.has(d)) ds.delete(d); else ds.add(d);
+                        update("heating_schedule_days", Array.from(ds).sort().join(","));
+                      }}
+                    >
+                      <Text style={[styles.dayText, active && styles.dayTextActive]}>
+                        {t(`days.${d}`)}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+              <View style={styles.timeRow}>
+                <Text style={styles.smallLabel}>{s.heating_schedule_start ?? "23:00"} — {s.heating_schedule_end ?? "06:00"}</Text>
+              </View>
+            </>
+          )}
         </Card>
 
         <Card style={[styles.flex1, { marginLeft: 8 }]}>
@@ -192,8 +231,8 @@ export default function HeatingScreen() {
           <TempSlider
             label={t("heating.pressureMin")}
             value={parseFloat(s.heating_pressure_min ?? "1.0")}
-            min={0.5}
-            max={2.5}
+            min={0.1}
+            max={3.0}
             step={0.1}
             unit=" бар"
             onValueChange={(v) => update("heating_pressure_min", v.toFixed(1))}
@@ -202,8 +241,8 @@ export default function HeatingScreen() {
           <TempSlider
             label={t("heating.pressureMax")}
             value={parseFloat(s.heating_pressure_max ?? "1.8")}
-            min={0.5}
-            max={2.5}
+            min={0.1}
+            max={3.0}
             step={0.1}
             unit=" бар"
             onValueChange={(v) => update("heating_pressure_max", v.toFixed(1))}
@@ -229,4 +268,21 @@ const styles = StyleSheet.create({
   circuitTemp: { fontSize: 22, fontWeight: "800", color: colors.orange[500] },
   circuitLabel: { fontSize: 11, color: colors.gray[400], marginTop: 2 },
   circuitPump: { marginTop: 8 },
+  smallLabel: { fontSize: 12, color: colors.gray[600], marginTop: 8, marginBottom: 6 },
+  daysRow: { flexDirection: "row", flexWrap: "wrap", gap: 4 },
+  dayBtn: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    backgroundColor: colors.gray[100],
+    borderWidth: 1,
+    borderColor: colors.gray[200],
+  },
+  dayBtnActive: {
+    backgroundColor: colors.primary[600],
+    borderColor: colors.primary[600],
+  },
+  dayText: { fontSize: 11, color: colors.gray[600] },
+  dayTextActive: { color: colors.white, fontWeight: "600" },
+  timeRow: { marginTop: 6 },
 });

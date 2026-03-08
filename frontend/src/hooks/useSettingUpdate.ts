@@ -13,19 +13,22 @@ export function useSettingUpdate(debounceMs = 300) {
       await api.put("/settings", { settings });
       return settings;
     },
-    onSuccess: (_data) => {
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["dashboard"] });
       toast.success("Сохранено");
     },
     onError: () => {
-      // Revert optimistic update
       queryClient.invalidateQueries({ queryKey: ["settings"] });
       toast.error("Ошибка сохранения");
     },
   });
 
+  // Keep a stable ref to mutate so the update callback doesn't go stale
+  const mutateRef = useRef(mutation.mutate);
+  mutateRef.current = mutation.mutate;
+
   const update = useCallback(
-    (settings: Record<string, string>) => {
+    (settings: Record<string, string>, immediate = false) => {
       // Optimistic: update settings cache immediately
       queryClient.setQueryData<Record<string, string>>(
         ["settings"],
@@ -33,11 +36,15 @@ export function useSettingUpdate(debounceMs = 300) {
       );
 
       if (timerRef.current) clearTimeout(timerRef.current);
-      timerRef.current = setTimeout(() => {
-        mutation.mutate(settings);
-      }, debounceMs);
+
+      if (immediate) {
+        mutateRef.current(settings);
+      } else {
+        timerRef.current = setTimeout(() => {
+          mutateRef.current(settings);
+        }, debounceMs);
+      }
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [queryClient, debounceMs],
   );
 

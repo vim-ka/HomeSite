@@ -84,6 +84,7 @@ def create_app() -> FastAPI:
             path=request.url.path,
             method=request.method,
             error=str(exc),
+            exc_info=exc,
         )
         return JSONResponse(
             status_code=500,

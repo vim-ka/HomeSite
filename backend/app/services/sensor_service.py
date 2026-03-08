@@ -62,8 +62,7 @@ class SensorService:
     async def _calc_24h_stats(self) -> Stats24h:
         """Compute 24h heating operation stats.
 
-        Replaces calc_24h_stats() from v1 views.py.
-        Uses HeatingCircuit table instead of hardcoded sensor IDs.
+        Uses mount point bindings to resolve sensors dynamically.
         """
         db = self.sensor_repo.db
 
@@ -76,13 +75,26 @@ class SensorService:
         if not circuits:
             return Stats24h()
 
-        # Collect all sensor IDs needed
+        # Resolve temperature sensor IDs from mount points (explicit binding)
+        async def temp_sensor_at_mount_point(mp_id: int | None) -> int | None:
+            if mp_id is None:
+                return None
+            result = await db.execute(
+                select(MountPoint.temperature_sensor_id).where(MountPoint.id == mp_id)
+            )
+            return result.scalar_one_or_none()
+
+        # Build circuit → (supply_sensor_id, return_sensor_id) mapping
+        circuit_sensors: dict[int, tuple[int | None, int | None]] = {}
         all_sensor_ids: set[int] = set()
         for c in circuits:
-            if c.supply_sensor_id:
-                all_sensor_ids.add(c.supply_sensor_id)
-            if c.return_sensor_id:
-                all_sensor_ids.add(c.return_sensor_id)
+            sup_id = await temp_sensor_at_mount_point(c.supply_mount_point_id)
+            ret_id = await temp_sensor_at_mount_point(c.return_mount_point_id)
+            circuit_sensors[c.id] = (sup_id, ret_id)
+            if sup_id is not None:
+                all_sensor_ids.add(sup_id)
+            if ret_id is not None:
+                all_sensor_ids.add(ret_id)
 
         # Climate sensors: system_id=3, exclude street (place_id=7)
         climate_stmt = (
@@ -131,14 +143,14 @@ class SensorService:
         result_dict: dict[str, float] = {}
         for c in circuits:
             key = stat_key_map.get(c.circuit_name)
-            if not key or not c.supply_sensor_id or not c.return_sensor_id:
+            sup_id, ret_id = circuit_sensors.get(c.id, (None, None))
+            if not key or sup_id is None or ret_id is None:
                 continue
-
             total_samples = 0
             active_samples = 0
             for sensors in ts_data.values():
-                sup_val = sensors.get(c.supply_sensor_id)
-                ret_val = sensors.get(c.return_sensor_id)
+                sup_val = sensors.get(sup_id)
+                ret_val = sensors.get(ret_id)
                 if sup_val is not None and ret_val is not None:
                     total_samples += 1
                     if sup_val - ret_val >= c.delta_threshold:

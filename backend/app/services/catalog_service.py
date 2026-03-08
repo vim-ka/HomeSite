@@ -15,6 +15,25 @@ class CatalogService:
     async def get_sensor_types(self):
         return await self.repo.get_sensor_types()
 
+    async def create_sensor_type(self, name: str):
+        return await self.repo.create_sensor_type(name)
+
+    async def update_sensor_type(self, st_id: int, name: str):
+        st = await self.repo.update_sensor_type(st_id, name)
+        if st is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Тип датчика не найден")
+        return st
+
+    async def delete_sensor_type(self, st_id: int):
+        if await self.repo.sensor_type_has_sensors(st_id):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Невозможно удалить тип датчика: есть связанные датчики",
+            )
+        deleted = await self.repo.delete_sensor_type(st_id)
+        if not deleted:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Тип датчика не найден")
+
     async def get_sensor_data_types(self):
         return await self.repo.get_sensor_data_types()
 
@@ -53,11 +72,27 @@ class CatalogService:
 
     # ---- MountPoint CRUD ----
 
-    async def create_mount_point(self, name: str, system_id: int, place_id: int):
-        return await self.repo.create_mount_point(name, system_id, place_id)
+    async def create_mount_point(self, **kwargs):
+        conflict = await self.repo.check_sensor_binding_conflicts(
+            None,
+            kwargs.get("temperature_sensor_id"),
+            kwargs.get("pressure_sensor_id"),
+            kwargs.get("humidity_sensor_id"),
+        )
+        if conflict:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=conflict)
+        return await self.repo.create_mount_point(**kwargs)
 
-    async def update_mount_point(self, mp_id: int, name: str, system_id: int, place_id: int):
-        mp = await self.repo.update_mount_point(mp_id, name, system_id, place_id)
+    async def update_mount_point(self, mp_id: int, **kwargs):
+        conflict = await self.repo.check_sensor_binding_conflicts(
+            mp_id,
+            kwargs.get("temperature_sensor_id"),
+            kwargs.get("pressure_sensor_id"),
+            kwargs.get("humidity_sensor_id"),
+        )
+        if conflict:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=conflict)
+        mp = await self.repo.update_mount_point(mp_id, **kwargs)
         if mp is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -122,6 +157,31 @@ class CatalogService:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Датчик не найден",
+            )
+
+    # ---- Heating Circuits CRUD ----
+
+    async def get_heating_circuits(self):
+        return await self.repo.get_heating_circuits()
+
+    async def create_heating_circuit(self, **kwargs):
+        return await self.repo.create_heating_circuit(**kwargs)
+
+    async def update_heating_circuit(self, circuit_id: int, **kwargs):
+        circuit = await self.repo.update_heating_circuit(circuit_id, **kwargs)
+        if circuit is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Контур не найден",
+            )
+        return circuit
+
+    async def delete_heating_circuit(self, circuit_id: int):
+        deleted = await self.repo.delete_heating_circuit(circuit_id)
+        if not deleted:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Контур не найден",
             )
 
     # ---- Pending Sensors ----

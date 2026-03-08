@@ -69,7 +69,6 @@ async def update_settings(
         message=f"Settings updated: {summary}",
         user_id=user.id,
     ))
-    await db.commit()
 
     # Notify all WebSocket clients about the settings change
     await ws_manager.broadcast({

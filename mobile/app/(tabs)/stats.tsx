@@ -65,26 +65,46 @@ export default function StatsScreen() {
   const { t } = useTranslation();
   const [period, setPeriod] = useState<Period>("24h");
 
-  const { data: climateData, isLoading, refetch } = useQuery<ChartSeries[]>({
-    queryKey: ["charts", "climate", period],
+  const periodToRange = (p: Period) => {
+    const end = new Date();
+    const start = new Date();
+    if (p === "24h") start.setHours(end.getHours() - 24);
+    else if (p === "7d") start.setDate(end.getDate() - 7);
+    else if (p === "30d") start.setDate(end.getDate() - 30);
+    else start.setDate(end.getDate() - 90);
+    return { start: start.toISOString(), end: end.toISOString() };
+  };
+
+  const { start, end } = periodToRange(period);
+
+  const { data: climateData, isLoading, refetch } = useQuery({
+    queryKey: ["charts", "ChartTemperature", period],
     queryFn: async () => {
-      const { data } = await api.get(`/charts/climate?period=${period}`);
+      const { data } = await api.get(`/charts/ChartTemperature?start=${start}&end=${end}`);
       return data;
     },
   });
 
-  const { data: heatingData } = useQuery<ChartSeries[]>({
-    queryKey: ["charts", "heating", period],
+  const { data: heatingData } = useQuery({
+    queryKey: ["charts", "ChartHeating", period],
     queryFn: async () => {
-      const { data } = await api.get(`/charts/heating?period=${period}`);
+      const { data } = await api.get(`/charts/ChartHeating?start=${start}&end=${end}`);
       return data;
     },
   });
 
-  const { data: pressureData } = useQuery<ChartSeries[]>({
-    queryKey: ["charts", "pressure", period],
+  const { data: pressureAtmoData } = useQuery({
+    queryKey: ["charts", "ChartPressureAtmo", period],
     queryFn: async () => {
-      const { data } = await api.get(`/charts/pressure?period=${period}`);
+      const { data } = await api.get(`/charts/ChartPressureAtmo?start=${start}&end=${end}`);
+      return data;
+    },
+  });
+
+  const { data: pressureSystemData } = useQuery({
+    queryKey: ["charts", "ChartPressureSystem", period],
+    queryFn: async () => {
+      const { data } = await api.get(`/charts/ChartPressureSystem?start=${start}&end=${end}`);
       return data;
     },
   });
@@ -112,13 +132,30 @@ export default function StatsScreen() {
 
       {/* Climate */}
       <Section title={t("statistics.climate")}>
-        {climateData && climateData.length > 0 ? (
-          climateData.map((series) => (
-            <Card key={series.sensor_name} style={styles.chartCard}>
-              <Text style={styles.chartTitle}>{series.sensor_name}</Text>
+        {climateData?.datasets?.length > 0 ? (
+          climateData.datasets.map((ds: any) => (
+            <Card key={ds.label} style={styles.chartCard}>
+              <Text style={styles.chartTitle}>{ds.label}</Text>
               <MiniChart
-                data={series.data.map((d) => d.value)}
+                data={ds.data.filter((v: any) => v != null)}
                 color={colors.orange[500]}
+              />
+            </Card>
+          ))
+        ) : (
+          <Text style={styles.noData}>{t("statistics.noData")}</Text>
+        )}
+      </Section>
+
+      {/* Atmospheric Pressure */}
+      <Section title={t("statistics.pressureAtmo")}>
+        {pressureAtmoData?.datasets?.length > 0 ? (
+          pressureAtmoData.datasets.map((ds: any) => (
+            <Card key={ds.label} style={styles.chartCard}>
+              <Text style={styles.chartTitle}>{ds.label}</Text>
+              <MiniChart
+                data={ds.data.filter((v: any) => v != null)}
+                color={colors.emerald[500]}
               />
             </Card>
           ))
@@ -129,12 +166,12 @@ export default function StatsScreen() {
 
       {/* Heating */}
       <Section title={t("statistics.heatingCharts")}>
-        {heatingData && heatingData.length > 0 ? (
-          heatingData.map((series) => (
-            <Card key={series.sensor_name} style={styles.chartCard}>
-              <Text style={styles.chartTitle}>{series.sensor_name}</Text>
+        {heatingData?.datasets?.length > 0 ? (
+          heatingData.datasets.map((ds: any) => (
+            <Card key={ds.label} style={styles.chartCard}>
+              <Text style={styles.chartTitle}>{ds.label}</Text>
               <MiniChart
-                data={series.data.map((d) => d.value)}
+                data={ds.data.filter((v: any) => v != null)}
                 color={colors.red[500]}
               />
             </Card>
@@ -144,15 +181,15 @@ export default function StatsScreen() {
         )}
       </Section>
 
-      {/* Pressure */}
-      <Section title={t("dashboard.pressure")}>
-        {pressureData && pressureData.length > 0 ? (
-          pressureData.map((series) => (
-            <Card key={series.sensor_name} style={styles.chartCard}>
-              <Text style={styles.chartTitle}>{series.sensor_name}</Text>
+      {/* System Pressure */}
+      <Section title={t("statistics.pressureSystem")}>
+        {pressureSystemData?.datasets?.length > 0 ? (
+          pressureSystemData.datasets.map((ds: any) => (
+            <Card key={ds.label} style={styles.chartCard}>
+              <Text style={styles.chartTitle}>{ds.label}</Text>
               <MiniChart
-                data={series.data.map((d) => d.value)}
-                color={colors.emerald[500]}
+                data={ds.data.filter((v: any) => v != null)}
+                color={colors.sky[500]}
               />
             </Card>
           ))

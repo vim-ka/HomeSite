@@ -83,6 +83,19 @@ function ClimateCard({ room }: { room: ClimateRoom }) {
   );
 }
 
+function supplyGlow(actual: number | null, setpoint: number | null): string {
+  if (actual == null || setpoint == null) return "font-semibold text-gray-700";
+  if (actual > setpoint) return "font-bold temp-glow-red";
+  if (actual < setpoint) return "font-bold temp-glow-blue";
+  return "font-semibold text-gray-700";
+}
+
+function returnGlow(ret: number | null, supply: number | null): string {
+  if (ret == null) return "font-semibold text-gray-700";
+  if (supply != null && ret >= supply) return "font-bold temp-glow-red";
+  return "font-bold text-blue-500";
+}
+
 function HeatingCard({ circuit: c }: { circuit: HeatingCircuit }) {
   const { t } = useTranslation();
   const pumpOn = c.pump === "1";
@@ -110,7 +123,7 @@ function HeatingCard({ circuit: c }: { circuit: HeatingCircuit }) {
             <ArrowUpFromLine className="h-4 w-4 text-red-400" />
             <span>{t("dashboard.tempSupply")}</span>
           </div>
-          <span className="font-semibold text-gray-700">
+          <span className={cn("text-lg", supplyGlow(c.temp_supply, c.temp_set))}>
             {c.temp_supply != null ? `${fmt(c.temp_supply)}°` : "—"}
           </span>
         </div>
@@ -120,7 +133,7 @@ function HeatingCard({ circuit: c }: { circuit: HeatingCircuit }) {
             <ArrowDownToLine className="h-4 w-4 text-blue-400" />
             <span>{t("dashboard.tempReturn")}</span>
           </div>
-          <span className="font-semibold text-gray-700">
+          <span className={cn("text-lg", returnGlow(c.temp_return, c.temp_supply))}>
             {c.temp_return != null ? `${fmt(c.temp_return)}°` : "—"}
           </span>
         </div>
@@ -187,7 +200,7 @@ function WaterCard({ item: w }: { item: WaterSupplyItem }) {
             <Thermometer className="h-4 w-4 text-sky-500" />
             <span>{t("dashboard.temperature")}</span>
           </div>
-          <span className="text-xl font-bold text-sky-500">
+          <span className={cn("text-xl", supplyGlow(w.temp_fact, w.temp_set))}>
             {w.temp_fact != null ? `${fmt(w.temp_fact)}°` : "—"}
           </span>
         </div>

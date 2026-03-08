@@ -36,7 +36,7 @@ class SettingsService:
         # Dispatch to device gateway if available
         if self.gateway_client:
             try:
-                await self.gateway_client.dispatch_command("boiler_unit", str_updates)
+                await self.gateway_client.dispatch_settings(str_updates)
             except Exception:
                 logger.warning("gateway_dispatch_failed", updates=str_updates)
 

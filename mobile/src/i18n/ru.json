@@ -81,6 +81,8 @@
     "title": "Статистика",
     "climate": "Климат",
     "heatingCharts": "Отопление",
+    "pressureAtmo": "Атмосферное давление",
+    "pressureSystem": "Давление в системе",
     "noData": "Нет данных"
   },
   "events": {

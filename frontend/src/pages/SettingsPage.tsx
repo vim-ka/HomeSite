@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Radio, Users, Database, Download, X, MapPin, Cpu, Waypoints, Radar } from "lucide-react";
+import { Radio, Users, Database, Download, X, MapPin, Cpu, Waypoints, Radar, Flame } from "lucide-react";
 import api from "@/api/client";
 import { useAuthStore } from "@/stores/authStore";
 import CollapsibleSection from "@/components/CollapsibleSection";
@@ -75,6 +75,12 @@ interface MountPointInfo {
   place_id: number;
   system_name: string;
   place_name: string;
+  temperature_sensor_id: number | null;
+  pressure_sensor_id: number | null;
+  humidity_sensor_id: number | null;
+  temperature_sensor_name: string | null;
+  pressure_sensor_name: string | null;
+  humidity_sensor_name: string | null;
 }
 
 interface SystemTypeInfo {
@@ -90,6 +96,19 @@ interface PendingSensorInfo {
   message_count: number;
   first_seen: string;
   last_seen: string;
+}
+
+interface HeatingCircuitInfo {
+  id: number;
+  circuit_name: string;
+  supply_mount_point_id: number | null;
+  return_mount_point_id: number | null;
+  supply_mount_point_name: string | null;
+  return_mount_point_name: string | null;
+  config_temp_key: string | null;
+  config_pump_key: string | null;
+  delta_threshold: number;
+  display_order: number;
 }
 
 // ---- Modal backdrop ----
@@ -680,7 +699,15 @@ function MountPointModal({
   editMountPoint: MountPointInfo | null;
 }) {
   const { t } = useTranslation();
-  const [form, setForm] = useState({ name: "", system_id: 0, place_id: 0 });
+  const [form, setForm] = useState({
+    name: "",
+    system_id: 0,
+    place_id: 0,
+    temperature_sensor_id: null as number | null,
+    pressure_sensor_id: null as number | null,
+    humidity_sensor_id: null as number | null,
+  });
+  const [error, setError] = useState("");
 
   const { data: systemTypes } = useQuery<SystemTypeInfo[]>({
     queryKey: ["catalog-system-types"],
@@ -700,32 +727,76 @@ function MountPointModal({
     enabled: open,
   });
 
+  const { data: sensorsList } = useQuery<SensorDetail[]>({
+    queryKey: ["catalog-sensors"],
+    queryFn: async () => {
+      const { data } = await api.get("/catalog/sensors");
+      return data;
+    },
+    enabled: open,
+  });
+
   useEffect(() => {
     if (open) {
       setForm({
         name: editMountPoint?.name ?? "",
         system_id: editMountPoint?.system_id ?? 0,
         place_id: editMountPoint?.place_id ?? 0,
+        temperature_sensor_id: editMountPoint?.temperature_sensor_id ?? null,
+        pressure_sensor_id: editMountPoint?.pressure_sensor_id ?? null,
+        humidity_sensor_id: editMountPoint?.humidity_sensor_id ?? null,
       });
+      setError("");
     }
   }, [open, editMountPoint]);
 
   const mutation = useMutation({
     mutationFn: async () => {
+      const payload = {
+        ...form,
+        temperature_sensor_id: form.temperature_sensor_id || null,
+        pressure_sensor_id: form.pressure_sensor_id || null,
+        humidity_sensor_id: form.humidity_sensor_id || null,
+      };
       if (editMountPoint) {
-        await api.put(`/catalog/mount-points/${editMountPoint.id}`, form);
+        await api.put(`/catalog/mount-points/${editMountPoint.id}`, payload);
       } else {
-        await api.post("/catalog/mount-points", form);
+        await api.post("/catalog/mount-points", payload);
       }
     },
     onSuccess: () => {
       onSaved();
       onClose();
     },
+    onError: (err: any) => {
+      setError(err?.response?.data?.detail ?? t("common.error"));
+    },
   });
 
   const inputCls =
     "w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:outline-none";
+
+  const sensorSelect = (
+    label: string,
+    value: number | null,
+    onChange: (v: number | null) => void,
+  ) => (
+    <div>
+      <label className="block text-sm text-gray-600 mb-1">{label}</label>
+      <select
+        value={String(value ?? "")}
+        onChange={(e) => onChange(e.target.value ? Number(e.target.value) : null)}
+        className={inputCls}
+      >
+        <option value="">—</option>
+        {sensorsList?.map((s) => (
+          <option key={s.id} value={String(s.id)}>
+            {s.name} ({s.sensor_type_name})
+          </option>
+        ))}
+      </select>
+    </div>
+  );
 
   return (
     <Modal open={open} onClose={onClose}>
@@ -768,6 +839,174 @@ function MountPointModal({
             ))}
           </select>
         </div>
+        <hr className="border-gray-200" />
+        <p className="text-xs text-gray-500 font-medium">{t("settings.sensorBindings")}</p>
+        {sensorSelect(t("settings.temperatureSensor"), form.temperature_sensor_id, (v) =>
+          setForm({ ...form, temperature_sensor_id: v })
+        )}
+        {sensorSelect(t("settings.pressureSensor"), form.pressure_sensor_id, (v) =>
+          setForm({ ...form, pressure_sensor_id: v })
+        )}
+        {sensorSelect(t("settings.humiditySensor"), form.humidity_sensor_id, (v) =>
+          setForm({ ...form, humidity_sensor_id: v })
+        )}
+      </div>
+      {error && (
+        <p className="mt-2 text-xs text-red-600">{error}</p>
+      )}
+      {mutation.isError && !error && (
+        <p className="mt-2 text-xs text-red-600">{t("common.error")}</p>
+      )}
+      <div className="mt-5 flex justify-end gap-3">
+        <button
+          onClick={() => mutation.mutate()}
+          disabled={mutation.isPending || !form.name.trim() || !form.system_id || !form.place_id}
+          className="px-4 py-2 bg-primary-600 text-white text-sm rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors"
+        >
+          {t("common.save")}
+        </button>
+        <button
+          onClick={onClose}
+          className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800"
+        >
+          {t("common.cancel")}
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
+// ---- HeatingCircuitModal (add/edit) ----
+
+function HeatingCircuitModal({
+  open,
+  onClose,
+  onSaved,
+  editCircuit,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onSaved: () => void;
+  editCircuit: HeatingCircuitInfo | null;
+}) {
+  const { t } = useTranslation();
+  const [form, setForm] = useState({
+    circuit_name: "",
+    supply_mount_point_id: null as number | null,
+    return_mount_point_id: null as number | null,
+    config_temp_key: "",
+    config_pump_key: "",
+    delta_threshold: 5.0,
+    display_order: 0,
+  });
+
+  const { data: heatingMountPoints } = useQuery<MountPointInfo[]>({
+    queryKey: ["catalog-mount-points-heating"],
+    queryFn: async () => {
+      const { data } = await api.get("/catalog/mount-points");
+      return (data as MountPointInfo[]).filter((mp) => mp.system_id === 1);
+    },
+    enabled: open,
+  });
+
+  useEffect(() => {
+    if (open) {
+      setForm({
+        circuit_name: editCircuit?.circuit_name ?? "",
+        supply_mount_point_id: editCircuit?.supply_mount_point_id ?? null,
+        return_mount_point_id: editCircuit?.return_mount_point_id ?? null,
+        config_temp_key: editCircuit?.config_temp_key ?? "",
+        config_pump_key: editCircuit?.config_pump_key ?? "",
+        delta_threshold: editCircuit?.delta_threshold ?? 5.0,
+        display_order: editCircuit?.display_order ?? 0,
+      });
+    }
+  }, [open, editCircuit]);
+
+  const mutation = useMutation({
+    mutationFn: async () => {
+      const payload = {
+        ...form,
+        supply_mount_point_id: form.supply_mount_point_id || null,
+        return_mount_point_id: form.return_mount_point_id || null,
+        config_temp_key: form.config_temp_key || null,
+        config_pump_key: form.config_pump_key || null,
+      };
+      if (editCircuit) {
+        await api.put(`/catalog/heating-circuits/${editCircuit.id}`, payload);
+      } else {
+        await api.post("/catalog/heating-circuits", payload);
+      }
+    },
+    onSuccess: () => {
+      onSaved();
+      onClose();
+    },
+  });
+
+  const inputCls =
+    "w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:outline-none";
+
+  const mpSelect = (label: string, value: number | null, onChange: (v: number | null) => void) => (
+    <div>
+      <label className="block text-sm text-gray-600 mb-1">{label}</label>
+      <select
+        value={String(value ?? "")}
+        onChange={(e) => onChange(e.target.value ? Number(e.target.value) : null)}
+        className={inputCls}
+      >
+        <option value="">—</option>
+        {heatingMountPoints?.map((mp) => (
+          <option key={mp.id} value={String(mp.id)}>
+            {mp.place_name} — {mp.name}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+
+  return (
+    <Modal open={open} onClose={onClose}>
+      <h3 className="mb-4 text-lg font-semibold text-gray-800">
+        {editCircuit ? t("settings.editCircuitTitle") : t("settings.addCircuitTitle")}
+      </h3>
+      <div className="space-y-3">
+        <div>
+          <label className="block text-sm text-gray-600 mb-1">{t("settings.circuitName")}</label>
+          <input
+            type="text"
+            value={form.circuit_name}
+            onChange={(e) => setForm({ ...form, circuit_name: e.target.value })}
+            className={inputCls}
+          />
+        </div>
+        {mpSelect(t("settings.supplyMountPoint"), form.supply_mount_point_id, (v) =>
+          setForm({ ...form, supply_mount_point_id: v })
+        )}
+        {mpSelect(t("settings.returnMountPoint"), form.return_mount_point_id, (v) =>
+          setForm({ ...form, return_mount_point_id: v })
+        )}
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-sm text-gray-600 mb-1">{t("settings.displayOrder")}</label>
+            <input
+              type="number"
+              value={form.display_order}
+              onChange={(e) => setForm({ ...form, display_order: Number(e.target.value) })}
+              className={inputCls}
+            />
+          </div>
+          <div>
+            <label className="block text-sm text-gray-600 mb-1">{t("settings.deltaThreshold")}</label>
+            <input
+              type="number"
+              step={0.5}
+              value={form.delta_threshold}
+              onChange={(e) => setForm({ ...form, delta_threshold: Number(e.target.value) })}
+              className={inputCls}
+            />
+          </div>
+        </div>
       </div>
       {mutation.isError && (
         <p className="mt-2 text-xs text-red-600">{t("common.error")}</p>
@@ -775,7 +1014,7 @@ function MountPointModal({
       <div className="mt-5 flex justify-end gap-3">
         <button
           onClick={() => mutation.mutate()}
-          disabled={mutation.isPending || !form.name.trim() || !form.system_id || !form.place_id}
+          disabled={mutation.isPending || !form.circuit_name.trim()}
           className="px-4 py-2 bg-primary-600 text-white text-sm rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors"
         >
           {t("common.save")}
@@ -1035,6 +1274,73 @@ export default function SettingsPage() {
 
   const [mpModalOpen, setMpModalOpen] = useState(false);
   const [editMountPoint, setEditMountPoint] = useState<MountPointInfo | null>(null);
+
+  // ---- Sensor Types ----
+
+  const { data: sensorTypes } = useQuery<SensorTypeInfo[]>({
+    queryKey: ["catalog-sensor-types"],
+    queryFn: async () => {
+      const { data } = await api.get("/catalog/sensor-types");
+      return data;
+    },
+    enabled: isAdmin,
+  });
+
+  const [stName, setStName] = useState("");
+  const [editSt, setEditSt] = useState<SensorTypeInfo | null>(null);
+
+  const createStMutation = useMutation({
+    mutationFn: async (name: string) => {
+      await api.post("/catalog/sensor-types", { name });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["catalog-sensor-types"] });
+      setStName("");
+    },
+  });
+
+  const updateStMutation = useMutation({
+    mutationFn: async ({ id, name }: { id: number; name: string }) => {
+      await api.put(`/catalog/sensor-types/${id}`, { name });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["catalog-sensor-types"] });
+      setEditSt(null);
+      setStName("");
+    },
+  });
+
+  const deleteStMutation = useMutation({
+    mutationFn: async (id: number) => {
+      await api.delete(`/catalog/sensor-types/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["catalog-sensor-types"] });
+    },
+  });
+
+  // ---- Heating Circuits ----
+
+  const { data: heatingCircuits } = useQuery<HeatingCircuitInfo[]>({
+    queryKey: ["catalog-heating-circuits"],
+    queryFn: async () => {
+      const { data } = await api.get("/catalog/heating-circuits");
+      return data;
+    },
+    enabled: isAdmin,
+  });
+
+  const deleteCircuitMutation = useMutation({
+    mutationFn: async (id: number) => {
+      await api.delete(`/catalog/heating-circuits/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["catalog-heating-circuits"] });
+    },
+  });
+
+  const [circuitModalOpen, setCircuitModalOpen] = useState(false);
+  const [editCircuit, setEditCircuit] = useState<HeatingCircuitInfo | null>(null);
 
   // ---- Input helper ----
 
@@ -1363,6 +1669,155 @@ export default function SettingsPage() {
         </div>
       )}
 
+      {/* ---- Sensor Types + Heating Circuits side by side ---- */}
+      {isAdmin && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+          <CollapsibleSection title={t("settings.sensorTypes")} icon={Cpu}>
+            <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+              {sensorTypes && sensorTypes.length > 0 ? (
+                <div className="overflow-x-auto mb-4">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-50 text-gray-600">
+                      <tr>
+                        <th className="px-3 py-2 text-left">ID</th>
+                        <th className="px-3 py-2 text-left">{t("settings.sensorTypeName")}</th>
+                        <th className="px-3 py-2 text-center">{t("settings.actions")}</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {sensorTypes.map((st) => (
+                        <tr key={st.id} className="hover:bg-gray-50">
+                          <td className="px-3 py-2 text-gray-500">{st.id}</td>
+                          <td className="px-3 py-2 font-medium">{st.name}</td>
+                          <td className="px-3 py-2 text-center space-x-2">
+                            <button
+                              onClick={() => { setEditSt(st); setStName(st.name); }}
+                              className="text-primary-600 hover:text-primary-800 text-xs"
+                            >
+                              {t("settings.editRoom")}
+                            </button>
+                            <button
+                              onClick={() => {
+                                if (window.confirm(t("settings.deleteConfirm"))) {
+                                  deleteStMutation.mutate(st.id);
+                                }
+                              }}
+                              className="text-red-600 hover:text-red-800 text-xs"
+                            >
+                              {t("common.delete")}
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <p className="mb-4 text-sm text-gray-400">{t("settings.noSensorTypes")}</p>
+              )}
+
+              {deleteStMutation.isError && (
+                <p className="mb-2 text-xs text-red-600">{t("settings.conflictError")}</p>
+              )}
+
+              <div className="flex items-center gap-3">
+                <input
+                  type="text"
+                  value={stName}
+                  onChange={(e) => setStName(e.target.value)}
+                  placeholder={t("settings.sensorTypeName")}
+                  className="flex-1 px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:outline-none"
+                />
+                <button
+                  onClick={() => {
+                    if (!stName.trim()) return;
+                    if (editSt) {
+                      updateStMutation.mutate({ id: editSt.id, name: stName.trim() });
+                    } else {
+                      createStMutation.mutate(stName.trim());
+                    }
+                  }}
+                  disabled={!stName.trim() || createStMutation.isPending || updateStMutation.isPending}
+                  className="px-4 py-2 bg-primary-600 text-white text-sm rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors whitespace-nowrap"
+                >
+                  {editSt ? t("common.save") : t("settings.addSensorType")}
+                </button>
+                {editSt && (
+                  <button
+                    onClick={() => { setEditSt(null); setStName(""); }}
+                    className="px-3 py-2 text-sm text-gray-600 hover:text-gray-800"
+                  >
+                    {t("common.cancel")}
+                  </button>
+                )}
+              </div>
+            </div>
+          </CollapsibleSection>
+
+          <CollapsibleSection title={t("settings.heatingCircuits")} icon={Flame}>
+            <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+              {heatingCircuits && heatingCircuits.length > 0 ? (
+                <div className="overflow-x-auto mb-4">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-50 text-gray-600">
+                      <tr>
+                        <th className="px-3 py-2 text-left">{t("settings.circuitName")}</th>
+                        <th className="px-3 py-2 text-left">{t("settings.supplyMountPoint")}</th>
+                        <th className="px-3 py-2 text-left">{t("settings.returnMountPoint")}</th>
+                        <th className="px-3 py-2 text-center">{t("settings.actions")}</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {heatingCircuits.map((c) => (
+                        <tr key={c.id} className="hover:bg-gray-50">
+                          <td className="px-3 py-2 font-medium">{c.circuit_name}</td>
+                          <td className="px-3 py-2 text-gray-600">{c.supply_mount_point_name ?? "—"}</td>
+                          <td className="px-3 py-2 text-gray-600">{c.return_mount_point_name ?? "—"}</td>
+                          <td className="px-3 py-2 text-center space-x-2">
+                            <button
+                              onClick={() => { setEditCircuit(c); setCircuitModalOpen(true); }}
+                              className="text-primary-600 hover:text-primary-800 text-xs"
+                            >
+                              {t("settings.editRoom")}
+                            </button>
+                            <button
+                              onClick={() => {
+                                if (window.confirm(t("settings.deleteConfirm"))) {
+                                  deleteCircuitMutation.mutate(c.id);
+                                }
+                              }}
+                              className="text-red-600 hover:text-red-800 text-xs"
+                            >
+                              {t("common.delete")}
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <p className="mb-4 text-sm text-gray-400">{t("settings.noCircuits")}</p>
+              )}
+
+              <button
+                onClick={() => { setEditCircuit(null); setCircuitModalOpen(true); }}
+                className="px-4 py-2 bg-primary-600 text-white text-sm rounded-lg hover:bg-primary-700 transition-colors"
+              >
+                {t("settings.addCircuit")}
+              </button>
+            </div>
+
+            <HeatingCircuitModal
+              open={circuitModalOpen}
+              onClose={() => setCircuitModalOpen(false)}
+              onSaved={() => queryClient.invalidateQueries({ queryKey: ["catalog-heating-circuits"] })}
+              editCircuit={editCircuit}
+            />
+          </CollapsibleSection>
+        </div>
+      )}
+
       {/* ---- Mount Points ---- */}
       {isAdmin && (
         <CollapsibleSection title={t("settings.mountPoints")} icon={Waypoints}>
@@ -1375,6 +1830,9 @@ export default function SettingsPage() {
                       <th className="px-3 py-2 text-left">{t("settings.mountPointName")}</th>
                       <th className="px-3 py-2 text-left">{t("settings.mountPointSystem")}</th>
                       <th className="px-3 py-2 text-left">{t("settings.mountPointPlace")}</th>
+                      <th className="px-3 py-2 text-left">{t("settings.temperatureSensor")}</th>
+                      <th className="px-3 py-2 text-left">{t("settings.pressureSensor")}</th>
+                      <th className="px-3 py-2 text-left">{t("settings.humiditySensor")}</th>
                       <th className="px-3 py-2 text-center">{t("settings.actions")}</th>
                     </tr>
                   </thead>
@@ -1384,6 +1842,9 @@ export default function SettingsPage() {
                         <td className="px-3 py-2 font-medium">{mp.name}</td>
                         <td className="px-3 py-2 text-gray-600">{mp.system_name}</td>
                         <td className="px-3 py-2 text-gray-600">{mp.place_name}</td>
+                        <td className="px-3 py-2 text-gray-600">{mp.temperature_sensor_name ?? "—"}</td>
+                        <td className="px-3 py-2 text-gray-600">{mp.pressure_sensor_name ?? "—"}</td>
+                        <td className="px-3 py-2 text-gray-600">{mp.humidity_sensor_name ?? "—"}</td>
                         <td className="px-3 py-2 text-center space-x-2">
                           <button
                             onClick={() => { setEditMountPoint(mp); setMpModalOpen(true); }}

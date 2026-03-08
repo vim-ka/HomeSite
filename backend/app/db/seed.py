@@ -208,8 +208,6 @@ async def seed(session: AsyncSession) -> None:
         {
             "id": 1,
             "circuit_name": "Котёл",
-            "supply_sensor_id": 1,       # tsboiler_s
-            "return_sensor_id": 2,       # tsboiler_b
             "delta_threshold": 5.0,
             "config_temp_key": "heating_boiler_temp",
             "config_pump_key": "heating_boiler_power",
@@ -218,8 +216,6 @@ async def seed(session: AsyncSession) -> None:
         {
             "id": 2,
             "circuit_name": "Радиаторы",
-            "supply_sensor_id": 3,       # tsrad_s
-            "return_sensor_id": 4,       # tsrad_b
             "delta_threshold": 5.0,
             "config_temp_key": "heating_radiator_temp",
             "config_pump_key": "heating_radiator_pump",
@@ -228,8 +224,6 @@ async def seed(session: AsyncSession) -> None:
         {
             "id": 3,
             "circuit_name": "Тёплый пол",
-            "supply_sensor_id": 5,       # tsfloor_s
-            "return_sensor_id": 6,       # tsfloor_b
             "delta_threshold": 3.0,
             "config_temp_key": "heating_floorheating_temp",
             "config_pump_key": "heating_floorheating_pump",
@@ -238,8 +232,6 @@ async def seed(session: AsyncSession) -> None:
         {
             "id": 4,
             "circuit_name": "БКН",
-            "supply_sensor_id": 7,       # tsihb_s
-            "return_sensor_id": 8,       # tsihb_b
             "delta_threshold": 5.0,
             "config_temp_key": "watersupply_ihb_temp",
             "config_pump_key": "watersupply_ihb_pump",
