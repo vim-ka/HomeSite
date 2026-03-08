@@ -1,23 +1,18 @@
 import { Tabs } from "expo-router";
 import { useTranslation } from "react-i18next";
-import { Platform, Text } from "react-native";
+import { Platform } from "react-native";
+import Ionicons from "@expo/vector-icons/Ionicons";
 import { colors } from "../../src/theme/colors";
 
-const TAB_ICONS: Record<string, string> = {
-  dashboard: "⌂",
-  heating: "♨",
-  water: "💧",
-  stats: "📊",
-  more: "⋯",
-};
+type IconName = React.ComponentProps<typeof Ionicons>["name"];
 
-function TabIcon({ name, focused }: { name: string; focused: boolean }) {
-  return (
-    <Text style={{ fontSize: 22, color: focused ? colors.primary[600] : colors.gray[400] }}>
-      {TAB_ICONS[name] ?? "•"}
-    </Text>
-  );
-}
+const TAB_ICONS: Record<string, { focused: IconName; default: IconName }> = {
+  dashboard: { focused: "home", default: "home-outline" },
+  heating: { focused: "flame", default: "flame-outline" },
+  water: { focused: "water", default: "water-outline" },
+  stats: { focused: "bar-chart", default: "bar-chart-outline" },
+  more: { focused: "ellipsis-horizontal", default: "ellipsis-horizontal-outline" },
+};
 
 export default function TabLayout() {
   const { t } = useTranslation();
@@ -49,7 +44,9 @@ export default function TabLayout() {
         name="dashboard"
         options={{
           title: t("tabs.dashboard"),
-          tabBarIcon: ({ focused }) => <TabIcon name="dashboard" focused={focused} />,
+          tabBarIcon: ({ focused, color, size }) => (
+            <Ionicons name={TAB_ICONS.dashboard[focused ? "focused" : "default"]} size={size} color={color} />
+          ),
           tabBarLabel: t("tabs.dashboard"),
           headerTitle: t("dashboard.title"),
         }}
@@ -58,7 +55,9 @@ export default function TabLayout() {
         name="heating"
         options={{
           title: t("tabs.heating"),
-          tabBarIcon: ({ focused }) => <TabIcon name="heating" focused={focused} />,
+          tabBarIcon: ({ focused, color, size }) => (
+            <Ionicons name={TAB_ICONS.heating[focused ? "focused" : "default"]} size={size} color={color} />
+          ),
           tabBarLabel: t("tabs.heating"),
           headerTitle: t("heating.title"),
         }}
@@ -67,7 +66,9 @@ export default function TabLayout() {
         name="water"
         options={{
           title: t("tabs.water"),
-          tabBarIcon: ({ focused }) => <TabIcon name="water" focused={focused} />,
+          tabBarIcon: ({ focused, color, size }) => (
+            <Ionicons name={TAB_ICONS.water[focused ? "focused" : "default"]} size={size} color={color} />
+          ),
           tabBarLabel: t("tabs.water"),
           headerTitle: t("waterSupply.title"),
         }}
@@ -76,7 +77,9 @@ export default function TabLayout() {
         name="stats"
         options={{
           title: t("tabs.stats"),
-          tabBarIcon: ({ focused }) => <TabIcon name="stats" focused={focused} />,
+          tabBarIcon: ({ focused, color, size }) => (
+            <Ionicons name={TAB_ICONS.stats[focused ? "focused" : "default"]} size={size} color={color} />
+          ),
           tabBarLabel: t("tabs.stats"),
           headerTitle: t("statistics.title"),
         }}
@@ -85,7 +88,9 @@ export default function TabLayout() {
         name="more"
         options={{
           title: t("tabs.settings"),
-          tabBarIcon: ({ focused }) => <TabIcon name="more" focused={focused} />,
+          tabBarIcon: ({ focused, color, size }) => (
+            <Ionicons name={TAB_ICONS.more[focused ? "focused" : "default"]} size={size} color={color} />
+          ),
           tabBarLabel: t("tabs.settings"),
           headerTitle: t("settings.title"),
         }}
