@@ -195,6 +195,8 @@ async def seed(session: AsyncSession) -> None:
         {"id": 44, "key": "chart_history_days", "value": "100"},
         {"id": 45, "key": "frontend_poll_seconds", "value": "30"},
         {"id": 46, "key": "mqtt_topic_prefix", "value": "home/devices/"},
+        {"id": 47, "key": "ack_timeout_seconds", "value": "30"},
+        {"id": 48, "key": "heartbeat_timeout_seconds", "value": "60"},
     ]
 
     # --- Schedules ---

@@ -52,12 +52,12 @@ async def main() -> None:
     engine = create_async_engine(settings.database_url, connect_args=connect_args)
     session_factory = async_sessionmaker(engine, expire_on_commit=False)
 
-    # MQTT handler (subscriber)
-    handler = MQTTHandler(settings, session_factory)
-
     # MQTT publisher + dispatcher
     publisher = CommandPublisher(settings)
     dispatcher = AsyncCommandDispatcher(publisher, debounce_seconds=settings.debounce_seconds)
+
+    # MQTT handler (subscriber) — receives sensor data, acks, heartbeats
+    handler = MQTTHandler(settings, session_factory, dispatcher=dispatcher)
 
     # Internal API
     api_app = create_gateway_api(
@@ -84,11 +84,61 @@ async def main() -> None:
         api_port=settings.gateway_api_port,
     )
 
+    async def watchdog() -> None:
+        """Check for unacknowledged commands and stale heartbeats."""
+        from datetime import UTC, datetime, timedelta
+        from device_gateway.config_db import load_mqtt_from_db
+
+        await asyncio.sleep(10)  # Initial delay
+        while True:
+            try:
+                # Load timeouts from config_kv
+                db_kv = await load_mqtt_from_db(settings.database_url)
+                ack_timeout = int(db_kv.get("ack_timeout_seconds", "30"))
+                hb_timeout = int(db_kv.get("heartbeat_timeout_seconds", "60"))
+
+                # Update dispatcher ack timeout
+                from device_gateway.dispatcher import ACK_TIMEOUT_SECONDS
+                dispatcher._ack_timeout = ack_timeout
+
+                events = []
+
+                # Check ack timeouts
+                timed_out = await dispatcher.check_ack_timeouts()
+                for device_id, key in timed_out:
+                    msg = f"Command '{key}' to '{device_id}' not acknowledged"
+                    logger.warning("ack_timeout", device=device_id, key=key)
+                    events.append({"level": "WARNING", "source": "gateway_watchdog", "message": msg})
+
+                # Check heartbeat timeouts
+                now = datetime.now(UTC)
+                heartbeat_timeout = timedelta(seconds=hb_timeout)
+                for device_name, last_seen in list(handler.heartbeats.items()):
+                    if now - last_seen > heartbeat_timeout:
+                        msg = f"Device '{device_name}' heartbeat lost"
+                        logger.warning("heartbeat_lost", device=device_name)
+                        events.append({"level": "ERROR", "source": "gateway_watchdog", "message": msg})
+                        del handler.heartbeats[device_name]
+
+                # Write events to DB
+                if events:
+                    async with session_factory() as session:
+                        from app.models.event import EventLog
+                        for e in events:
+                            session.add(EventLog(**e))
+                        await session.commit()
+
+            except Exception as e:
+                logger.error("watchdog_error", error=str(e))
+
+            await asyncio.sleep(15)
+
     try:
         await publisher.connect()
         await asyncio.gather(
             handler.run(),
             api_server.serve(),
+            watchdog(),
         )
     except KeyboardInterrupt:
         logger.info("gateway_shutdown_requested")

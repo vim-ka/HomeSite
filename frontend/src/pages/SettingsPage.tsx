@@ -1528,6 +1528,8 @@ export default function SettingsPage() {
     "sensor_stale_minutes",
     "health_poll_seconds",
     "gateway_timeout_seconds",
+    "ack_timeout_seconds",
+    "heartbeat_timeout_seconds",
     "chart_history_days",
     "frontend_poll_seconds",
     "mqtt_topic_prefix",
@@ -1541,6 +1543,8 @@ export default function SettingsPage() {
     sensor_stale_minutes: "5",
     health_poll_seconds: "30",
     gateway_timeout_seconds: "5",
+    ack_timeout_seconds: "30",
+    heartbeat_timeout_seconds: "60",
     chart_history_days: "100",
     frontend_poll_seconds: "30",
     mqtt_topic_prefix: "home/devices/",
@@ -2551,6 +2555,24 @@ export default function SettingsPage() {
                     type="number"
                     value={systemData.gateway_timeout_seconds}
                     onChange={(e) => setSystemForm({ ...systemData, gateway_timeout_seconds: e.target.value })}
+                    className={inputCls}
+                  />
+                </div>
+                <div>
+                  <TipLabel text={t("settings.ackTimeout")} tip={t("settings.tips.ackTimeout")} className={labelCls} />
+                  <input
+                    type="number"
+                    value={systemData.ack_timeout_seconds}
+                    onChange={(e) => setSystemForm({ ...systemData, ack_timeout_seconds: e.target.value })}
+                    className={inputCls}
+                  />
+                </div>
+                <div>
+                  <TipLabel text={t("settings.heartbeatTimeout")} tip={t("settings.tips.heartbeatTimeout")} className={labelCls} />
+                  <input
+                    type="number"
+                    value={systemData.heartbeat_timeout_seconds}
+                    onChange={(e) => setSystemForm({ ...systemData, heartbeat_timeout_seconds: e.target.value })}
                     className={inputCls}
                   />
                 </div>

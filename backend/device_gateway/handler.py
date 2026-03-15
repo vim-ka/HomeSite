@@ -28,12 +28,15 @@ class MQTTHandler:
     - Notify backend of updates via HTTP callback
     """
 
-    def __init__(self, settings: GatewaySettings, session_factory: async_sessionmaker[AsyncSession]):
+    def __init__(self, settings: GatewaySettings, session_factory: async_sessionmaker[AsyncSession], dispatcher=None):
         self.settings = settings
         self.session_factory = session_factory
         self._connected = False
         self._reconnect_requested = False
         self._active_client: aiomqtt.Client | None = None
+        self._dispatcher = dispatcher
+        # Heartbeat tracking: device_name → last heartbeat time
+        self.heartbeats: dict[str, datetime] = {}
 
     @property
     def is_connected(self) -> bool:
@@ -109,14 +112,33 @@ class MQTTHandler:
         if not topic_str.startswith(prefix):
             return
 
-        # Topic format: {prefix}{device_name}
-        # Ignore command topics ({prefix}{id}/command/{param}) — those are our own outgoing messages
+        # Topic format: {prefix}{device_name}[/subtopic]
         remainder = topic_str[len(prefix):]
         parts = remainder.split("/")
-        if len(parts) > 1 and parts[1] in ("command", "cmd"):
+        device_name = parts[0]
+        subtopic = parts[1] if len(parts) > 1 else None
+
+        # Ignore our own outgoing commands
+        if subtopic in ("command", "cmd"):
             return
 
-        device_name = parts[0]
+        # Handle ack: home/devices/{name}/ack → confirm commands received
+        if subtopic == "ack":
+            payload_raw = message.payload
+            if isinstance(payload_raw, (bytes, bytearray)):
+                payload_raw = payload_raw.decode()
+            try:
+                ack_data = json.loads(payload_raw)
+                if isinstance(ack_data, dict) and self._dispatcher:
+                    await self._dispatcher.handle_ack(device_name, ack_data)
+            except Exception:
+                pass
+            return
+
+        # Handle heartbeat: home/devices/{name}/heartbeat → track device alive
+        if subtopic == "heartbeat":
+            self.heartbeats[device_name] = datetime.now(UTC)
+            return
 
         payload = message.payload
         if isinstance(payload, (bytes, bytearray)):

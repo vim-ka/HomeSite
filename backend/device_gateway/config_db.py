@@ -4,22 +4,32 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 
-async def load_mqtt_from_db(database_url: str) -> dict[str, str]:
-    """Read mqtt_* keys from config_kv. Returns dict or empty if not found."""
+async def load_config_from_db(database_url: str, prefix: str | None = None) -> dict[str, str]:
+    """Read config_kv keys from DB. If prefix given, filter by LIKE '{prefix}%'."""
     connect_args = {"check_same_thread": False} if "sqlite" in database_url else {}
     engine = create_async_engine(database_url, connect_args=connect_args)
     session_factory = async_sessionmaker(engine, expire_on_commit=False)
 
     try:
         async with session_factory() as session:
-            result = await session.execute(
-                text("SELECT key, value FROM config_kv WHERE key LIKE 'mqtt_%'")
-            )
+            if prefix:
+                result = await session.execute(
+                    text("SELECT key, value FROM config_kv WHERE key LIKE :pattern"),
+                    {"pattern": f"{prefix}%"},
+                )
+            else:
+                result = await session.execute(text("SELECT key, value FROM config_kv"))
             return {row[0]: row[1] for row in result}
     except Exception:
         return {}
     finally:
         await engine.dispose()
+
+
+async def load_mqtt_from_db(database_url: str) -> dict[str, str]:
+    """Read mqtt_* and gateway config keys from config_kv."""
+    all_kv = await load_config_from_db(database_url)
+    return {k: v for k, v in all_kv.items() if k.startswith("mqtt_") or k in ("ack_timeout_seconds", "heartbeat_timeout_seconds")}
 
 
 async def load_device_prefixes(database_url: str) -> list[tuple[str, str]]:
