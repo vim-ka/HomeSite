@@ -256,17 +256,22 @@ function PZAIndicators({
 
   if (outdoorTemp == null) return null;
 
+  const radWBM = settings.heating_radiator_wbm === "1";
+  const floorWBM = settings.heating_floorheating_wbm === "1";
   const radCurve = Number(settings.heating_radiator_curve ?? "3") - 1;
   const floorCurve = Number(settings.heating_floorheating_curve ?? "3") - 1;
 
-  const radTemp = interpolatePZA(
+  const radPZA = interpolatePZA(
     RADIATOR_CURVES[Math.min(Math.max(radCurve, 0), 4)]!,
     outdoorTemp,
   );
-  const floorTemp = interpolatePZA(
+  const floorPZA = interpolatePZA(
     FLOOR_CURVES[Math.min(Math.max(floorCurve, 0), 4)]!,
     outdoorTemp,
   );
+
+  const radManual = Number(settings.heating_radiator_temp ?? "45");
+  const floorManual = Number(settings.heating_floorheating_temp ?? "30");
 
   return (
     <section className="bg-white rounded-lg shadow p-4">
@@ -281,12 +286,18 @@ function PZAIndicators({
         />
         <Indicator
           label={t("heating.radiators")}
-          value={`${fmt(radTemp)}°C`}
+          value={radWBM ? `${fmt(radPZA)}°C` : `${fmt(radManual)}°C`}
+          badge={radWBM ? `ПЗА кр.${radCurve + 1}` : "Ручн."}
+          badgeColor={radWBM ? "green" : "gray"}
+          hint={radWBM ? undefined : `по ПЗА ${fmt(radPZA)}°C`}
           icon={<Heater className="h-4 w-4 text-orange-500" />}
         />
         <Indicator
           label={t("heating.floorHeating")}
-          value={`${fmt(floorTemp)}°C`}
+          value={floorWBM ? `${fmt(floorPZA)}°C` : `${fmt(floorManual)}°C`}
+          badge={floorWBM ? `ПЗА кр.${floorCurve + 1}` : "Ручн."}
+          badgeColor={floorWBM ? "green" : "gray"}
+          hint={floorWBM ? undefined : `по ПЗА ${fmt(floorPZA)}°C`}
           icon={<Waves className="h-4 w-4 text-amber-500" />}
         />
         <Indicator
@@ -303,17 +314,35 @@ function Indicator({
   label,
   value,
   icon,
+  badge,
+  badgeColor,
+  hint,
 }: {
   label: string;
   value: string;
   icon: React.ReactNode;
+  badge?: string;
+  badgeColor?: "green" | "gray";
+  hint?: string;
 }) {
   return (
     <div className="flex items-center gap-2 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
       {icon}
       <div>
-        <div className="text-xs text-gray-500">{label}</div>
+        <div className="text-xs text-gray-500 flex items-center gap-1">
+          {label}
+          {badge && (
+            <span className={`text-[9px] px-1 py-0.5 rounded ${
+              badgeColor === "green"
+                ? "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300"
+                : "bg-gray-100 text-gray-500"
+            }`}>
+              {badge}
+            </span>
+          )}
+        </div>
         <div className="text-sm font-semibold text-gray-800">{value}</div>
+        {hint && <div className="text-[10px] text-gray-400">{hint}</div>}
       </div>
     </div>
   );
