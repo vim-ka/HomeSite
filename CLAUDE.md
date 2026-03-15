@@ -147,3 +147,5 @@ CI/CD planned via GitHub Actions self-hosted runner.
 - [ ] **Action audit**: Expand EventLog with who-changed-what details
 - [ ] **Section tooltips**: Port contextual help/hints from v1 for Heating and Water Supply pages (what each setting does, recommended values, dependencies between controls)
 - [x] **Statistics page rework**: Fixed — chart sections are collapsed + lazy by default, data loads only when section is expanded
+- [ ] **Settings page UX**: Improve layout, navigation, and usability of the Settings page
+- [ ] **About page UX**: Improve layout and content of the About page
