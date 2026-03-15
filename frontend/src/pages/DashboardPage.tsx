@@ -114,14 +114,14 @@ function HeatingCard({ circuit: c }: { circuit: HeatingCircuit }) {
         <div>
           <span className="text-sm text-gray-500">{t("dashboard.tempSet")}</span>
           {c.pza_mode ? (
-            <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-green-100 text-green-700">
+            <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300">
               ПЗА кр.{c.pza_curve}
             </span>
-          ) : c.pza_curve === null ? null : (
+          ) : c.pza_capable ? (
             <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-500">
               Ручн.
             </span>
-          )}
+          ) : null}
         </div>
         <span className="text-2xl font-bold text-orange-500">
           {c.temp_set != null ? `${fmt(c.temp_set)}°` : "—"}

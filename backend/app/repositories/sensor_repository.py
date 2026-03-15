@@ -164,7 +164,8 @@ class SensorRepository:
             # Check PZA mode and override temp_set if enabled
             pza_mode = False
             pza_curve = None
-            if c.config_prefix and c.config_prefix in pza_config and outdoor_temp is not None:
+            pza_capable = c.config_prefix is not None and c.config_prefix in pza_config
+            if pza_capable and outdoor_temp is not None:
                 wbm_key, curve_key, curve_type = pza_config[c.config_prefix]
                 wbm = await self._get_config_value(wbm_key)
                 if wbm == "1":
@@ -184,6 +185,7 @@ class SensorRepository:
                 "Pump": pump,
                 "pza_mode": pza_mode,
                 "pza_curve": pza_curve,
+                "pza_capable": pza_capable,
             })
 
         return results

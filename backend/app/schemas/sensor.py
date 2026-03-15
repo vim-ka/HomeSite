@@ -41,6 +41,7 @@ class HeatingCircuitStatus(BaseModel):
     pump: str | None = None
     pza_mode: bool = False
     pza_curve: int | None = None
+    pza_capable: bool = False
 
 
 class WaterSupplyStatus(BaseModel):

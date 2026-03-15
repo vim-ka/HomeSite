@@ -17,6 +17,7 @@ export interface HeatingCircuit {
   pump: string | null;
   pza_mode: boolean;
   pza_curve: number | null;
+  pza_capable: boolean;
 }
 
 export interface WaterSupplyItem {

@@ -36,6 +36,7 @@ class SensorService:
                 pump=h.get("Pump"),
                 pza_mode=h.get("pza_mode", False),
                 pza_curve=h.get("pza_curve"),
+                pza_capable=h.get("pza_capable", False),
             )
             for h in heating_raw
         ]
