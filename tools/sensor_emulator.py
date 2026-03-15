@@ -24,7 +24,7 @@ from pathlib import Path
 import paho.mqtt.client as mqtt
 
 MQTT_TOPIC_PREFIX = "home/devices/"
-STATE_FILE = Path(__file__).parent / ".esp32_emulator_state.json"
+STATE_FILE = Path(__file__).parent / ".sensor_emulator_state.json"
 
 # Sensor type presets
 SENSOR_PRESETS = {
@@ -82,13 +82,17 @@ class VirtualSensor:
 
 
 class ESP32Emulator:
-    def __init__(self, host: str, port: int):
+    def __init__(self, host: str, port: int, node_name: str = "boiler_unit"):
         self.host = host
         self.port = port
+        self.node_name = node_name
         self.sensors: dict[str, VirtualSensor] = {}
         self.client = mqtt.Client(client_id=f"esp32-emulator-{random.randint(1000,9999)}")
+        self.client.on_message = self._on_message
         self.running = True
         self._lock = threading.Lock()
+        self._settings: dict[str, str] = {}
+        self._cmd_log: list[str] = []
 
     def _save_state(self):
         """Persist sensor list to disk."""
@@ -122,10 +126,47 @@ class ESP32Emulator:
         try:
             self.client.connect(self.host, self.port)
             self.client.loop_start()
-            print(f"\n  ✓ Подключено к MQTT брокеру {self.host}:{self.port}\n")
+            print(f"\n  ✓ Подключено к MQTT брокеру {self.host}:{self.port}")
+
+            # Subscribe to commands
+            cmd_topic = f"{MQTT_TOPIC_PREFIX}{self.node_name}/cmd"
+            self.client.subscribe(cmd_topic, qos=1)
+            print(f"  ✓ Подписка на команды: {cmd_topic}\n")
         except Exception as e:
             print(f"\n  ✗ Ошибка подключения: {e}")
             sys.exit(1)
+
+    def _on_message(self, client, userdata, msg):
+        """Handle incoming commands from gateway."""
+        try:
+            payload = msg.payload.decode()
+            data = json.loads(payload)
+            ts = datetime.now().strftime("%H:%M:%S")
+
+            print(f"\n  {ts}  ◄── КОМАНДА: {msg.topic}")
+            if isinstance(data, dict):
+                ack = {}
+                for key, value in data.items():
+                    old = self._settings.get(key, "—")
+                    self._settings[key] = str(value)
+                    print(f"           {key} = {value}  (было: {old})")
+                    ack[key] = "ok"
+                    self._cmd_log.append(f"{ts} {key}={value}")
+
+                # Send ack
+                ack_topic = f"{MQTT_TOPIC_PREFIX}{self.node_name}/ack"
+                self.client.publish(ack_topic, json.dumps(ack), qos=1)
+                print(f"           ✓ ACK отправлен → {ack_topic}")
+            print()
+        except Exception as e:
+            print(f"\n  ✗ Ошибка обработки команды: {e}\n")
+
+    def _heartbeat_loop(self):
+        """Background thread: send heartbeat every 30s."""
+        while self.running:
+            topic = f"{MQTT_TOPIC_PREFIX}{self.node_name}/heartbeat"
+            self.client.publish(topic, json.dumps({"node": self.node_name}), qos=0)
+            time.sleep(30)
 
     def _publish_loop(self):
         """Background thread: publish sensor data at intervals."""
@@ -198,9 +239,9 @@ class ESP32Emulator:
         self._load_state()
         self.connect()
 
-        # Start publish thread
-        pub_thread = threading.Thread(target=self._publish_loop, daemon=True)
-        pub_thread.start()
+        # Start background threads
+        threading.Thread(target=self._publish_loop, daemon=True).start()
+        threading.Thread(target=self._heartbeat_loop, daemon=True).start()
 
         self._print_help()
 
@@ -219,14 +260,16 @@ class ESP32Emulator:
 
     def _print_help(self):
         print("  ╔══════════════════════════════════════════════════════════╗")
-        print("  ║          ESP32 Sensor Emulator — HomeSite v2           ║")
+        print(f"  ║   ESP32 Sensor Emulator — node: {self.node_name:<21} ║")
         print("  ╠══════════════════════════════════════════════════════════╣")
         print("  ║  add <имя> <тип>     — добавить датчик                 ║")
-        print("  ║     типы: temp, climate, full                          ║")
+        print("  ║     типы: temp, climate, full, pressure                ║")
         print("  ║  rm <имя>            — удалить датчик                  ║")
         print("  ║  pause <имя>         — приостановить/возобновить       ║")
         print("  ║  send <имя>          — отправить одно показание        ║")
         print("  ║  list                — список датчиков                 ║")
+        print("  ║  settings            — полученные настройки            ║")
+        print("  ║  log                 — журнал команд                   ║")
         print("  ║  demo                — добавить демо-набор датчиков    ║")
         print("  ║  help                — показать справку                ║")
         print("  ║  quit                — выход                           ║")
@@ -278,6 +321,24 @@ class ESP32Emulator:
         elif action == "demo":
             self._add_demo()
 
+        elif action == "settings":
+            if not self._settings:
+                print("  (нет полученных настроек)")
+            else:
+                print()
+                for k, v in sorted(self._settings.items()):
+                    print(f"  {k:<40} = {v}")
+                print()
+
+        elif action == "log":
+            if not self._cmd_log:
+                print("  (нет команд)")
+            else:
+                print()
+                for entry in self._cmd_log[-20:]:
+                    print(f"  {entry}")
+                print()
+
         elif action in ("help", "?"):
             self._print_help()
 
@@ -310,9 +371,10 @@ def main():
     parser = argparse.ArgumentParser(description="ESP32 Sensor Emulator for HomeSite")
     parser.add_argument("--host", default="127.0.0.1", help="MQTT broker host")
     parser.add_argument("--port", type=int, default=1883, help="MQTT broker port")
+    parser.add_argument("--node", default="boiler_unit", help="Node name for commands/ack/heartbeat")
     args = parser.parse_args()
 
-    emu = ESP32Emulator(args.host, args.port)
+    emu = ESP32Emulator(args.host, args.port, node_name=args.node)
     emu.run()
 
 
