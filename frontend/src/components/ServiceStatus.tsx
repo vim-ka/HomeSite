@@ -1,6 +1,7 @@
 import { useNavigate } from "react-router-dom";
 import { useServiceHealth, type SensorHealth, type DeviceHealth } from "@/hooks/useServiceHealth";
 import { usePendingCommands } from "@/stores/pendingCommands";
+import { useEffect } from "react";
 import { cn } from "@/lib/utils";
 
 const SERVICES = [
@@ -37,17 +38,18 @@ function deviceDotColor(d: DeviceHealth): "green" | "red" | "yellow" {
 
 export default function ServiceStatus() {
   const { health, sensors, devices } = useServiceHealth();
-  const { localPending, syncFromServer } = usePendingCommands();
+  const localPending = usePendingCommands((s) => s.localPending);
   const navigate = useNavigate();
 
-  // Sync: when server catches up, reset local optimistic count
   const serverPending = devices?.pending_commands ?? 0;
-  if (serverPending > 0 && serverPending >= localPending) {
-    syncFromServer(serverPending);
-  } else if (serverPending === 0 && localPending > 0) {
-    // Server confirmed all acked — reset
-    syncFromServer(0);
-  }
+
+  // When server confirms all commands acked, reset local optimistic count
+  useEffect(() => {
+    if (serverPending === 0 && localPending > 0) {
+      usePendingCommands.getState().syncFromServer(0);
+    }
+  }, [serverPending, localPending]);
+
   const effectivePending = Math.max(localPending, serverPending);
   const effectiveDevices: DeviceHealth | null = devices
     ? { ...devices, pending_commands: effectivePending }
