@@ -16,8 +16,8 @@ export function useSettingUpdate(debounceMs = 300) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["dashboard"] });
       toast.success("Сохранено");
-      // Trigger health refresh after debounce + dispatch time
-      setTimeout(() => window.dispatchEvent(new Event("health-refresh")), 7000);
+      // Trigger health refresh — command is in debounce queue immediately
+      setTimeout(() => window.dispatchEvent(new Event("health-refresh")), 500);
     },
     onError: () => {
       queryClient.invalidateQueries({ queryKey: ["settings"] });
