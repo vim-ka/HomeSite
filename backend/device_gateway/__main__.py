@@ -10,7 +10,7 @@ import uvicorn
 
 from device_gateway.api import create_gateway_api
 from device_gateway.config import get_gateway_settings
-from device_gateway.dispatcher import AsyncCommandDispatcher
+from device_gateway.dispatcher import AsyncCommandDispatcher, MAX_RETRIES
 from device_gateway.handler import MQTTHandler
 from device_gateway.publisher import CommandPublisher
 
@@ -103,19 +103,13 @@ async def main() -> None:
 
                 events = []
 
-                # Check ack timeouts — retries and failures
-                retried, failed = await dispatcher.check_ack_timeouts()
-                for device_id, key in retried:
-                    events.append({
-                        "level": "WARNING",
-                        "source": "gateway_watchdog",
-                        "message": f"Command '{key}' to '{device_id}' not acknowledged, retrying",
-                    })
+                # Check ack timeouts — only log on final failure, retries are silent
+                _retried, failed = await dispatcher.check_ack_timeouts()
                 for device_id, key in failed:
                     events.append({
                         "level": "ERROR",
                         "source": "gateway_watchdog",
-                        "message": f"Command '{key}' to '{device_id}' failed after retries — NOT SYNCED",
+                        "message": f"Command '{key}' to '{device_id}' failed after {MAX_RETRIES} retries — NOT SYNCED",
                     })
 
                 # Check heartbeat timeouts
