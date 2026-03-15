@@ -341,7 +341,7 @@ export default function StatisticsPage() {
       )}
 
       {/* Climate charts */}
-      <CollapsibleSection title={t("statistics.climate")} icon={Thermometer}>
+      <CollapsibleSection title={t("statistics.climate")} icon={Thermometer} defaultOpen={false} lazy>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
           <SensorChart
             type="ChartTemperature"
@@ -370,7 +370,7 @@ export default function StatisticsPage() {
       </CollapsibleSection>
 
       {/* Heating charts */}
-      <CollapsibleSection title={t("statistics.heatingCharts")} icon={Flame}>
+      <CollapsibleSection title={t("statistics.heatingCharts")} icon={Flame} defaultOpen={false} lazy>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
           <SensorChart
             type="ChartPressureSystem"

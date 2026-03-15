@@ -9,6 +9,7 @@ export default function CollapsibleSection({
   defaultOpen = true,
   id,
   forceOpen,
+  lazy,
 }: {
   title: string;
   icon: LucideIcon;
@@ -16,6 +17,7 @@ export default function CollapsibleSection({
   defaultOpen?: boolean;
   id?: string;
   forceOpen?: boolean;
+  lazy?: boolean;
 }) {
   const [open, setOpen] = useState(defaultOpen);
   const ref = useRef<HTMLElement>(null);
@@ -48,7 +50,7 @@ export default function CollapsibleSection({
           open ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0",
         )}
       >
-        <div className="overflow-hidden">{children}</div>
+        <div className="overflow-hidden">{(!lazy || open) && children}</div>
       </div>
     </section>
   );
