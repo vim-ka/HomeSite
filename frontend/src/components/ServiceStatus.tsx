@@ -1,7 +1,5 @@
 import { useNavigate } from "react-router-dom";
 import { useServiceHealth, type SensorHealth, type DeviceHealth } from "@/hooks/useServiceHealth";
-import { usePendingCommands } from "@/stores/pendingCommands";
-import { useEffect } from "react";
 import { cn } from "@/lib/utils";
 
 const SERVICES = [
@@ -38,22 +36,7 @@ function deviceDotColor(d: DeviceHealth): "green" | "red" | "yellow" {
 
 export default function ServiceStatus() {
   const { health, sensors, devices } = useServiceHealth();
-  const localPending = usePendingCommands((s) => s.localPending);
   const navigate = useNavigate();
-
-  const serverPending = devices?.pending_commands ?? 0;
-
-  // When server confirms all commands acked, reset local optimistic count
-  useEffect(() => {
-    if (serverPending === 0 && localPending > 0) {
-      usePendingCommands.getState().syncFromServer(0);
-    }
-  }, [serverPending, localPending]);
-
-  const effectivePending = Math.max(localPending, serverPending);
-  const effectiveDevices: DeviceHealth | null = devices
-    ? { ...devices, pending_commands: effectivePending }
-    : null;
 
   if (!health) return null;
 
@@ -83,16 +66,16 @@ export default function ServiceStatus() {
           </span>
         </button>
       )}
-      {effectiveDevices && effectiveDevices.total > 0 && (
+      {devices && devices.total > 0 && (
         <button
           onClick={() => navigate("/settings#actuators")}
           className="flex items-center gap-1 rounded px-1.5 py-0.5 hover:bg-gray-100 transition-colors"
         >
-          <Dot color={deviceDotColor(effectiveDevices)} />
+          <Dot color={deviceDotColor(devices)} />
           <span>
-            {effectiveDevices.online}/{effectiveDevices.total} Devices
-            {effectiveDevices.pending_commands > 0 && (
-              <span className="ml-1 text-amber-500">{effectiveDevices.pending_commands} cmd</span>
+            {devices.online}/{devices.total} Devices
+            {devices.pending_commands > 0 && (
+              <span className="ml-1 text-amber-500">{devices.pending_commands} cmd</span>
             )}
           </span>
         </button>

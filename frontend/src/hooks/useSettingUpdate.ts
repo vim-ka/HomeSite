@@ -2,22 +2,19 @@ import { useRef, useCallback } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "@/api/client";
 import { useToast } from "@/components/Toast";
-import { usePendingCommands } from "@/stores/pendingCommands";
 
 export function useSettingUpdate(debounceMs = 300) {
   const queryClient = useQueryClient();
   const timerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const toast = useToast();
-  const { increment } = usePendingCommands();
 
   const mutation = useMutation({
     mutationFn: async (settings: Record<string, string>) => {
       await api.put("/settings", { settings });
       return settings;
     },
-    onSuccess: (settings) => {
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["dashboard"] });
-      increment(Object.keys(settings).length);
       toast.success("Сохранено");
     },
     onError: () => {
