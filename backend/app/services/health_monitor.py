@@ -208,6 +208,7 @@ class HealthMonitor:
                         resp = await client.get("/health")
                         if resp.status_code == 200:
                             data = resp.json()
+                            pending_commands = data.get("pending_commands", 0)
                             heartbeats = data.get("heartbeats", {})
                             for _device, ts_str in heartbeats.items():
                                 try:

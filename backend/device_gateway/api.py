@@ -87,15 +87,22 @@ def create_gateway_api(
 
     @app.get("/health")
     async def health() -> dict:
-        """Health check — reports MQTT connection status and device heartbeats."""
+        """Health check — reports MQTT status, heartbeats, and pending commands."""
         connected = mqtt_connected_fn()
         heartbeats = {}
         if handler:
             heartbeats = {name: ts.isoformat() for name, ts in handler.heartbeats.items()}
+
+        pending_commands = 0
+        async with dispatcher._ack_lock:
+            for keys in dispatcher._pending_acks.values():
+                pending_commands += len(keys)
+
         return {
             "status": "ok" if connected else "degraded",
             "mqtt_connected": connected,
             "heartbeats": heartbeats,
+            "pending_commands": pending_commands,
         }
 
     @app.post("/reload-mqtt")
