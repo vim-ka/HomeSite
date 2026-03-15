@@ -45,6 +45,7 @@ export default function EventsPage() {
     },
     placeholderData: (prev) => prev,
     refetchInterval: 15_000,
+    refetchOnMount: "always",
   });
 
   const handleExport = async () => {
