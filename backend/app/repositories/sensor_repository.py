@@ -121,7 +121,10 @@ class SensorRepository:
         """Get heating circuit status using mount point bindings (sensors resolved dynamically).
 
         Only circuits with show_on_dashboard=True are included.
+        If PZA (weather-dependent) mode is enabled, temp_set is calculated from curve.
         """
+        from app.services.pza import get_pza_target
+
         circuits = (
             await self.db.execute(
                 select(HeatingCircuit)
@@ -130,21 +133,48 @@ class SensorRepository:
             )
         ).scalars().all()
 
+        # Get outdoor temperature for PZA (system_id=3, place_id=7=Улица)
+        outdoor_temp: float | None = None
+        outdoor_stmt = (
+            select(SensorData.value)
+            .join(Sensor, SensorData.sensor_id == Sensor.id)
+            .join(MountPoint, Sensor.mount_point_id == MountPoint.id)
+            .where(MountPoint.place_id == 7, MountPoint.system_id == 3, SensorData.datatype_id == 1)
+        )
+        outdoor_row = (await self.db.execute(outdoor_stmt)).scalar_one_or_none()
+        if outdoor_row is not None:
+            outdoor_temp = float(outdoor_row)
+
+        # PZA config mapping: prefix → (wbm_key, curve_key, curve_type)
+        pza_config = {
+            "heating_radiator": ("heating_radiator_wbm", "heating_radiator_curve", "radiator"),
+            "heating_floorheating": ("heating_floorheating_wbm", "heating_floorheating_curve", "floor"),
+        }
+
         results = []
         for c in circuits:
-            # Resolve sensors through mount points (explicit sensor bindings)
             temp_sup = await self._get_mount_point_value(c.supply_mount_point_id, 1)
             temp_ret = await self._get_mount_point_value(c.return_mount_point_id, 1)
-            # Pressure sensor is on the supply mount point
             pressure = await self._get_mount_point_value(c.supply_mount_point_id, 2)
 
-            # Get config values
-            temp_set = await self._get_config_value(c.config_temp_key)
+            temp_set_raw = await self._get_config_value(c.config_temp_key)
+            temp_set = float(temp_set_raw) if temp_set_raw else None
             pump = await self._get_config_value(c.config_pump_key)
+
+            # Override temp_set with PZA calculation if WBM enabled
+            if c.config_prefix and c.config_prefix in pza_config and outdoor_temp is not None:
+                wbm_key, curve_key, curve_type = pza_config[c.config_prefix]
+                wbm = await self._get_config_value(wbm_key)
+                if wbm == "1":
+                    curve_str = await self._get_config_value(curve_key)
+                    curve_idx = int(curve_str) if curve_str else 3
+                    pza_target = get_pza_target(curve_type, curve_idx, outdoor_temp)
+                    if pza_target is not None:
+                        temp_set = pza_target
 
             results.append({
                 "circuit": c.circuit_name,
-                "TempSet": float(temp_set) if temp_set else None,
+                "TempSet": temp_set,
                 "TempSup": temp_sup,
                 "TempRet": temp_ret,
                 "Pressure": pressure,
