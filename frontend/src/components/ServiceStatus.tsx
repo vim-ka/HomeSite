@@ -1,5 +1,6 @@
 import { useNavigate } from "react-router-dom";
 import { useServiceHealth, type SensorHealth, type DeviceHealth } from "@/hooks/useServiceHealth";
+import { usePendingCommands } from "@/stores/pendingCommands";
 import { cn } from "@/lib/utils";
 
 const SERVICES = [
@@ -36,7 +37,21 @@ function deviceDotColor(d: DeviceHealth): "green" | "red" | "yellow" {
 
 export default function ServiceStatus() {
   const { health, sensors, devices } = useServiceHealth();
+  const { localPending, syncFromServer } = usePendingCommands();
   const navigate = useNavigate();
+
+  // Sync: when server catches up, reset local optimistic count
+  const serverPending = devices?.pending_commands ?? 0;
+  if (serverPending > 0 && serverPending >= localPending) {
+    syncFromServer(serverPending);
+  } else if (serverPending === 0 && localPending > 0) {
+    // Server confirmed all acked — reset
+    syncFromServer(0);
+  }
+  const effectivePending = Math.max(localPending, serverPending);
+  const effectiveDevices: DeviceHealth | null = devices
+    ? { ...devices, pending_commands: effectivePending }
+    : null;
 
   if (!health) return null;
 
@@ -66,16 +81,16 @@ export default function ServiceStatus() {
           </span>
         </button>
       )}
-      {devices && devices.total > 0 && (
+      {effectiveDevices && effectiveDevices.total > 0 && (
         <button
           onClick={() => navigate("/settings#actuators")}
           className="flex items-center gap-1 rounded px-1.5 py-0.5 hover:bg-gray-100 transition-colors"
         >
-          <Dot color={deviceDotColor(devices)} />
+          <Dot color={deviceDotColor(effectiveDevices)} />
           <span>
-            {devices.online}/{devices.total} Devices
-            {devices.pending_commands > 0 && (
-              <span className="ml-1 text-amber-500">{devices.pending_commands} cmd</span>
+            {effectiveDevices.online}/{effectiveDevices.total} Devices
+            {effectiveDevices.pending_commands > 0 && (
+              <span className="ml-1 text-amber-500">{effectiveDevices.pending_commands} cmd</span>
             )}
           </span>
         </button>
