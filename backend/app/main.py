@@ -186,15 +186,36 @@ def create_app() -> FastAPI:
             "pending": s.sensor_pending,
         }
 
-    # Device health — reads from HealthMonitor cache
+    # Device health — live query (pending/unsynced change rapidly, can't use cache)
     @app.get("/health/devices", tags=["health"])
     async def health_devices(request: Request):
-        s = request.app.state.health_monitor.state
+        from app.models.config import Actuator
+
+        monitor = request.app.state.health_monitor
+        s = monitor.state
+
+        # Actuator count from cache
+        device_total = s.device_total
+
+        # Pending + unsynced from gateway (live, not cached)
+        pending_commands = 0
+        unsynced_commands = 0
+        device_online = s.device_online
+        try:
+            async with httpx.AsyncClient(base_url=settings.device_gateway_url, timeout=2.0) as client:
+                resp = await client.get("/health")
+                if resp.status_code == 200:
+                    gw = resp.json()
+                    pending_commands = gw.get("pending_commands", 0)
+                    unsynced_commands = gw.get("unsynced_commands", 0)
+        except Exception:
+            pass
+
         return {
-            "total": s.device_total,
-            "online": s.device_online,
-            "pending_commands": s.pending_commands,
-            "unsynced_commands": s.unsynced_commands,
+            "total": device_total,
+            "online": device_online,
+            "pending_commands": pending_commands,
+            "unsynced_commands": unsynced_commands,
         }
 
     # Alert count for frontend bell indicator
