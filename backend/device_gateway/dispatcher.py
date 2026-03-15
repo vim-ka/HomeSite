@@ -153,14 +153,14 @@ class AsyncCommandDispatcher:
         return retried, failed
 
     @property
-    def pending_count(self) -> int:
-        """Total pending: debounce queue + awaiting ack."""
-        count = 0
-        for params in self._device_store.values():
-            count += len(params)
-        for keys in self._pending_acks.values():
-            count += len(keys)
-        return count
+    def queued_count(self) -> int:
+        """Commands in debounce queue (not yet sent)."""
+        return sum(len(p) for p in self._device_store.values())
+
+    @property
+    def awaiting_ack_count(self) -> int:
+        """Commands sent, waiting for device ack."""
+        return sum(len(k) for k in self._pending_acks.values())
 
     @property
     def unsynced_count(self) -> int:

@@ -97,7 +97,8 @@ def create_gateway_api(
             "status": "ok" if connected else "degraded",
             "mqtt_connected": connected,
             "heartbeats": heartbeats,
-            "pending_commands": dispatcher.pending_count,
+            "queued_commands": dispatcher.queued_count,
+            "pending_commands": dispatcher.awaiting_ack_count,
             "unsynced_commands": dispatcher.unsynced_count,
         }
 
