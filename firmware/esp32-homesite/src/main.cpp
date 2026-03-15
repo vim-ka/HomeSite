@@ -1,9 +1,11 @@
 #include <Arduino.h>
 #include <WiFi.h>
+#include <ArduinoJson.h>
 #include "config_manager.h"
 #include "wifi_portal.h"
 #include "mqtt_client.h"
 #include "sensor_reader.h"
+#include "pza_controller.h"
 
 // --- Pin configuration ---
 #define ONE_WIRE_PIN    4    // DS18B20 data pin
@@ -13,22 +15,46 @@
 
 #define RESET_HOLD_MS   5000
 #define WIFI_TIMEOUT_MS 15000
+#define HEARTBEAT_INTERVAL_MS 30000
 
 ConfigManager config;
 WifiPortal portal;
 MqttClient mqtt;
 SensorReader sensors;
+PZAController pza;
 
 unsigned long lastReadTime = 0;
+unsigned long lastHeartbeat = 0;
 unsigned long resetBtnStart = 0;
 bool resetBtnActive = false;
 
+// Current settings received from backend
+String outdoorSensorName = "clm_street_thp";  // sensor that reports outdoor temp
+
+// --- Ack: collect keys to acknowledge ---
+JsonDocument ackDoc;
+
+void sendAck() {
+    if (ackDoc.size() == 0) return;
+    String topic = "home/devices/" + config.nodeName() + "/ack";
+    String payload;
+    serializeJson(ackDoc, payload);
+    mqtt.publishRaw(topic, payload);
+    Serial.print("ACK: ");
+    Serial.println(payload);
+    ackDoc.clear();
+}
+
 void onCommand(const String& key, const String& value) {
-    Serial.print("Command: ");
+    Serial.print("CMD: ");
     Serial.print(key);
     Serial.print(" = ");
     Serial.println(value);
 
+    // Track for ack
+    ackDoc[key] = "ok";
+
+    // System commands
     if (key == "reset_config") {
         config.clear();
         ESP.restart();
@@ -44,6 +70,33 @@ void onCommand(const String& key, const String& value) {
             Serial.println(ms);
         }
     }
+
+    // Radiator PZA
+    if (key == "heating_radiator_wbm") {
+        pza.setRadiatorWBM(value == "1");
+        Serial.print("Radiator WBM: ");
+        Serial.println(pza.isRadiatorWBM() ? "ON" : "OFF");
+    }
+    if (key == "heating_radiator_curve") {
+        pza.setRadiatorCurve(value.toInt());
+        Serial.print("Radiator curve: ");
+        Serial.println(pza.radiatorCurve());
+    }
+
+    // Floor heating PZA
+    if (key == "heating_floorheating_wbm") {
+        pza.setFloorWBM(value == "1");
+        Serial.print("Floor WBM: ");
+        Serial.println(pza.isFloorWBM() ? "ON" : "OFF");
+    }
+    if (key == "heating_floorheating_curve") {
+        pza.setFloorCurve(value.toInt());
+        Serial.print("Floor curve: ");
+        Serial.println(pza.floorCurve());
+    }
+
+    // All other settings are accepted (ack sent) but not acted on yet
+    // E.g. heating_boiler_temp, heating_boiler_power, watersupply_*, etc.
 }
 
 void checkResetButton() {
@@ -80,6 +133,30 @@ bool connectWiFi() {
     return true;
 }
 
+void sendHeartbeat() {
+    String topic = "home/devices/" + config.nodeName() + "/heartbeat";
+    JsonDocument doc;
+    doc["uptime"] = millis() / 1000;
+    doc["free_heap"] = ESP.getFreeHeap();
+    doc["rad_wbm"] = pza.isRadiatorWBM();
+    doc["rad_curve"] = pza.radiatorCurve();
+    doc["floor_wbm"] = pza.isFloorWBM();
+    doc["floor_curve"] = pza.floorCurve();
+    if (pza.hasOutdoorTemp()) {
+        doc["outdoor"] = round(pza.outdoorTemp() * 10) / 10.0;
+        float radTarget = pza.getRadiatorTarget();
+        float floorTarget = pza.getFloorTarget();
+        if (radTarget >= 0) doc["rad_target"] = round(radTarget * 10) / 10.0;
+        if (floorTarget >= 0) doc["floor_target"] = round(floorTarget * 10) / 10.0;
+    }
+
+    String payload;
+    serializeJson(doc, payload);
+    mqtt.publishRaw(topic, payload);
+    Serial.print("Heartbeat: ");
+    Serial.println(payload);
+}
+
 void setup() {
     Serial.begin(115200);
     delay(100);
@@ -91,6 +168,7 @@ void setup() {
 
     config.begin();
     sensors.begin(ONE_WIRE_PIN, DHT_PIN);
+    pza.begin();
 
     // Check if reset button is held during boot
     bool forcePortal = (digitalRead(RESET_BTN_PIN) == LOW);
@@ -148,12 +226,42 @@ void loop() {
     mqtt.ensureConnected();
     mqtt.loop();
 
-    // Read sensors at configured interval
     unsigned long now = millis();
+
+    // Heartbeat every 30s
+    if (now - lastHeartbeat >= HEARTBEAT_INTERVAL_MS) {
+        lastHeartbeat = now;
+        sendHeartbeat();
+    }
+
+    // Read sensors at configured interval
     if (now - lastReadTime >= config.readIntervalMs()) {
         lastReadTime = now;
 
         auto readings = sensors.readAll();
+
+        // Update outdoor temp for PZA
+        for (auto& r : readings) {
+            if (r.name == outdoorSensorName && r.paramKey == "tmp") {
+                pza.setOutdoorTemp(r.value);
+            }
+        }
+
+        // Log PZA targets
+        if (pza.isRadiatorWBM() && pza.hasOutdoorTemp()) {
+            Serial.print("PZA Radiators: outdoor=");
+            Serial.print(pza.outdoorTemp(), 1);
+            Serial.print(" -> target=");
+            Serial.print(pza.getRadiatorTarget(), 1);
+            Serial.println("°C");
+        }
+        if (pza.isFloorWBM() && pza.hasOutdoorTemp()) {
+            Serial.print("PZA Floor: outdoor=");
+            Serial.print(pza.outdoorTemp(), 1);
+            Serial.print(" -> target=");
+            Serial.print(pza.getFloorTarget(), 1);
+            Serial.println("°C");
+        }
 
         // Group readings by sensor name
         std::map<String, std::vector<std::pair<String, float>>> grouped;
@@ -178,4 +286,7 @@ void loop() {
         delay(50);
         digitalWrite(LED_PIN, HIGH);
     }
+
+    // Send ack for any pending commands (batched)
+    sendAck();
 }

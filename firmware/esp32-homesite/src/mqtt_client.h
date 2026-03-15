@@ -21,6 +21,9 @@ public:
     // Publish grouped readings: home/devices/{sensorName} -> {"tmp": 22.5, "hmt": 48.3}
     void publishGrouped(const String& sensorName, const std::vector<std::pair<String, float>>& params);
 
+    // Publish raw JSON string to arbitrary topic
+    void publishRaw(const String& topic, const String& payload);
+
     // Must be called in loop()
     void loop();
 

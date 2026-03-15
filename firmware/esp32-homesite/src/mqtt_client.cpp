@@ -83,6 +83,11 @@ void MqttClient::publishGrouped(const String& sensorName, const std::vector<std:
     _mqttClient.publish(topic.c_str(), payload.c_str());
 }
 
+void MqttClient::publishRaw(const String& topic, const String& payload) {
+    if (!_mqttClient.connected()) return;
+    _mqttClient.publish(topic.c_str(), payload.c_str());
+}
+
 void MqttClient::loop() {
     _mqttClient.loop();
 }
