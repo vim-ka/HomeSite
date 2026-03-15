@@ -133,7 +133,7 @@ async def update_database(
     payload: DatabaseUpdateRequest,
     user: User = Depends(require_role([UserRole.ADMIN])),
 ):
-    """Save new database URL. Requires app restart. Admin only."""
+    """Save new database URL after validating connection. Requires app restart. Admin only."""
     if payload.type == "sqlite":
         new_url = f"sqlite+aiosqlite:///{payload.path}"
     else:
@@ -141,6 +141,22 @@ async def update_database(
             f"postgresql+asyncpg://{payload.user}:{payload.password}"
             f"@{payload.host}:{payload.port}/{payload.dbname}"
         )
+
+    # Validate connection before saving
+    if payload.type == "postgresql":
+        from sqlalchemy.ext.asyncio import create_async_engine as _create_engine
+        from sqlalchemy import text as _text
+        test_engine = _create_engine(new_url, pool_pre_ping=True)
+        try:
+            async with test_engine.connect() as conn:
+                await conn.execute(_text("SELECT 1"))
+        except Exception as e:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Cannot connect to PostgreSQL: {str(e)}"
+            )
+        finally:
+            await test_engine.dispose()
 
     env_path = ".env"
     lines: list[str] = []

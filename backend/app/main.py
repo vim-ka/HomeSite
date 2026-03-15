@@ -51,6 +51,36 @@ async def ensure_config_kv_populated() -> None:
         logger.info("config_kv_bootstrapped_from_env")
 
 
+async def ensure_tables_exist() -> None:
+    """Create all tables if they don't exist (safe for both SQLite and PostgreSQL).
+
+    On first connection to a new database (e.g. after switching to PostgreSQL),
+    this creates the schema. On existing databases, it's a no-op.
+    """
+    from app.models.base import Base
+    # Import all models so Base.metadata knows about them
+    import app.models.sensor  # noqa: F401
+    import app.models.config  # noqa: F401
+    import app.models.event  # noqa: F401
+    import app.models.heating  # noqa: F401
+    import app.models.pending_sensor  # noqa: F401
+    import app.models.user  # noqa: F401
+
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+
+async def ensure_seed_data() -> None:
+    """Run seed if database is empty (no users = fresh database)."""
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(text("SELECT count(*) FROM users"))
+        count = result.scalar() or 0
+        if count == 0:
+            logger.info("empty_database_detected, running seed")
+            from app.db.seed import seed
+            await seed(session)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application startup and shutdown events."""
@@ -58,6 +88,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     from app.services.health_monitor import HealthMonitor
 
     setup_logging(log_level=settings.log_level, log_format=settings.log_format)
+    await ensure_tables_exist()
+    await ensure_seed_data()
     await ensure_config_kv_populated()
     logger.info("application_startup", env=settings.app_env)
 

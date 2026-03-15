@@ -2343,6 +2343,9 @@ export default function SettingsPage() {
               {dbMutation.isSuccess && (
                 <p className="mt-2 text-xs text-amber-600">{t("settings.restartRequired")}</p>
               )}
+              {dbMutation.isError && (
+                <p className="mt-2 text-xs text-red-600">{t("settings.dbConnectionError")}</p>
+              )}
             </div>
 
             {/* Backup card */}
