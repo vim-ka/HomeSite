@@ -406,8 +406,19 @@ export default function HeatingPage() {
                     </span>
                   </div>
                   <div className="space-y-1 text-xs text-gray-600">
-                    <div className="flex justify-between">
-                      <span>{t("dashboard.tempSet")}</span>
+                    <div className="flex justify-between items-center">
+                      <span className="flex items-center gap-1">
+                        {t("dashboard.tempSet")}
+                        {c.pza_mode ? (
+                          <span className="text-[9px] px-1 py-0.5 rounded bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300">
+                            ПЗА кр.{c.pza_curve}
+                          </span>
+                        ) : c.pza_capable ? (
+                          <span className="text-[9px] px-1 py-0.5 rounded bg-gray-100 text-gray-500">
+                            Ручн.
+                          </span>
+                        ) : null}
+                      </span>
                       <span className="font-semibold text-gray-800">
                         {fmt(tempSet)}°C
                       </span>
