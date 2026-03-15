@@ -341,8 +341,10 @@ function Indicator({
             </span>
           )}
         </div>
-        <div className="text-sm font-semibold text-gray-800">{value}</div>
-        {hint && <div className="text-[10px] text-gray-400">{hint}</div>}
+        <div className="text-sm font-semibold text-gray-800">
+          {value}
+          {hint && <span className="ml-1 text-[10px] font-normal text-gray-400">({hint})</span>}
+        </div>
       </div>
     </div>
   );
