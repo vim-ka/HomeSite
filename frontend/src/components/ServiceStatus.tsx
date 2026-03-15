@@ -1,5 +1,5 @@
 import { useNavigate } from "react-router-dom";
-import { useServiceHealth, type SensorHealth } from "@/hooks/useServiceHealth";
+import { useServiceHealth, type SensorHealth, type DeviceHealth } from "@/hooks/useServiceHealth";
 import { cn } from "@/lib/utils";
 
 const SERVICES = [
@@ -28,8 +28,14 @@ function sensorDotColor(s: SensorHealth): "green" | "red" | "yellow" {
   return "green";
 }
 
+function deviceDotColor(d: DeviceHealth): "green" | "red" | "yellow" {
+  if (d.online < d.total) return "red";
+  if (d.pending_commands > 0) return "yellow";
+  return "green";
+}
+
 export default function ServiceStatus() {
-  const { health, sensors } = useServiceHealth();
+  const { health, sensors, devices } = useServiceHealth();
   const navigate = useNavigate();
 
   if (!health) return null;
@@ -56,6 +62,20 @@ export default function ServiceStatus() {
             {sensors.active}/{sensors.total} Sensors
             {sensors.pending > 0 && (
               <span className="ml-1 text-amber-500">+{sensors.pending} new</span>
+            )}
+          </span>
+        </button>
+      )}
+      {devices && devices.total > 0 && (
+        <button
+          onClick={() => navigate("/settings#actuators")}
+          className="flex items-center gap-1 rounded px-1.5 py-0.5 hover:bg-gray-100 transition-colors"
+        >
+          <Dot color={deviceDotColor(devices)} />
+          <span>
+            {devices.online}/{devices.total} Devices
+            {devices.pending_commands > 0 && (
+              <span className="ml-1 text-amber-500">{devices.pending_commands} cmd</span>
             )}
           </span>
         </button>

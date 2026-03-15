@@ -15,7 +15,7 @@ from app.core.logging import get_logger
 from app.models.event import EventLog
 from app.models.sensor import Sensor, SensorData
 from app.models.pending_sensor import PendingSensor
-from app.models.config import ConfigKV
+from app.models.config import Actuator, ConfigKV
 
 logger = get_logger(__name__)
 
@@ -37,6 +37,13 @@ class HealthState:
     sensor_total: int = 0
     sensor_active: int = 0
     sensor_pending: int = 0
+
+    # Devices (actuators with heartbeat)
+    device_total: int = 0
+    device_online: int = 0
+
+    # Pending commands awaiting ack
+    pending_commands: int = 0
 
     # Config (exposed to frontend)
     poll_seconds: int = DEFAULT_POLL_INTERVAL
@@ -185,6 +192,33 @@ class HealthMonitor:
                 for e in events:
                     logger.info("health_event", level=e.level, message=e.message)
 
+            # --- Device (actuator) checks via heartbeats from gateway ---
+            device_total = 0
+            device_online = 0
+            pending_commands = 0
+
+            result = await session.execute(select(func.count()).select_from(Actuator))
+            device_total = result.scalar() or 0
+
+            # Get heartbeat data from gateway /health response
+            if services.get("gateway"):
+                try:
+                    hb_timeout = int(kv.get("heartbeat_timeout_seconds", "60"))
+                    async with httpx.AsyncClient(base_url=self.gateway_url, timeout=gateway_timeout) as client:
+                        resp = await client.get("/health")
+                        if resp.status_code == 200:
+                            data = resp.json()
+                            heartbeats = data.get("heartbeats", {})
+                            for _device, ts_str in heartbeats.items():
+                                try:
+                                    ts = datetime.fromisoformat(ts_str)
+                                    if (now - ts).total_seconds() < hb_timeout:
+                                        device_online += 1
+                                except (ValueError, TypeError):
+                                    pass
+                except Exception:
+                    pass
+
             # --- Update cached state ---
             self.state = HealthState(
                 backend=True,
@@ -194,6 +228,9 @@ class HealthMonitor:
                 sensor_total=len(all_ids),
                 sensor_active=len(active_ids),
                 sensor_pending=len(current_pending),
+                device_total=device_total,
+                device_online=device_online,
+                pending_commands=pending_commands,
                 poll_seconds=poll_seconds,
                 updated_at=now,
             )

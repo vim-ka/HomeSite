@@ -186,6 +186,16 @@ def create_app() -> FastAPI:
             "pending": s.sensor_pending,
         }
 
+    # Device health — reads from HealthMonitor cache
+    @app.get("/health/devices", tags=["health"])
+    async def health_devices(request: Request):
+        s = request.app.state.health_monitor.state
+        return {
+            "total": s.device_total,
+            "online": s.device_online,
+            "pending_commands": s.pending_commands,
+        }
+
     # Alert count for frontend bell indicator
     @app.get("/health/alerts", tags=["health"])
     async def health_alerts(since: str | None = None):

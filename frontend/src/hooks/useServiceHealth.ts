@@ -14,11 +14,18 @@ export interface SensorHealth {
   pending: number;
 }
 
+export interface DeviceHealth {
+  total: number;
+  online: number;
+  pending_commands: number;
+}
+
 const DEFAULT_POLL_MS = 30_000;
 
 export function useServiceHealth() {
   const [health, setHealth] = useState<ServiceHealth | null>(null);
   const [sensors, setSensors] = useState<SensorHealth | null>(null);
+  const [devices, setDevices] = useState<DeviceHealth | null>(null);
   const controllerRef = useRef<AbortController | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pollMsRef = useRef(DEFAULT_POLL_MS);
@@ -30,16 +37,16 @@ export function useServiceHealth() {
       controllerRef.current = controller;
 
       try {
-        const [statusRes, sensorsRes] = await Promise.all([
+        const [statusRes, sensorsRes, devicesRes] = await Promise.all([
           fetch("/health/status", { signal: controller.signal }),
           fetch("/health/sensors", { signal: controller.signal }),
+          fetch("/health/devices", { signal: controller.signal }),
         ]);
 
         if (statusRes.ok) {
           const data = await statusRes.json();
           setHealth(data);
 
-          // Adjust poll interval if server changed it
           const serverPollMs = (data.poll_seconds ?? 30) * 1000;
           if (serverPollMs !== pollMsRef.current) {
             pollMsRef.current = serverPollMs;
@@ -50,9 +57,8 @@ export function useServiceHealth() {
           setHealth({ backend: true, database: false, gateway: false, mqtt: false });
         }
 
-        if (sensorsRes.ok) {
-          setSensors(await sensorsRes.json());
-        }
+        if (sensorsRes.ok) setSensors(await sensorsRes.json());
+        if (devicesRes.ok) setDevices(await devicesRes.json());
       } catch (e) {
         if (e instanceof DOMException && e.name === "AbortError") return;
         setHealth({ backend: false, database: false, gateway: false, mqtt: false });
@@ -67,5 +73,5 @@ export function useServiceHealth() {
     };
   }, []);
 
-  return { health, sensors };
+  return { health, sensors, devices };
 }
