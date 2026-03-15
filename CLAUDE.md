@@ -145,3 +145,4 @@ CI/CD planned via GitHub Actions self-hosted runner.
 - [ ] **Notifications**: Push/Telegram on critical alerts
 - [ ] **Real-time charts**: WebSocket for live chart updates (currently polling)
 - [ ] **Action audit**: Expand EventLog with who-changed-what details
+- [ ] **Section tooltips**: Port contextual help/hints from v1 for Heating and Water Supply pages (what each setting does, recommended values, dependencies between controls)
