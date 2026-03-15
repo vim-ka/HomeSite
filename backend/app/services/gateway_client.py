@@ -69,6 +69,20 @@ class GatewayClient:
             logger.error("gateway_reload_error", error=str(e))
             return False
 
+    async def retry_unsynced(self) -> int:
+        """Tell gateway to re-send all unsynced commands."""
+        try:
+            async with httpx.AsyncClient(base_url=self.base_url, timeout=self.timeout) as client:
+                response = await client.post(
+                    "/retry-unsynced",
+                    headers={"X-Internal-Secret": settings.internal_api_secret},
+                )
+                if response.status_code == 200:
+                    return response.json().get("retried", 0)
+                return 0
+        except Exception:
+            return 0
+
     async def health_check(self) -> bool:
         try:
             async with httpx.AsyncClient(base_url=self.base_url, timeout=self.timeout) as client:

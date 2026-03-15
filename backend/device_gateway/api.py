@@ -101,6 +101,29 @@ def create_gateway_api(
             "unsynced_commands": dispatcher.unsynced_count,
         }
 
+    @app.post("/retry-unsynced")
+    async def retry_unsynced(
+        _: None = Depends(verify_secret),
+    ) -> dict:
+        """Re-send all unsynced commands by re-reading values from config_kv."""
+        if not dispatcher.unsynced:
+            return {"retried": 0}
+
+        from device_gateway.config_db import load_config_from_db
+
+        all_kv = await load_config_from_db(_settings.database_url)
+        retried = 0
+
+        for device_id, keys in list(dispatcher.unsynced.items()):
+            for key in list(keys):
+                value = all_kv.get(key)
+                if value is not None:
+                    await dispatcher.add_param(device_id, key, value)
+                    retried += 1
+
+        logger.info("retry_unsynced", retried=retried)
+        return {"retried": retried}
+
     @app.post("/reload-mqtt")
     async def reload_mqtt(
         _: None = Depends(verify_secret),

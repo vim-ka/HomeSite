@@ -1,6 +1,8 @@
 import { useNavigate } from "react-router-dom";
 import { useServiceHealth, type SensorHealth, type DeviceHealth } from "@/hooks/useServiceHealth";
 import { cn } from "@/lib/utils";
+import { RefreshCw } from "lucide-react";
+import api from "@/api/client";
 
 const SERVICES = [
   { key: "backend", label: "API", hash: "" },
@@ -79,7 +81,20 @@ export default function ServiceStatus() {
               <span className="ml-1 text-amber-500">{devices.pending_commands} cmd</span>
             )}
             {devices.unsynced_commands > 0 && (
-              <span className="ml-1 text-red-500">{devices.unsynced_commands} unsync</span>
+              <span className="ml-1 inline-flex items-center gap-1 text-red-500">
+                {devices.unsynced_commands} unsync
+                <button
+                  onClick={async (e) => {
+                    e.stopPropagation();
+                    await api.post("/settings/retry-unsynced");
+                    setTimeout(() => window.dispatchEvent(new Event("health-refresh")), 500);
+                  }}
+                  className="hover:text-red-700 transition-colors"
+                  title="Повторить отправку"
+                >
+                  <RefreshCw className="h-3 w-3" />
+                </button>
+              </span>
             )}
           </span>
         </button>

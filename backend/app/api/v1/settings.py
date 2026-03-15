@@ -98,6 +98,16 @@ async def update_mqtt_settings(
     return await service.update_mqtt_settings(payload.host, payload.port, payload.user, payload.password)
 
 
+@router.post("/retry-unsynced")
+async def retry_unsynced(
+    user: User = Depends(require_role([UserRole.ADMIN, UserRole.OPERATOR])),
+):
+    """Re-send all unsynced commands to devices."""
+    client = GatewayClient()
+    retried = await client.retry_unsynced()
+    return {"retried": retried}
+
+
 @router.post("/toggle", response_model=ToggleResponse)
 async def toggle_device(
     payload: ToggleRequest,
