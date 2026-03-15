@@ -18,9 +18,11 @@ logger = get_logger(__name__)
 
 async def ensure_config_kv_populated() -> None:
     """Seed MQTT + tuning keys into config_kv from .env if missing (for existing deployments)."""
+    from app.models.config import ConfigKV
+
     async with AsyncSessionLocal() as session:
         result = await session.execute(
-            text("SELECT key FROM config_kv WHERE key = 'mqtt_host'")
+            select(ConfigKV.key).where(ConfigKV.key == "mqtt_host")
         )
         if result.scalar_one_or_none() is not None:
             return  # Already populated
@@ -32,7 +34,6 @@ async def ensure_config_kv_populated() -> None:
             "mqtt_pass": settings.mqtt_password,
             "access_token_expire_minutes": str(settings.access_token_expire_minutes),
             "refresh_token_expire_days": str(settings.refresh_token_expire_days),
-            "rate_limit_default": settings.rate_limit_default,
             "log_level": settings.log_level,
             "device_gateway_url": settings.device_gateway_url,
             "sensor_stale_minutes": "5",
@@ -43,10 +44,11 @@ async def ensure_config_kv_populated() -> None:
             "mqtt_topic_prefix": "home/devices/",
         }
         for key, value in defaults.items():
-            await session.execute(
-                text("INSERT OR IGNORE INTO config_kv (key, value) VALUES (:key, :value)"),
-                {"key": key, "value": value},
+            existing = await session.execute(
+                select(ConfigKV.key).where(ConfigKV.key == key)
             )
+            if existing.scalar_one_or_none() is None:
+                session.add(ConfigKV(key=key, value=value))
         await session.commit()
         logger.info("config_kv_bootstrapped_from_env")
 
@@ -72,8 +74,10 @@ async def ensure_tables_exist() -> None:
 
 async def ensure_seed_data() -> None:
     """Run seed if database is empty (no users = fresh database)."""
+    from app.models.user import User
+
     async with AsyncSessionLocal() as session:
-        result = await session.execute(text("SELECT count(*) FROM users"))
+        result = await session.execute(select(func.count()).select_from(User))
         count = result.scalar() or 0
         if count == 0:
             logger.info("empty_database_detected, running seed")
