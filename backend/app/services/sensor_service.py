@@ -34,6 +34,8 @@ class SensorService:
                 temp_return=h.get("TempRet"),
                 pressure=h.get("Pressure"),
                 pump=h.get("Pump"),
+                pza_mode=h.get("pza_mode", False),
+                pza_curve=h.get("pza_curve"),
             )
             for h in heating_raw
         ]

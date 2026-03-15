@@ -161,14 +161,17 @@ class SensorRepository:
             temp_set = float(temp_set_raw) if temp_set_raw else None
             pump = await self._get_config_value(c.config_pump_key)
 
-            # Override temp_set with PZA calculation if WBM enabled
+            # Check PZA mode and override temp_set if enabled
+            pza_mode = False
+            pza_curve = None
             if c.config_prefix and c.config_prefix in pza_config and outdoor_temp is not None:
                 wbm_key, curve_key, curve_type = pza_config[c.config_prefix]
                 wbm = await self._get_config_value(wbm_key)
                 if wbm == "1":
+                    pza_mode = True
                     curve_str = await self._get_config_value(curve_key)
-                    curve_idx = int(curve_str) if curve_str else 3
-                    pza_target = get_pza_target(curve_type, curve_idx, outdoor_temp)
+                    pza_curve = int(curve_str) if curve_str else 3
+                    pza_target = get_pza_target(curve_type, pza_curve, outdoor_temp)
                     if pza_target is not None:
                         temp_set = pza_target
 
@@ -179,6 +182,8 @@ class SensorRepository:
                 "TempRet": temp_ret,
                 "Pressure": pressure,
                 "Pump": pump,
+                "pza_mode": pza_mode,
+                "pza_curve": pza_curve,
             })
 
         return results

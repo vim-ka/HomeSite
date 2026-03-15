@@ -111,7 +111,18 @@ function HeatingCard({ circuit: c }: { circuit: HeatingCircuit }) {
 
       {/* Set temp — prominent */}
       <div className="mb-4 flex items-center justify-between">
-        <span className="text-sm text-gray-500">{t("dashboard.tempSet")}</span>
+        <div>
+          <span className="text-sm text-gray-500">{t("dashboard.tempSet")}</span>
+          {c.pza_mode ? (
+            <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-green-100 text-green-700">
+              ПЗА кр.{c.pza_curve}
+            </span>
+          ) : c.pza_curve === null ? null : (
+            <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-500">
+              Ручн.
+            </span>
+          )}
+        </div>
         <span className="text-2xl font-bold text-orange-500">
           {c.temp_set != null ? `${fmt(c.temp_set)}°` : "—"}
         </span>

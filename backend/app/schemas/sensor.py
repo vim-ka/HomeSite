@@ -39,6 +39,8 @@ class HeatingCircuitStatus(BaseModel):
     temp_return: float | None = None
     pressure: float | None = None
     pump: str | None = None
+    pza_mode: bool = False
+    pza_curve: int | None = None
 
 
 class WaterSupplyStatus(BaseModel):
