@@ -1,4 +1,5 @@
 import { useTranslation } from "react-i18next";
+import LoadingSpinner from "@/components/LoadingSpinner";
 import {
   Thermometer,
   Droplets,
@@ -231,7 +232,7 @@ export default function DashboardPage() {
   const { t } = useTranslation();
   const { data, isLoading, error } = useDashboard();
 
-  if (isLoading) return <p className="text-gray-500">{t("common.loading")}</p>;
+  if (isLoading) return <LoadingSpinner />;
   if (error) return <p className="text-red-600">{t("common.error")}: {String(error)}</p>;
   if (!data) return null;
 

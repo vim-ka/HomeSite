@@ -22,6 +22,7 @@ import {
   Waves,
 } from "lucide-react";
 import api from "@/api/client";
+import LoadingSpinner from "@/components/LoadingSpinner";
 import { useDashboard } from "@/hooks/useDashboard";
 import { fmt } from "@/lib/utils";
 import CollapsibleSection from "@/components/CollapsibleSection";
@@ -115,9 +116,8 @@ function SensorChart({
 
   if (isLoading) {
     return (
-      <div className="bg-white rounded-lg shadow p-4 animate-pulse">
-        <div className="h-5 w-32 bg-gray-200 rounded mb-4" />
-        <div className="h-48 bg-gray-100 rounded" />
+      <div className="bg-white rounded-lg shadow p-4">
+        <LoadingSpinner />
       </div>
     );
   }

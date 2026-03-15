@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import LoadingSpinner from "@/components/LoadingSpinner";
 import { useQuery } from "@tanstack/react-query";
 import api from "@/api/client";
 import { fmtTime } from "@/lib/utils";
@@ -95,7 +96,7 @@ export default function EventsPage() {
 
       {/* Table */}
       {isLoading ? (
-        <p className="text-gray-500">{t("common.loading")}</p>
+        <LoadingSpinner />
       ) : !data || data.items.length === 0 ? (
         <p className="text-gray-500">{t("events.noEvents")}</p>
       ) : (
