@@ -106,3 +106,42 @@ cd backend && pytest -k "test_login" -v       # single test
 ```
 
 Tests use pytest-asyncio, httpx AsyncClient, isolated SQLite DB per session.
+
+## Command Dispatch
+
+Settings changes → Gateway → grouped MQTT message per device:
+1. Frontend `PUT /settings` → Backend saves to `config_kv` + calls Gateway `POST /settings`
+2. Gateway matches `config_key` to device via `config_prefix` in `heating_circuits` table (longest prefix wins)
+3. Dispatcher accumulates params per device, deduplicates (last write wins), debounces 5s
+4. Publishes single MQTT message: `home/devices/{mqtt_device_name}/cmd` → `{"key1": "val1", "key2": "val2"}`
+5. ESP32 should respond with ack: `home/devices/{name}/ack` → `{"key1": "ok"}`
+6. Watchdog checks for ack timeout (configurable `ack_timeout_seconds`, default 30s)
+
+ESP32 should also publish periodic heartbeat: `home/devices/{name}/heartbeat` (any payload).
+Heartbeat loss detected after `heartbeat_timeout_seconds` (default 60s) → ERROR in event log.
+
+## Deployment Target
+
+Target: Windows 10 + Hyper-V → Ubuntu Server 22.04 VM (3GB RAM, 2 vCPU, 20GB disk).
+No Docker — native systemd services + Nginx reverse proxy.
+CI/CD planned via GitHub Actions self-hosted runner.
+
+## TODO (Remaining Work)
+
+### High Priority
+- [ ] **Deploy to VM**: Install script for Ubuntu (Python, Node, Mosquitto, Nginx, systemd units)
+- [ ] **CI/CD**: GitHub Actions self-hosted runner on the VM
+- [ ] **ESP32 firmware**: Add `/ack` response and `/heartbeat` publishing to firmware
+- [ ] **Range monitoring**: Pressure outside min/max → ERROR, boiler overheating → ERROR
+
+### Medium Priority
+- [ ] **Data migration**: Transfer data from SQLite → PostgreSQL (not just schema + seed)
+- [ ] **SSL/HTTPS**: Let's Encrypt or self-signed for production
+- [ ] **Rate limiting**: Middleware implementation (setting exists, middleware not wired)
+- [ ] **Log rotation**: structlog → file with rotation
+
+### Low Priority
+- [ ] **Mobile app**: Update React Native app for new endpoints
+- [ ] **Notifications**: Push/Telegram on critical alerts
+- [ ] **Real-time charts**: WebSocket for live chart updates (currently polling)
+- [ ] **Action audit**: Expand EventLog with who-changed-what details
