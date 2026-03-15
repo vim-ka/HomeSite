@@ -29,6 +29,7 @@ function sensorDotColor(s: SensorHealth): "green" | "red" | "yellow" {
 }
 
 function deviceDotColor(d: DeviceHealth): "green" | "red" | "yellow" {
+  if (d.unsynced_commands > 0) return "red";
   if (d.online < d.total) return "red";
   if (d.pending_commands > 0) return "yellow";
   return "green";
@@ -76,6 +77,9 @@ export default function ServiceStatus() {
             {devices.online}/{devices.total} Devices
             {devices.pending_commands > 0 && (
               <span className="ml-1 text-amber-500">{devices.pending_commands} cmd</span>
+            )}
+            {devices.unsynced_commands > 0 && (
+              <span className="ml-1 text-red-500">{devices.unsynced_commands} unsync</span>
             )}
           </span>
         </button>

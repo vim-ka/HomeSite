@@ -44,6 +44,7 @@ class HealthState:
 
     # Pending commands awaiting ack
     pending_commands: int = 0
+    unsynced_commands: int = 0
 
     # Config (exposed to frontend)
     poll_seconds: int = DEFAULT_POLL_INTERVAL
@@ -196,6 +197,7 @@ class HealthMonitor:
             device_total = 0
             device_online = 0
             pending_commands = 0
+            unsynced_commands = 0
 
             result = await session.execute(select(func.count()).select_from(Actuator))
             device_total = result.scalar() or 0
@@ -209,6 +211,7 @@ class HealthMonitor:
                         if resp.status_code == 200:
                             data = resp.json()
                             pending_commands = data.get("pending_commands", 0)
+                            unsynced_commands = data.get("unsynced_commands", 0)
                             heartbeats = data.get("heartbeats", {})
                             for _device, ts_str in heartbeats.items():
                                 try:
@@ -232,6 +235,7 @@ class HealthMonitor:
                 device_total=device_total,
                 device_online=device_online,
                 pending_commands=pending_commands,
+                unsynced_commands=unsynced_commands,
                 poll_seconds=poll_seconds,
                 updated_at=now,
             )

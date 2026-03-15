@@ -18,6 +18,7 @@ export interface DeviceHealth {
   total: number;
   online: number;
   pending_commands: number;
+  unsynced_commands: number;
 }
 
 const DEFAULT_POLL_MS = 30_000;

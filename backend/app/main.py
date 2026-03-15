@@ -194,6 +194,7 @@ def create_app() -> FastAPI:
             "total": s.device_total,
             "online": s.device_online,
             "pending_commands": s.pending_commands,
+            "unsynced_commands": s.unsynced_commands,
         }
 
     # Alert count for frontend bell indicator

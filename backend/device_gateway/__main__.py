@@ -103,12 +103,20 @@ async def main() -> None:
 
                 events = []
 
-                # Check ack timeouts
-                timed_out = await dispatcher.check_ack_timeouts()
-                for device_id, key in timed_out:
-                    msg = f"Command '{key}' to '{device_id}' not acknowledged"
-                    logger.warning("ack_timeout", device=device_id, key=key)
-                    events.append({"level": "WARNING", "source": "gateway_watchdog", "message": msg})
+                # Check ack timeouts — retries and failures
+                retried, failed = await dispatcher.check_ack_timeouts()
+                for device_id, key in retried:
+                    events.append({
+                        "level": "WARNING",
+                        "source": "gateway_watchdog",
+                        "message": f"Command '{key}' to '{device_id}' not acknowledged, retrying",
+                    })
+                for device_id, key in failed:
+                    events.append({
+                        "level": "ERROR",
+                        "source": "gateway_watchdog",
+                        "message": f"Command '{key}' to '{device_id}' failed after retries — NOT SYNCED",
+                    })
 
                 # Check heartbeat timeouts
                 now = datetime.now(UTC)

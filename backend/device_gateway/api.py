@@ -93,20 +93,12 @@ def create_gateway_api(
         if handler:
             heartbeats = {name: ts.isoformat() for name, ts in handler.heartbeats.items()}
 
-        # Count both: commands in debounce queue + commands awaiting ack
-        pending_commands = 0
-        async with dispatcher._lock:
-            for params in dispatcher._device_store.values():
-                pending_commands += len(params)
-        async with dispatcher._ack_lock:
-            for keys in dispatcher._pending_acks.values():
-                pending_commands += len(keys)
-
         return {
             "status": "ok" if connected else "degraded",
             "mqtt_connected": connected,
             "heartbeats": heartbeats,
-            "pending_commands": pending_commands,
+            "pending_commands": dispatcher.pending_count,
+            "unsynced_commands": dispatcher.unsynced_count,
         }
 
     @app.post("/reload-mqtt")
