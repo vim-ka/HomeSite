@@ -146,3 +146,4 @@ CI/CD planned via GitHub Actions self-hosted runner.
 - [ ] **Real-time charts**: WebSocket for live chart updates (currently polling)
 - [ ] **Action audit**: Expand EventLog with who-changed-what details
 - [ ] **Section tooltips**: Port contextual help/hints from v1 for Heating and Water Supply pages (what each setting does, recommended values, dependencies between controls)
+- [ ] **Statistics page rework**: Charts load all data on page mount even when checkboxes are off — causes slow/hanging page. Fix: only fetch chart data when checkbox is enabled (lazy loading), don't fire API requests for disabled charts
