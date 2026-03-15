@@ -270,6 +270,7 @@ async def seed(session: AsyncSession) -> None:
             "config_pump_key": "watersupply_pump",
             "config_prefix": "watersupply",
             "mqtt_device_name": "boiler_unit",
+            "show_on_dashboard": False,
             "display_order": 5,
         },
     ]

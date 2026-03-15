@@ -118,10 +118,15 @@ class SensorRepository:
         return list(merged.values())
 
     async def get_heating_status(self) -> list[dict]:
-        """Get heating circuit status using mount point bindings (sensors resolved dynamically)."""
+        """Get heating circuit status using mount point bindings (sensors resolved dynamically).
+
+        Only circuits with show_on_dashboard=True are included.
+        """
         circuits = (
             await self.db.execute(
-                select(HeatingCircuit).order_by(HeatingCircuit.display_order)
+                select(HeatingCircuit)
+                .where(HeatingCircuit.show_on_dashboard.is_(True))
+                .order_by(HeatingCircuit.display_order)
             )
         ).scalars().all()
 

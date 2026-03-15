@@ -68,7 +68,9 @@ class SensorService:
 
         # Load circuit definitions from DB
         circuits_result = await db.execute(
-            select(HeatingCircuit).order_by(HeatingCircuit.display_order)
+            select(HeatingCircuit)
+            .where(HeatingCircuit.show_on_dashboard.is_(True))
+            .order_by(HeatingCircuit.display_order)
         )
         circuits = circuits_result.scalars().all()
 

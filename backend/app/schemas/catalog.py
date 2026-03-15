@@ -160,6 +160,7 @@ class HeatingCircuitResponse(BaseModel):
     config_prefix: str | None = None
     mqtt_device_name: str | None = None
     delta_threshold: float
+    show_on_dashboard: bool = True
     display_order: int
 
     model_config = {"from_attributes": True}
@@ -174,6 +175,7 @@ class HeatingCircuitCreateRequest(BaseModel):
     config_prefix: str | None = None
     mqtt_device_name: str | None = None
     delta_threshold: float = 5.0
+    show_on_dashboard: bool = True
     display_order: int = 0
 
 
@@ -186,4 +188,5 @@ class HeatingCircuitUpdateRequest(BaseModel):
     config_prefix: str | None = None
     mqtt_device_name: str | None = None
     delta_threshold: float = 5.0
+    show_on_dashboard: bool = True
     display_order: int = 0

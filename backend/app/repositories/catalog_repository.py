@@ -373,6 +373,7 @@ class CatalogRepository:
                 HeatingCircuit.config_prefix,
                 HeatingCircuit.mqtt_device_name,
                 HeatingCircuit.delta_threshold,
+                HeatingCircuit.show_on_dashboard,
                 HeatingCircuit.display_order,
             )
             .outerjoin(mp_supply, HeatingCircuit.supply_mount_point_id == mp_supply.c.id)

@@ -1,4 +1,4 @@
-from sqlalchemy import Float, ForeignKey, Integer, String
+from sqlalchemy import Boolean, Float, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin
@@ -32,7 +32,8 @@ class HeatingCircuit(Base, TimestampMixin):
     # MQTT device name to send commands to (e.g., "boiler_unit")
     mqtt_device_name: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
-    # Display order on dashboard
+    # Display
+    show_on_dashboard: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     display_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
     # Relationships

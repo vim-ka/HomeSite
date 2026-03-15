@@ -115,6 +115,7 @@ interface HeatingCircuitInfo {
   config_prefix: string | null;
   mqtt_device_name: string | null;
   delta_threshold: number;
+  show_on_dashboard: boolean;
   display_order: number;
 }
 
@@ -934,6 +935,7 @@ function HeatingCircuitModal({
     config_prefix: "",
     mqtt_device_name: "",
     delta_threshold: 5.0,
+    show_on_dashboard: true,
     display_order: 0,
   });
 
@@ -957,6 +959,7 @@ function HeatingCircuitModal({
         config_prefix: editCircuit?.config_prefix ?? "",
         mqtt_device_name: editCircuit?.mqtt_device_name ?? "",
         delta_threshold: editCircuit?.delta_threshold ?? 5.0,
+        show_on_dashboard: editCircuit?.show_on_dashboard ?? true,
         display_order: editCircuit?.display_order ?? 0,
       });
     }
@@ -1064,6 +1067,15 @@ function HeatingCircuitModal({
             />
           </div>
         </div>
+        <label className="flex items-center gap-2 text-sm text-gray-600 mt-3">
+          <input
+            type="checkbox"
+            checked={form.show_on_dashboard}
+            onChange={(e) => setForm({ ...form, show_on_dashboard: e.target.checked })}
+            className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+          />
+          {t("settings.showOnDashboard")}
+        </label>
       </div>
       {mutation.isError && (
         <p className="mt-2 text-xs text-red-600">{t("common.error")}</p>

@@ -235,6 +235,7 @@
     "editActuatorTitle": "Редактировать исполнитель",
     "noActuators": "Нет исполнителей",
     "mqttDeviceName": "Исполнитель",
+    "showOnDashboard": "Показывать на дашборде",
     "deltaThreshold": "Дельта (°C)",
     "addCircuit": "Добавить устройство",
     "addCircuitTitle": "Новое устройство",
