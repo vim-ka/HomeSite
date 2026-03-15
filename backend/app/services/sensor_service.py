@@ -124,18 +124,19 @@ class SensorService:
             return Stats24h()
 
         # Group: timestamp (rounded to minute) → {sensor_id: value}
-        # Sensors report at slightly different times — rounding ensures
-        # supply and return readings are matched in the same time bucket.
-        ts_data: dict[datetime, dict[int, float]] = defaultdict(dict)
+        ts_data: dict[str, dict[int, float]] = defaultdict(dict)
         for row in rows:
             ts = row["timestamp"]
-            bucket = ts.replace(second=0, microsecond=0)
+            if isinstance(ts, datetime):
+                bucket = ts.strftime("%Y-%m-%d %H:%M")
+            else:
+                bucket = str(ts)[:16]  # "2026-03-15 18:35"
             ts_data[bucket][row["sensor_id"]] = row["value"]
 
         # Calculate time span
         timestamps_sorted = sorted(ts_data.keys())
         if len(timestamps_sorted) >= 2:
-            span_hours = (timestamps_sorted[-1] - timestamps_sorted[0]).total_seconds() / 3600
+            span_hours = len(timestamps_sorted) / 60.0
         else:
             span_hours = 24.0
         if span_hours <= 0:

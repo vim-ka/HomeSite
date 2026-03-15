@@ -229,7 +229,27 @@ class SensorRepository:
     async def get_history_for_stats(
         self, sensor_ids: list[int], datatype_id: int, since: datetime
     ) -> list[dict]:
-        """Get history rows for 24h stats calculation."""
+        """Get sampled history rows for 24h stats.
+
+        Takes every Nth row to keep total under ~5000 rows for performance.
+        """
+        # Count total rows first
+        from sqlalchemy import func as sa_func
+
+        count_stmt = (
+            select(sa_func.count())
+            .select_from(SensorDataHistory)
+            .where(
+                SensorDataHistory.datatype_id == datatype_id,
+                SensorDataHistory.timestamp >= since,
+                SensorDataHistory.sensor_id.in_(sensor_ids),
+            )
+        )
+        total = (await self.db.execute(count_stmt)).scalar() or 0
+
+        # Sample: keep ~3000 rows max
+        sample_every = max(1, total // 3000)
+
         stmt = (
             select(
                 SensorDataHistory.sensor_id,
@@ -240,6 +260,7 @@ class SensorRepository:
                 SensorDataHistory.datatype_id == datatype_id,
                 SensorDataHistory.timestamp >= since,
                 SensorDataHistory.sensor_id.in_(sensor_ids),
+                SensorDataHistory.id % sample_every == 0,
             )
         )
         result = await self.db.execute(stmt)
