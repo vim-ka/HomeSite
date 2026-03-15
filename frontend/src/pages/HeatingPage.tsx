@@ -385,7 +385,9 @@ export default function HeatingPage() {
             {dashboard.heating.map((c) => {
               const keys = circuitKeys[c.circuit];
               const pumpOn = keys ? bool(keys.pump) : !!c.pump;
-              const tempSet = keys ? num(keys.temp, String(c.temp_set ?? 0)) : c.temp_set;
+              // If PZA mode is on, use backend-calculated temp_set (from curve)
+              // Otherwise use config_kv value (manual setpoint)
+              const tempSet = c.pza_mode ? c.temp_set : (keys ? num(keys.temp, String(c.temp_set ?? 0)) : c.temp_set);
               return (
                 <div
                   key={c.circuit}
