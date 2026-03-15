@@ -220,7 +220,7 @@ function PZAChart({
             label={{ value: "°C подача", angle: -90, position: "insideLeft", fontSize: 11 }}
           />
           <Tooltip
-            formatter={(v: number) => [`${v}°C`, ""]}
+            formatter={(v: number, name: string) => [`${v}°C`, name]}
             labelFormatter={(v) => `Улица: ${v}°C`}
           />
           {curves.map((_, i) => (
