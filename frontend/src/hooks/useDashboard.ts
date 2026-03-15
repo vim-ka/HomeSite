@@ -51,5 +51,7 @@ export function useDashboard() {
       return data;
     },
     refetchInterval: 30_000,
+    refetchOnMount: "always",
+    staleTime: 0,
   });
 }
