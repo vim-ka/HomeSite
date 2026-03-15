@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 
 export interface ServiceHealth {
   backend: boolean;
@@ -30,48 +30,54 @@ export function useServiceHealth() {
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pollMsRef = useRef(DEFAULT_POLL_MS);
 
-  useEffect(() => {
-    const check = async () => {
-      controllerRef.current?.abort();
-      const controller = new AbortController();
-      controllerRef.current = controller;
+  const check = useCallback(async () => {
+    controllerRef.current?.abort();
+    const controller = new AbortController();
+    controllerRef.current = controller;
 
-      try {
-        const [statusRes, sensorsRes, devicesRes] = await Promise.all([
-          fetch("/health/status", { signal: controller.signal }),
-          fetch("/health/sensors", { signal: controller.signal }),
-          fetch("/health/devices", { signal: controller.signal }),
-        ]);
+    try {
+      const [statusRes, sensorsRes, devicesRes] = await Promise.all([
+        fetch("/health/status", { signal: controller.signal }),
+        fetch("/health/sensors", { signal: controller.signal }),
+        fetch("/health/devices", { signal: controller.signal }),
+      ]);
 
-        if (statusRes.ok) {
-          const data = await statusRes.json();
-          setHealth(data);
+      if (statusRes.ok) {
+        const data = await statusRes.json();
+        setHealth(data);
 
-          const serverPollMs = (data.poll_seconds ?? 30) * 1000;
-          if (serverPollMs !== pollMsRef.current) {
-            pollMsRef.current = serverPollMs;
-            if (intervalRef.current) clearInterval(intervalRef.current);
-            intervalRef.current = setInterval(check, serverPollMs);
-          }
-        } else {
-          setHealth({ backend: true, database: false, gateway: false, mqtt: false });
+        const serverPollMs = (data.poll_seconds ?? 30) * 1000;
+        if (serverPollMs !== pollMsRef.current) {
+          pollMsRef.current = serverPollMs;
+          if (intervalRef.current) clearInterval(intervalRef.current);
+          intervalRef.current = setInterval(check, serverPollMs);
         }
-
-        if (sensorsRes.ok) setSensors(await sensorsRes.json());
-        if (devicesRes.ok) setDevices(await devicesRes.json());
-      } catch (e) {
-        if (e instanceof DOMException && e.name === "AbortError") return;
-        setHealth({ backend: false, database: false, gateway: false, mqtt: false });
+      } else {
+        setHealth({ backend: true, database: false, gateway: false, mqtt: false });
       }
-    };
 
+      if (sensorsRes.ok) setSensors(await sensorsRes.json());
+      if (devicesRes.ok) setDevices(await devicesRes.json());
+    } catch (e) {
+      if (e instanceof DOMException && e.name === "AbortError") return;
+      setHealth({ backend: false, database: false, gateway: false, mqtt: false });
+    }
+  }, []);
+
+  useEffect(() => {
     check();
     intervalRef.current = setInterval(check, pollMsRef.current);
+
+    // Allow other components to trigger immediate refresh
+    const onRefresh = () => check();
+    window.addEventListener("health-refresh", onRefresh);
+
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
       controllerRef.current?.abort();
+      window.removeEventListener("health-refresh", onRefresh);
     };
-  }, []);
+  }, [check]);
 
-  return { health, sensors, devices };
+  return { health, sensors, devices, refresh: check };
 }
