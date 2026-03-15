@@ -2,7 +2,7 @@ import os
 import re
 import shutil
 import subprocess
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
 from app.core.config import get_settings
@@ -50,7 +50,7 @@ class BackupService:
         return BackupResponse(
             filename=filename,
             size_bytes=stat.st_size,
-            created_at=datetime.fromtimestamp(stat.st_mtime),
+            created_at=datetime.fromtimestamp(stat.st_mtime, tz=UTC),
         )
 
     async def list_backups(self) -> list[BackupResponse]:
@@ -66,7 +66,7 @@ class BackupService:
                     BackupResponse(
                         filename=entry.name,
                         size_bytes=stat.st_size,
-                        created_at=datetime.fromtimestamp(stat.st_mtime),
+                        created_at=datetime.fromtimestamp(stat.st_mtime, tz=UTC),
                     )
                 )
         backups.sort(key=lambda b: b.created_at, reverse=True)

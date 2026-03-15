@@ -1,4 +1,5 @@
 import { useTranslation } from "react-i18next";
+import TimeInput from "@/components/TimeInput";
 import { useQuery } from "@tanstack/react-query";
 import {
   LineChart,
@@ -71,7 +72,7 @@ function Toggle({
         disabled
           ? "cursor-not-allowed opacity-50"
           : "cursor-pointer"
-      } ${value ? "bg-green-500" : "bg-gray-300"}`}
+      } ${value ? "bg-green-500" : "bg-gray-300 dark:bg-gray-600"}`}
     >
       <span
         className={`absolute text-[10px] font-semibold text-white transition-opacity ${
@@ -81,7 +82,7 @@ function Toggle({
         {on}
       </span>
       <span
-        className={`absolute text-[10px] font-semibold text-gray-600 transition-opacity ${
+        className={`absolute text-[10px] font-semibold text-gray-500 dark:text-gray-200 transition-opacity ${
           value ? "right-2 opacity-0" : "right-2 opacity-100"
         }`}
       >
@@ -146,42 +147,6 @@ function TempSlider({
         {formatValue ? formatValue(value) : value}
         {unit ?? "°C"}
       </span>
-    </div>
-  );
-}
-
-function TimeWheel({ value, options, onChange }: { value: number; options: number[]; onChange: (v: number) => void }) {
-  const idx = options.indexOf(value);
-  const prev = () => onChange(options[(idx - 1 + options.length) % options.length]!);
-  const next = () => onChange(options[(idx + 1) % options.length]!);
-  return (
-    <div className="flex flex-col items-center leading-none">
-      <button onClick={prev} className="text-gray-400 hover:text-gray-600 text-[10px]">▲</button>
-      <span className="text-base font-semibold text-gray-800 tabular-nums w-7 text-center">
-        {String(value).padStart(2, "0")}
-      </span>
-      <button onClick={next} className="text-gray-400 hover:text-gray-600 text-[10px]">▼</button>
-    </div>
-  );
-}
-
-function TimeInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  const [h, m] = value.split(":").map(Number);
-  const hours = Array.from({ length: 24 }, (_, i) => i);
-  const minutes = [0, 15, 30, 45];
-  return (
-    <div className="inline-flex items-center gap-0 rounded-lg border border-gray-200 bg-white px-2 py-0.5">
-      <TimeWheel
-        value={h ?? 0}
-        options={hours}
-        onChange={(v) => onChange(`${String(v).padStart(2, "0")}:${String(m ?? 0).padStart(2, "0")}`)}
-      />
-      <span className="text-gray-400 font-bold text-base mx-0.5">:</span>
-      <TimeWheel
-        value={m ?? 0}
-        options={minutes}
-        onChange={(v) => onChange(`${String(h ?? 0).padStart(2, "0")}:${String(v).padStart(2, "0")}`)}
-      />
     </div>
   );
 }
@@ -530,7 +495,6 @@ export default function HeatingPage() {
                   min={40}
                   max={70}
                   onChange={(v) => set("watersupply_ihb_temp", v)}
-                  disabled={bool("watersupply_ihb_automode")}
                 />
               </SettingRow>
             </div>

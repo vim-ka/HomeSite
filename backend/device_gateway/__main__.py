@@ -32,6 +32,19 @@ async def main() -> None:
     setup_logging(settings.log_level)
     logger = structlog.get_logger("device_gateway")
 
+    # Override MQTT settings from config_kv (single source of truth)
+    from device_gateway.config_db import load_mqtt_from_db
+
+    db_mqtt = await load_mqtt_from_db(settings.database_url)
+    if db_mqtt.get("mqtt_host"):
+        settings.mqtt_broker_host = db_mqtt["mqtt_host"]
+        settings.mqtt_broker_port = int(db_mqtt.get("mqtt_port", settings.mqtt_broker_port))
+        settings.mqtt_username = db_mqtt.get("mqtt_user", "")
+        settings.mqtt_password = db_mqtt.get("mqtt_pass", "")
+        if db_mqtt.get("mqtt_topic_prefix"):
+            settings.mqtt_topic_prefix = db_mqtt["mqtt_topic_prefix"]
+        logger.info("mqtt_config_loaded_from_db")
+
     # Database session factory (shares models with backend)
     from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
@@ -50,6 +63,8 @@ async def main() -> None:
     api_app = create_gateway_api(
         dispatcher=dispatcher,
         mqtt_connected_fn=lambda: handler.is_connected,
+        handler=handler,
+        publisher=publisher,
         settings=settings,
     )
 

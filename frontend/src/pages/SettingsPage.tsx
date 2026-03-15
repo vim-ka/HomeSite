@@ -1,10 +1,14 @@
 import { useState, useEffect, useCallback, type ReactNode } from "react";
+import { useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Radio, Users, Database, Download, X, MapPin, Cpu, Waypoints, Radar, Flame } from "lucide-react";
+import { Radio, Users, Database, Download, X, MapPin, Cpu, Waypoints, Radar, Wrench, CircuitBoard } from "lucide-react";
 import api from "@/api/client";
 import { useAuthStore } from "@/stores/authStore";
+import { useThemeStore } from "@/stores/themeStore";
 import CollapsibleSection from "@/components/CollapsibleSection";
+import TimeInput from "@/components/TimeInput";
+import TipLabel from "@/components/TipLabel";
 
 // ---- Types ----
 
@@ -55,6 +59,7 @@ interface SensorDetail {
   place_name: string;
   system_name: string;
   datatype_ids: number[];
+  last_reading: string | null;
 }
 
 interface SensorDataTypeInfo {
@@ -107,8 +112,17 @@ interface HeatingCircuitInfo {
   return_mount_point_name: string | null;
   config_temp_key: string | null;
   config_pump_key: string | null;
+  config_prefix: string | null;
+  mqtt_device_name: string | null;
   delta_threshold: number;
   display_order: number;
+}
+
+interface ActuatorInfo {
+  id: number;
+  name: string;
+  mqtt_device_name: string;
+  description: string | null;
 }
 
 // ---- Modal backdrop ----
@@ -876,6 +890,27 @@ function MountPointModal({
   );
 }
 
+// ---- ActuatorSelect (dropdown for mqtt_device_name) ----
+
+function ActuatorSelect({ value, onChange, className }: { value: string; onChange: (v: string) => void; className?: string }) {
+  const { data: list } = useQuery<ActuatorInfo[]>({
+    queryKey: ["catalog-actuators"],
+    queryFn: async () => {
+      const { data } = await api.get("/catalog/actuators");
+      return data;
+    },
+  });
+  return (
+    <select value={value} onChange={(e) => onChange(e.target.value)} className={className}>
+      <option value="">—</option>
+      {list?.map((a) => (
+        <option key={a.id} value={a.mqtt_device_name}>{a.name} ({a.mqtt_device_name})</option>
+      ))}
+    </select>
+  );
+}
+
+
 // ---- HeatingCircuitModal (add/edit) ----
 
 function HeatingCircuitModal({
@@ -896,6 +931,8 @@ function HeatingCircuitModal({
     return_mount_point_id: null as number | null,
     config_temp_key: "",
     config_pump_key: "",
+    config_prefix: "",
+    mqtt_device_name: "",
     delta_threshold: 5.0,
     display_order: 0,
   });
@@ -917,6 +954,8 @@ function HeatingCircuitModal({
         return_mount_point_id: editCircuit?.return_mount_point_id ?? null,
         config_temp_key: editCircuit?.config_temp_key ?? "",
         config_pump_key: editCircuit?.config_pump_key ?? "",
+        config_prefix: editCircuit?.config_prefix ?? "",
+        mqtt_device_name: editCircuit?.mqtt_device_name ?? "",
         delta_threshold: editCircuit?.delta_threshold ?? 5.0,
         display_order: editCircuit?.display_order ?? 0,
       });
@@ -931,6 +970,8 @@ function HeatingCircuitModal({
         return_mount_point_id: form.return_mount_point_id || null,
         config_temp_key: form.config_temp_key || null,
         config_pump_key: form.config_pump_key || null,
+        config_prefix: form.config_prefix || null,
+        mqtt_device_name: form.mqtt_device_name || null,
       };
       if (editCircuit) {
         await api.put(`/catalog/heating-circuits/${editCircuit.id}`, payload);
@@ -988,6 +1029,22 @@ function HeatingCircuitModal({
         )}
         <div className="grid grid-cols-2 gap-3">
           <div>
+            <TipLabel text={t("settings.configPrefix")} tip={t("settings.tips.configPrefix")} className="block text-sm text-gray-600 mb-1" />
+            <input
+              type="text"
+              value={form.config_prefix}
+              onChange={(e) => setForm({ ...form, config_prefix: e.target.value })}
+              className={inputCls}
+              placeholder="heating_boiler"
+            />
+          </div>
+          <div>
+            <TipLabel text={t("settings.mqttDeviceName")} tip={t("settings.tips.mqttDeviceName")} className="block text-sm text-gray-600 mb-1" />
+            <ActuatorSelect value={form.mqtt_device_name} onChange={(v) => setForm({ ...form, mqtt_device_name: v })} className={inputCls} />
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
             <label className="block text-sm text-gray-600 mb-1">{t("settings.displayOrder")}</label>
             <input
               type="number"
@@ -1040,11 +1097,73 @@ function fmtBytes(bytes: number): string {
 
 // ---- Main page ----
 
+
+// ---- ActuatorModal (add/edit) ----
+
+function ActuatorModal({
+  open, onClose, onSaved, editActuator,
+}: {
+  open: boolean; onClose: () => void; onSaved: () => void;
+  editActuator: ActuatorInfo | null;
+}) {
+  const { t } = useTranslation();
+  const [form, setForm] = useState({ name: "", mqtt_device_name: "", description: "" });
+
+  useEffect(() => {
+    if (open) {
+      setForm(editActuator
+        ? { name: editActuator.name, mqtt_device_name: editActuator.mqtt_device_name, description: editActuator.description ?? "" }
+        : { name: "", mqtt_device_name: "", description: "" });
+    }
+  }, [open, editActuator]);
+
+  const mutation = useMutation({
+    mutationFn: async () => {
+      if (editActuator) {
+        await api.put(`/catalog/actuators/${editActuator.id}`, form);
+      } else {
+        await api.post("/catalog/actuators", form);
+      }
+    },
+    onSuccess: () => { onSaved(); onClose(); },
+  });
+
+  const inputCls = "w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:outline-none";
+
+  return (
+    <Modal open={open} onClose={onClose}>
+      <h3 className="mb-4 text-lg font-semibold text-gray-800">
+        {editActuator ? t("settings.editActuatorTitle") : t("settings.addActuatorTitle")}
+      </h3>
+      <div className="space-y-3">
+        <div>
+          <label className="block text-sm text-gray-600 mb-1">{t("settings.actuatorName")}</label>
+          <input type="text" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className={inputCls} placeholder="Контроллер котельной" />
+        </div>
+        <div>
+          <label className="block text-sm text-gray-600 mb-1">{t("settings.actuatorMqttName")}</label>
+          <input type="text" value={form.mqtt_device_name} onChange={(e) => setForm({ ...form, mqtt_device_name: e.target.value })} className={`${inputCls} font-mono`} placeholder="boiler_unit" />
+        </div>
+        <div>
+          <label className="block text-sm text-gray-600 mb-1">{t("settings.actuatorDescription")}</label>
+          <input type="text" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className={inputCls} />
+        </div>
+      </div>
+      <div className="mt-5 flex justify-end gap-3">
+        <button onClick={() => mutation.mutate()} disabled={mutation.isPending || !form.name.trim() || !form.mqtt_device_name.trim()} className="px-4 py-2 bg-primary-600 text-white text-sm rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors">{t("common.save")}</button>
+        <button onClick={onClose} className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800">{t("common.cancel")}</button>
+      </div>
+    </Modal>
+  );
+}
+
+
 export default function SettingsPage() {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const currentUser = useAuthStore((s) => s.user);
   const isAdmin = currentUser?.role === "admin";
+  const themeStore = useThemeStore();
 
   // ---- MQTT ----
 
@@ -1060,13 +1179,18 @@ export default function SettingsPage() {
   const [mqttForm, setMqttForm] = useState<MqttSettings | null>(null);
   const mqttData = mqttForm ?? mqtt ?? { host: "", port: "1883", user: "", password: "" };
 
+  const [mqttGatewayStatus, setMqttGatewayStatus] = useState<"reloaded" | "failed" | null>(null);
+
   const mqttMutation = useMutation({
     mutationFn: async (data: MqttSettings) => {
-      await api.put("/settings/mqtt", data);
+      const { data: result } = await api.put("/settings/mqtt", data);
+      return result;
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["mqtt-settings"] });
       setMqttForm(null);
+      setMqttGatewayStatus(result?.gateway_reloaded ? "reloaded" : "failed");
+      setTimeout(() => setMqttGatewayStatus(null), 5000);
     },
   });
 
@@ -1105,23 +1229,31 @@ export default function SettingsPage() {
   });
 
   const [dbType, setDbType] = useState<"sqlite" | "postgresql">("sqlite");
+  const [sqlitePath, setSqlitePath] = useState("./sensors.db");
   const [pgForm, setPgForm] = useState({ host: "", port: "5432", dbname: "", user: "", password: "" });
 
   useEffect(() => {
-    if (dbInfo) setDbType(dbInfo.type);
+    if (dbInfo) {
+      setDbType(dbInfo.type);
+      if (dbInfo.type === "sqlite") {
+        // Extract path from URL like "sqlite+aiosqlite:///./sensors.db"
+        const match = dbInfo.url.match(/sqlite.*:\/\/\/(.+)/);
+        if (match?.[1]) setSqlitePath(match[1]);
+      }
+    }
   }, [dbInfo]);
 
   const dbMutation = useMutation({
     mutationFn: async () => {
       await api.put("/settings/database", {
         type: dbType,
-        ...(dbType === "postgresql" ? {
+        ...(dbType === "sqlite" ? { path: sqlitePath } : {
           host: pgForm.host,
           port: parseInt(pgForm.port, 10),
           dbname: pgForm.dbname,
           user: pgForm.user,
           password: pgForm.password,
-        } : {}),
+        }),
       });
     },
     onSuccess: () => {
@@ -1342,7 +1474,109 @@ export default function SettingsPage() {
   const [circuitModalOpen, setCircuitModalOpen] = useState(false);
   const [editCircuit, setEditCircuit] = useState<HeatingCircuitInfo | null>(null);
 
+  // ---- Actuators ----
+
+  const { data: actuators } = useQuery<ActuatorInfo[]>({
+    queryKey: ["catalog-actuators"],
+    queryFn: async () => {
+      const { data } = await api.get("/catalog/actuators");
+      return data;
+    },
+    enabled: isAdmin,
+  });
+
+  const deleteActuatorMutation = useMutation({
+    mutationFn: async (id: number) => {
+      await api.delete(`/catalog/actuators/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["catalog-actuators"] });
+    },
+  });
+
+  const [actuatorModalOpen, setActuatorModalOpen] = useState(false);
+  const [editActuator, setEditActuator] = useState<ActuatorInfo | null>(null);
+
+  // ---- System tuning ----
+
+  interface SettingKV { key: string; value: string }
+
+  const { data: allKv } = useQuery<SettingKV[]>({
+    queryKey: ["all-settings"],
+    queryFn: async () => {
+      const { data } = await api.get("/settings");
+      return data;
+    },
+    enabled: isAdmin,
+  });
+
+  const systemKeys = [
+    "access_token_expire_minutes",
+    "refresh_token_expire_days",
+    "sensor_stale_minutes",
+    "health_poll_seconds",
+    "gateway_timeout_seconds",
+    "chart_history_days",
+    "frontend_poll_seconds",
+    "mqtt_topic_prefix",
+    "log_level",
+    "device_gateway_url",
+  ] as const;
+
+  const systemDefaults: Record<string, string> = {
+    access_token_expire_minutes: "30",
+    refresh_token_expire_days: "7",
+    sensor_stale_minutes: "5",
+    health_poll_seconds: "30",
+    gateway_timeout_seconds: "5",
+    chart_history_days: "100",
+    frontend_poll_seconds: "30",
+    mqtt_topic_prefix: "home/devices/",
+    log_level: "INFO",
+    device_gateway_url: "http://localhost:8001",
+  };
+
+  const kvMap = Object.fromEntries((allKv ?? []).map((s) => [s.key, s.value]));
+  const [systemForm, setSystemForm] = useState<Record<string, string> | null>(null);
+
+  useEffect(() => {
+    if (allKv && !systemForm) {
+      const init: Record<string, string> = {};
+      for (const k of systemKeys) {
+        init[k] = kvMap[k] ?? systemDefaults[k] ?? "";
+      }
+      setSystemForm(init);
+    }
+  }, [allKv]);
+
+  const systemData = systemForm ?? Object.fromEntries(systemKeys.map((k) => [k, kvMap[k] ?? systemDefaults[k] ?? ""]));
+
+  const systemMutation = useMutation({
+    mutationFn: async (data: Record<string, string>) => {
+      await api.put("/settings", { settings: data });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["all-settings"] });
+    },
+  });
+
+  // ---- Sensor activity helper ----
+
+  const staleMinutes = parseInt(kvMap["sensor_stale_minutes"] ?? "5", 10) || 5;
+  const STALE_MS = staleMinutes * 60 * 1000;
+  const isSensorActive = (s: SensorDetail) => {
+    if (!s.last_reading) return false;
+    // Backend stores UTC but may omit 'Z' suffix — append if missing
+    const ts = s.last_reading.endsWith("Z") ? s.last_reading : s.last_reading + "Z";
+    return Date.now() - new Date(ts).getTime() < STALE_MS;
+  };
+  const activeSensorCount = sensors?.filter(isSensorActive).length ?? 0;
+  const totalSensorCount = sensors?.length ?? 0;
+
   // ---- Input helper ----
+
+  const location = useLocation();
+  const hash = location.hash.replace("#", "");
 
   const inputCls =
     "w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:outline-none";
@@ -1356,204 +1590,14 @@ export default function SettingsPage() {
         <p className="text-sm text-gray-500">{t("settings.adminOnly")}</p>
       )}
 
-      {/* ---- MQTT + Users side by side ---- */}
-      {isAdmin && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* MQTT Broker */}
-          <CollapsibleSection title={t("settings.mqtt")} icon={Radio}>
-            <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className={labelCls}>{t("settings.mqttHost")}</label>
-                  <input
-                    type="text"
-                    value={mqttData.host}
-                    onChange={(e) => setMqttForm({ ...mqttData, host: e.target.value })}
-                    className={inputCls}
-                  />
-                </div>
-                <div>
-                  <label className={labelCls}>{t("settings.mqttPort")}</label>
-                  <input
-                    type="text"
-                    value={mqttData.port}
-                    onChange={(e) => setMqttForm({ ...mqttData, port: e.target.value })}
-                    className={inputCls}
-                  />
-                </div>
-                <div>
-                  <label className={labelCls}>{t("settings.mqttUser")}</label>
-                  <input
-                    type="text"
-                    value={mqttData.user}
-                    onChange={(e) => setMqttForm({ ...mqttData, user: e.target.value })}
-                    className={inputCls}
-                  />
-                </div>
-                <div>
-                  <label className={labelCls}>{t("settings.mqttPass")}</label>
-                  <input
-                    type="password"
-                    value={mqttData.password}
-                    onChange={(e) => setMqttForm({ ...mqttData, password: e.target.value })}
-                    className={inputCls}
-                  />
-                </div>
-              </div>
-              <button
-                onClick={() => mqttMutation.mutate(mqttData)}
-                disabled={mqttMutation.isPending}
-                className="mt-4 px-4 py-2 bg-primary-600 text-white text-sm rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors"
-              >
-                {mqttMutation.isSuccess ? t("settings.saved") : t("settings.save")}
-              </button>
-            </div>
-          </CollapsibleSection>
-
-          {/* Users */}
-          <CollapsibleSection title={t("settings.users")} icon={Users}>
-            <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-              {users && users.length > 0 && (
-                <div className="overflow-x-auto mb-4">
-                  <table className="w-full text-sm">
-                    <thead className="bg-gray-50 text-gray-600">
-                      <tr>
-                        <th className="px-3 py-2 text-left">{t("settings.user")}</th>
-                        <th className="px-3 py-2 text-left">Email</th>
-                        <th className="px-3 py-2 text-left">{t("settings.role")}</th>
-                        <th className="px-3 py-2 text-center">{t("settings.actions")}</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100">
-                      {users.map((u) => (
-                        <tr key={u.id} className="hover:bg-gray-50">
-                          <td className="px-3 py-2 font-medium">{u.username}</td>
-                          <td className="px-3 py-2 text-gray-600">{u.email}</td>
-                          <td className="px-3 py-2">
-                            <span className="px-2 py-0.5 rounded text-xs bg-primary-100 text-primary-700">
-                              {u.role}
-                            </span>
-                          </td>
-                          <td className="px-3 py-2 text-center space-x-2">
-                            <button
-                              onClick={() => setPwdModal({ userId: u.id, username: u.username })}
-                              className="text-primary-600 hover:text-primary-800 text-xs"
-                            >
-                              {t("settings.changePassword")}
-                            </button>
-                            {u.username !== "admin" && (
-                              <button
-                                onClick={() => deleteUserMutation.mutate(u.id)}
-                                className="text-red-600 hover:text-red-800 text-xs"
-                              >
-                                {t("settings.deleteUser")}
-                              </button>
-                            )}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-
-              <button
-                onClick={() => setAddUserOpen(true)}
-                className="px-4 py-2 bg-primary-600 text-white text-sm rounded-lg hover:bg-primary-700 transition-colors"
-              >
-                {t("settings.addUser")}
-              </button>
-            </div>
-
-            <AddUserModal
-            open={addUserOpen}
-            onClose={() => setAddUserOpen(false)}
-            onCreated={() => queryClient.invalidateQueries({ queryKey: ["users"] })}
-          />
-
-          {pwdModal && (
-            <ChangePasswordModal
-              open={true}
-              onClose={() => setPwdModal(null)}
-              userId={pwdModal.userId}
-              username={pwdModal.username}
-            />
-          )}
-        </CollapsibleSection>
-        </div>
-      )}
-
-      {/* ---- Places + Sensors side by side ---- */}
-      {isAdmin && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Places */}
-          <CollapsibleSection title={t("settings.rooms")} icon={MapPin}>
-            <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-              {places && places.length > 0 ? (
-                <div className="overflow-x-auto mb-4">
-                  <table className="w-full text-sm">
-                    <thead className="bg-gray-50 text-gray-600">
-                      <tr>
-                        <th className="px-3 py-2 text-left">{t("settings.roomName")}</th>
-                        <th className="px-3 py-2 text-center">{t("settings.actions")}</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100">
-                      {places.map((p) => (
-                        <tr key={p.id} className="hover:bg-gray-50">
-                          <td className="px-3 py-2 font-medium">{p.name}</td>
-                          <td className="px-3 py-2 text-center space-x-2">
-                            <button
-                              onClick={() => { setEditPlace(p); setPlaceModalOpen(true); }}
-                              className="text-primary-600 hover:text-primary-800 text-xs"
-                            >
-                              {t("settings.editRoom")}
-                            </button>
-                            <button
-                              onClick={() => {
-                                if (window.confirm(t("settings.deleteConfirm"))) {
-                                  deletePlaceMutation.mutate(p.id);
-                                }
-                              }}
-                              className="text-red-600 hover:text-red-800 text-xs"
-                            >
-                              {t("settings.deleteRoom")}
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              ) : (
-                <p className="mb-4 text-sm text-gray-400">{t("settings.noRooms")}</p>
-              )}
-
-              {deletePlaceMutation.isError && (
-                <p className="mb-2 text-xs text-red-600">{t("settings.conflictError")}</p>
-              )}
-
-              <button
-                onClick={() => { setEditPlace(null); setPlaceModalOpen(true); }}
-                className="px-4 py-2 bg-primary-600 text-white text-sm rounded-lg hover:bg-primary-700 transition-colors"
-              >
-                {t("settings.addRoom")}
-              </button>
-            </div>
-
-            <PlaceModal
-              open={placeModalOpen}
-              onClose={() => setPlaceModalOpen(false)}
-              onSaved={() => queryClient.invalidateQueries({ queryKey: ["catalog-places"] })}
-              editPlace={editPlace}
-            />
-          </CollapsibleSection>
-
-          {/* Pending Sensors (auto-discovery) */}
-          {pendingSensors && pendingSensors.length > 0 && (
+      {/* ======== 1. EQUIPMENT ======== */}
+      {/* Pending Sensors — standalone, only shown when there are new devices */}
+      {isAdmin && pendingSensors && pendingSensors.length > 0 && (
             <CollapsibleSection
               title={`${t("settings.pendingSensors")} (${pendingSensors.length})`}
               icon={Radar}
+              id="pending-sensors"
+              forceOpen={hash === "pending-sensors"}
             >
               <div className="rounded-xl border border-amber-200 bg-amber-50 p-5 shadow-sm">
                 <p className="text-xs text-amber-700 mb-3">{t("settings.pendingSensorsHint")}</p>
@@ -1598,10 +1642,13 @@ export default function SettingsPage() {
                 pending={acceptTarget}
               />
             </CollapsibleSection>
-          )}
+      )}
 
+      {/* Sensors + Sensor Types side by side */}
+      {isAdmin && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Sensors */}
-          <CollapsibleSection title={t("settings.sensors")} icon={Cpu}>
+          <CollapsibleSection title={`${t("settings.sensors")} (${activeSensorCount}/${totalSensorCount})`} icon={Cpu} id="sensors" forceOpen={hash === "sensors"}>
             <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
               {sensors && sensors.length > 0 ? (
                 <div className="overflow-x-auto mb-4">
@@ -1617,7 +1664,12 @@ export default function SettingsPage() {
                     <tbody className="divide-y divide-gray-100">
                       {sensors.map((s) => (
                         <tr key={s.id} className="hover:bg-gray-50">
-                          <td className="px-3 py-2 font-medium">{s.name}</td>
+                          <td className="px-3 py-2 font-medium">
+                            <span className="flex items-center gap-2">
+                              <span className={`inline-block h-2 w-2 rounded-full ${isSensorActive(s) ? "bg-emerald-500" : "bg-red-500"}`} />
+                              {s.name}
+                            </span>
+                          </td>
                           <td className="px-3 py-2 text-gray-600">{s.sensor_type_name}</td>
                           <td className="px-3 py-2 text-gray-600">{s.mount_point_name}</td>
                           <td className="px-3 py-2 text-center space-x-2">
@@ -1666,13 +1718,9 @@ export default function SettingsPage() {
               editSensor={editSensor}
             />
           </CollapsibleSection>
-        </div>
-      )}
 
-      {/* ---- Sensor Types + Heating Circuits side by side ---- */}
-      {isAdmin && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-          <CollapsibleSection title={t("settings.sensorTypes")} icon={Cpu}>
+          {/* Sensor Types */}
+          <CollapsibleSection title={t("settings.sensorTypes")} icon={Cpu} id="sensor-types" forceOpen={hash === "sensor-types"}>
             <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
               {sensorTypes && sensorTypes.length > 0 ? (
                 <div className="overflow-x-auto mb-4">
@@ -1753,8 +1801,77 @@ export default function SettingsPage() {
               </div>
             </div>
           </CollapsibleSection>
+        </div>
+      )}
 
-          <CollapsibleSection title={t("settings.heatingCircuits")} icon={Flame}>
+      {/* ======== 4. TOPOLOGY: Rooms + Heating Circuits / Mount Points ======== */}
+      {isAdmin && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Rooms */}
+          <CollapsibleSection title={t("settings.rooms")} icon={MapPin} id="rooms" forceOpen={hash === "rooms"}>
+            <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+              {places && places.length > 0 ? (
+                <div className="overflow-x-auto mb-4">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-50 text-gray-600">
+                      <tr>
+                        <th className="px-3 py-2 text-left">{t("settings.roomName")}</th>
+                        <th className="px-3 py-2 text-center">{t("settings.actions")}</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {places.map((p) => (
+                        <tr key={p.id} className="hover:bg-gray-50">
+                          <td className="px-3 py-2 font-medium">{p.name}</td>
+                          <td className="px-3 py-2 text-center space-x-2">
+                            <button
+                              onClick={() => { setEditPlace(p); setPlaceModalOpen(true); }}
+                              className="text-primary-600 hover:text-primary-800 text-xs"
+                            >
+                              {t("settings.editRoom")}
+                            </button>
+                            <button
+                              onClick={() => {
+                                if (window.confirm(t("settings.deleteConfirm"))) {
+                                  deletePlaceMutation.mutate(p.id);
+                                }
+                              }}
+                              className="text-red-600 hover:text-red-800 text-xs"
+                            >
+                              {t("settings.deleteRoom")}
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <p className="mb-4 text-sm text-gray-400">{t("settings.noRooms")}</p>
+              )}
+
+              {deletePlaceMutation.isError && (
+                <p className="mb-2 text-xs text-red-600">{t("settings.conflictError")}</p>
+              )}
+
+              <button
+                onClick={() => { setEditPlace(null); setPlaceModalOpen(true); }}
+                className="px-4 py-2 bg-primary-600 text-white text-sm rounded-lg hover:bg-primary-700 transition-colors"
+              >
+                {t("settings.addRoom")}
+              </button>
+            </div>
+
+            <PlaceModal
+              open={placeModalOpen}
+              onClose={() => setPlaceModalOpen(false)}
+              onSaved={() => queryClient.invalidateQueries({ queryKey: ["catalog-places"] })}
+              editPlace={editPlace}
+            />
+          </CollapsibleSection>
+
+          {/* Heating Circuits */}
+          <CollapsibleSection title={t("settings.heatingCircuits")} icon={CircuitBoard} id="heating-circuits" forceOpen={hash === "heating-circuits"}>
             <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
               {heatingCircuits && heatingCircuits.length > 0 ? (
                 <div className="overflow-x-auto mb-4">
@@ -1818,9 +1935,74 @@ export default function SettingsPage() {
         </div>
       )}
 
-      {/* ---- Mount Points ---- */}
+      {/* Actuators */}
       {isAdmin && (
-        <CollapsibleSection title={t("settings.mountPoints")} icon={Waypoints}>
+        <CollapsibleSection title={t("settings.actuators")} icon={CircuitBoard} id="actuators" forceOpen={hash === "actuators"}>
+          <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+            {actuators && actuators.length > 0 ? (
+              <div className="overflow-x-auto mb-4">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 text-gray-600">
+                    <tr>
+                      <th className="px-3 py-2 text-left">{t("settings.actuatorName")}</th>
+                      <th className="px-3 py-2 text-left">{t("settings.actuatorMqttName")}</th>
+                      <th className="px-3 py-2 text-left">{t("settings.actuatorDescription")}</th>
+                      <th className="px-3 py-2 text-center">{t("settings.actions")}</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {actuators.map((a) => (
+                      <tr key={a.id} className="hover:bg-gray-50">
+                        <td className="px-3 py-2 font-medium">{a.name}</td>
+                        <td className="px-3 py-2 font-mono text-xs">{a.mqtt_device_name}</td>
+                        <td className="px-3 py-2 text-gray-600 text-xs">{a.description ?? "—"}</td>
+                        <td className="px-3 py-2 text-center space-x-2">
+                          <button
+                            onClick={() => { setEditActuator(a); setActuatorModalOpen(true); }}
+                            className="text-primary-600 hover:text-primary-800 text-xs"
+                          >
+                            {t("settings.editRoom")}
+                          </button>
+                          <button
+                            onClick={() => {
+                              if (window.confirm(t("settings.deleteConfirm"))) {
+                                deleteActuatorMutation.mutate(a.id);
+                              }
+                            }}
+                            className="text-red-600 hover:text-red-800 text-xs"
+                          >
+                            {t("settings.deleteUser")}
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="mb-4 text-sm text-gray-400">{t("settings.noActuators")}</p>
+            )}
+
+            <button
+              onClick={() => { setEditActuator(null); setActuatorModalOpen(true); }}
+              className="px-4 py-2 bg-primary-600 text-white text-sm rounded-lg hover:bg-primary-700 transition-colors"
+            >
+              {t("settings.addActuator")}
+            </button>
+          </div>
+
+          <ActuatorModal
+            open={actuatorModalOpen}
+            onClose={() => setActuatorModalOpen(false)}
+            onSaved={() => queryClient.invalidateQueries({ queryKey: ["catalog-actuators"] })}
+            editActuator={editActuator}
+          />
+        </CollapsibleSection>
+      )}
+
+      {/* Mount Points (full width — wide table) */}
+      {isAdmin && (
+        <CollapsibleSection title={t("settings.mountPoints")} icon={Waypoints} id="mount-points" forceOpen={hash === "mount-points"}>
           <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
             {mountPoints && mountPoints.length > 0 ? (
               <div className="overflow-x-auto mb-4">
@@ -1893,9 +2075,166 @@ export default function SettingsPage() {
         </CollapsibleSection>
       )}
 
-      {/* ---- Database ---- */}
+      {/* ======== 5. SYSTEM: Users + System Tuning ======== */}
       {isAdmin && (
-        <CollapsibleSection title={t("settings.database")} icon={Database}>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Users */}
+          <CollapsibleSection title={t("settings.users")} icon={Users} id="users" forceOpen={hash === "users"}>
+            <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+              {users && users.length > 0 && (
+                <div className="overflow-x-auto mb-4">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-50 text-gray-600">
+                      <tr>
+                        <th className="px-3 py-2 text-left">{t("settings.user")}</th>
+                        <th className="px-3 py-2 text-left">Email</th>
+                        <th className="px-3 py-2 text-left">{t("settings.role")}</th>
+                        <th className="px-3 py-2 text-center">{t("settings.actions")}</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {users.map((u) => (
+                        <tr key={u.id} className="hover:bg-gray-50">
+                          <td className="px-3 py-2 font-medium">{u.username}</td>
+                          <td className="px-3 py-2 text-gray-600">{u.email}</td>
+                          <td className="px-3 py-2">
+                            <span className="px-2 py-0.5 rounded text-xs bg-primary-100 text-primary-700">
+                              {u.role}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2 text-center space-x-2">
+                            <button
+                              onClick={() => setPwdModal({ userId: u.id, username: u.username })}
+                              className="text-primary-600 hover:text-primary-800 text-xs"
+                            >
+                              {t("settings.changePassword")}
+                            </button>
+                            {u.username !== "admin" && (
+                              <button
+                                onClick={() => deleteUserMutation.mutate(u.id)}
+                                className="text-red-600 hover:text-red-800 text-xs"
+                              >
+                                {t("settings.deleteUser")}
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              <button
+                onClick={() => setAddUserOpen(true)}
+                className="px-4 py-2 bg-primary-600 text-white text-sm rounded-lg hover:bg-primary-700 transition-colors"
+              >
+                {t("settings.addUser")}
+              </button>
+            </div>
+
+            <AddUserModal
+              open={addUserOpen}
+              onClose={() => setAddUserOpen(false)}
+              onCreated={() => queryClient.invalidateQueries({ queryKey: ["users"] })}
+            />
+
+            {pwdModal && (
+              <ChangePasswordModal
+                open={true}
+                onClose={() => setPwdModal(null)}
+                userId={pwdModal.userId}
+                username={pwdModal.username}
+              />
+            )}
+          </CollapsibleSection>
+
+          {/* System Tuning */}
+          <CollapsibleSection title={t("settings.system")} icon={Wrench} id="system" forceOpen={hash === "system"}>
+            <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+              <div className="space-y-4">
+                <div>
+                  <label className={labelCls}>{t("settings.theme")}</label>
+                  <div className="flex gap-2">
+                    {(["light", "dark", "system"] as const).map((v) => (
+                      <button
+                        key={v}
+                        onClick={() => themeStore.setTheme(v)}
+                        className={`px-3 py-1.5 text-sm rounded-lg border transition-colors ${
+                          themeStore.theme === v
+                            ? "bg-primary-600 text-white border-primary-600"
+                            : "border-gray-200 text-gray-600 hover:bg-gray-100"
+                        }`}
+                      >
+                        {t(`settings.theme${v.charAt(0).toUpperCase() + v.slice(1)}`)}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <TipLabel text={t("settings.tokenExpireMinutes")} tip={t("settings.tips.tokenExpireMinutes")} className={labelCls} />
+                  <input
+                    type="number"
+                    value={systemData.access_token_expire_minutes}
+                    onChange={(e) => setSystemForm({ ...systemData, access_token_expire_minutes: e.target.value })}
+                    className={inputCls}
+                  />
+                </div>
+                <div>
+                  <TipLabel text={t("settings.refreshExpireDays")} tip={t("settings.tips.refreshExpireDays")} className={labelCls} />
+                  <input
+                    type="number"
+                    value={systemData.refresh_token_expire_days}
+                    onChange={(e) => setSystemForm({ ...systemData, refresh_token_expire_days: e.target.value })}
+                    className={inputCls}
+                  />
+                </div>
+                <div>
+                  <TipLabel text={t("settings.sensorStaleMinutes")} tip={t("settings.tips.sensorStaleMinutes")} className={labelCls} />
+                  <input
+                    type="number"
+                    value={systemData.sensor_stale_minutes}
+                    onChange={(e) => setSystemForm({ ...systemData, sensor_stale_minutes: e.target.value })}
+                    className={inputCls}
+                  />
+                </div>
+                <div>
+                  <TipLabel text={t("settings.healthPollSeconds")} tip={t("settings.tips.healthPollSeconds")} className={labelCls} />
+                  <input
+                    type="number"
+                    value={systemData.health_poll_seconds}
+                    onChange={(e) => setSystemForm({ ...systemData, health_poll_seconds: e.target.value })}
+                    className={inputCls}
+                  />
+                </div>
+                <div>
+                  <TipLabel text={t("settings.chartHistoryDays")} tip={t("settings.tips.chartHistoryDays")} className={labelCls} />
+                  <input
+                    type="number"
+                    value={systemData.chart_history_days}
+                    onChange={(e) => setSystemForm({ ...systemData, chart_history_days: e.target.value })}
+                    className={inputCls}
+                  />
+                </div>
+              </div>
+              <div className="mt-4 flex items-center gap-3">
+                <button
+                  onClick={() => systemMutation.mutate(systemData)}
+                  disabled={systemMutation.isPending}
+                  className="px-4 py-2 bg-primary-600 text-white text-sm rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors"
+                >
+                  {systemMutation.isSuccess ? t("settings.saved") : t("settings.save")}
+                </button>
+                <span className="text-xs text-gray-400">{t("settings.restartRequired")}</span>
+              </div>
+            </div>
+          </CollapsibleSection>
+        </div>
+      )}
+
+      {/* ======== 6. DATABASE + BACKUP ======== */}
+      {isAdmin && (
+        <CollapsibleSection title={t("settings.database")} icon={Database} id="database" forceOpen={hash === "database"}>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             {/* Connection card */}
             <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
@@ -1908,7 +2247,7 @@ export default function SettingsPage() {
               )}
 
               <div className="mb-3">
-                <label className={labelCls}>{t("settings.dbType")}</label>
+                <TipLabel text={t("settings.dbType")} tip={t("settings.tips.dbType")} className={labelCls} />
                 <select
                   value={dbType}
                   onChange={(e) => setDbType(e.target.value as "sqlite" | "postgresql")}
@@ -1918,6 +2257,19 @@ export default function SettingsPage() {
                   <option value="postgresql">PostgreSQL</option>
                 </select>
               </div>
+
+              {dbType === "sqlite" && (
+                <div className="mb-3">
+                  <TipLabel text={t("settings.dbPath")} tip={t("settings.tips.dbPath")} className={labelCls} />
+                  <input
+                    type="text"
+                    value={sqlitePath}
+                    onChange={(e) => setSqlitePath(e.target.value)}
+                    className={inputCls}
+                    placeholder="./sensors.db"
+                  />
+                </div>
+              )}
 
               {dbType === "postgresql" && (
                 <div className="grid grid-cols-2 gap-3">
@@ -2062,13 +2414,9 @@ export default function SettingsPage() {
                     <option value="daily">{t("settings.daily")}</option>
                     <option value="weekly">{t("settings.weekly")}</option>
                   </select>
-                  <input
-                    type="time"
+                  <TimeInput
                     value={schedData.time}
-                    onChange={(e) =>
-                      setSchedForm({ ...schedData, time: e.target.value })
-                    }
-                    className="px-2 py-1 border rounded text-sm focus:ring-2 focus:ring-primary-500 focus:outline-none"
+                    onChange={(v) => setSchedForm({ ...schedData, time: v })}
                   />
                   <button
                     onClick={() => schedMutation.mutate(schedData)}
@@ -2082,6 +2430,138 @@ export default function SettingsPage() {
             </div>
           </div>
         </CollapsibleSection>
+      )}
+
+      {/* ======== CONNECTIONS: MQTT + Gateway ======== */}
+      {isAdmin && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* MQTT Broker */}
+          <CollapsibleSection title={t("settings.mqtt")} icon={Radio} id="mqtt" forceOpen={hash === "mqtt"}>
+            <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <TipLabel text={t("settings.mqttHost")} tip={t("settings.tips.mqttHost")} className={labelCls} />
+                  <input
+                    type="text"
+                    value={mqttData.host}
+                    onChange={(e) => setMqttForm({ ...mqttData, host: e.target.value })}
+                    className={inputCls}
+                  />
+                </div>
+                <div>
+                  <TipLabel text={t("settings.mqttPort")} tip={t("settings.tips.mqttPort")} className={labelCls} />
+                  <input
+                    type="text"
+                    value={mqttData.port}
+                    onChange={(e) => setMqttForm({ ...mqttData, port: e.target.value })}
+                    className={inputCls}
+                  />
+                </div>
+                <div>
+                  <TipLabel text={t("settings.mqttUser")} tip={t("settings.tips.mqttUser")} className={labelCls} />
+                  <input
+                    type="text"
+                    value={mqttData.user}
+                    onChange={(e) => setMqttForm({ ...mqttData, user: e.target.value })}
+                    className={inputCls}
+                  />
+                </div>
+                <div>
+                  <TipLabel text={t("settings.mqttPass")} tip={t("settings.tips.mqttPass")} className={labelCls} />
+                  <input
+                    type="password"
+                    value={mqttData.password}
+                    onChange={(e) => setMqttForm({ ...mqttData, password: e.target.value })}
+                    className={inputCls}
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <TipLabel text={t("settings.mqttTopicPrefix")} tip={t("settings.tips.mqttTopicPrefix")} className={labelCls} />
+                  <input
+                    type="text"
+                    value={systemData.mqtt_topic_prefix}
+                    onChange={(e) => setSystemForm({ ...systemData, mqtt_topic_prefix: e.target.value })}
+                    className={inputCls}
+                  />
+                  <p className="mt-1 text-xs text-amber-600">{t("settings.mqttTopicPrefixWarning")}</p>
+                </div>
+              </div>
+              <div className="mt-4 flex items-center gap-3">
+                <button
+                  onClick={() => mqttMutation.mutate(mqttData)}
+                  disabled={mqttMutation.isPending}
+                  className="px-4 py-2 bg-primary-600 text-white text-sm rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors"
+                >
+                  {mqttMutation.isSuccess ? t("settings.saved") : t("settings.save")}
+                </button>
+                {mqttGatewayStatus === "reloaded" && (
+                  <span className="text-xs text-emerald-600">{t("settings.mqttGatewayReloaded")}</span>
+                )}
+                {mqttGatewayStatus === "failed" && (
+                  <span className="text-xs text-amber-600">{t("settings.mqttGatewayFailed")}</span>
+                )}
+              </div>
+            </div>
+          </CollapsibleSection>
+
+          {/* Device Gateway */}
+          <CollapsibleSection title={t("settings.gateway")} icon={Wrench} id="gateway" forceOpen={hash === "gateway"}>
+            <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+              <div className="space-y-4">
+                <div>
+                  <TipLabel text={t("settings.gatewayUrl")} tip={t("settings.tips.gatewayUrl")} className={labelCls} />
+                  <input
+                    type="text"
+                    value={systemData.device_gateway_url}
+                    onChange={(e) => setSystemForm({ ...systemData, device_gateway_url: e.target.value })}
+                    className={inputCls}
+                  />
+                </div>
+                <div>
+                  <TipLabel text={t("settings.logLevel")} tip={t("settings.tips.logLevel")} className={labelCls} />
+                  <select
+                    value={systemData.log_level}
+                    onChange={(e) => setSystemForm({ ...systemData, log_level: e.target.value })}
+                    className={inputCls}
+                  >
+                    <option value="DEBUG">DEBUG</option>
+                    <option value="INFO">INFO</option>
+                    <option value="WARNING">WARNING</option>
+                    <option value="ERROR">ERROR</option>
+                  </select>
+                </div>
+                <div>
+                  <TipLabel text={t("settings.gatewayTimeout")} tip={t("settings.tips.gatewayTimeout")} className={labelCls} />
+                  <input
+                    type="number"
+                    value={systemData.gateway_timeout_seconds}
+                    onChange={(e) => setSystemForm({ ...systemData, gateway_timeout_seconds: e.target.value })}
+                    className={inputCls}
+                  />
+                </div>
+                <div>
+                  <TipLabel text={t("settings.frontendPollSeconds")} tip={t("settings.tips.frontendPollSeconds")} className={labelCls} />
+                  <input
+                    type="number"
+                    value={systemData.frontend_poll_seconds}
+                    onChange={(e) => setSystemForm({ ...systemData, frontend_poll_seconds: e.target.value })}
+                    className={inputCls}
+                  />
+                </div>
+              </div>
+              <div className="mt-4 flex items-center gap-3">
+                <button
+                  onClick={() => systemMutation.mutate(systemData)}
+                  disabled={systemMutation.isPending}
+                  className="px-4 py-2 bg-primary-600 text-white text-sm rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors"
+                >
+                  {systemMutation.isSuccess ? t("settings.saved") : t("settings.save")}
+                </button>
+                <span className="text-xs text-gray-400">{t("settings.restartRequired")}</span>
+              </div>
+            </div>
+          </CollapsibleSection>
+        </div>
       )}
     </div>
   );

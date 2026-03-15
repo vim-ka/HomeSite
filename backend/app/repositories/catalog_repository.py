@@ -210,6 +210,18 @@ class CatalogRepository:
     # ---- Sensor CRUD ----
 
     async def get_all_sensors_detail(self) -> list[dict]:
+        from sqlalchemy import func as sa_func
+
+        # Subquery: latest timestamp per sensor from sensor_data
+        last_reading_sq = (
+            select(
+                SensorData.sensor_id,
+                sa_func.max(SensorData.timestamp).label("last_reading"),
+            )
+            .group_by(SensorData.sensor_id)
+            .subquery()
+        )
+
         stmt = (
             select(
                 Sensor.id,
@@ -220,11 +232,13 @@ class CatalogRepository:
                 MountPoint.name.label("mount_point_name"),
                 Place.name.label("place_name"),
                 SystemType.name.label("system_name"),
+                last_reading_sq.c.last_reading,
             )
             .join(SensorType, Sensor.sensor_type_id == SensorType.id)
             .join(MountPoint, Sensor.mount_point_id == MountPoint.id)
             .join(Place, MountPoint.place_id == Place.id)
             .join(SystemType, MountPoint.system_id == SystemType.id)
+            .outerjoin(last_reading_sq, Sensor.id == last_reading_sq.c.sensor_id)
             .order_by(Sensor.id)
         )
         result = await self.db.execute(stmt)
@@ -356,6 +370,8 @@ class CatalogRepository:
                 mp_return.c.name.label("return_mount_point_name"),
                 HeatingCircuit.config_temp_key,
                 HeatingCircuit.config_pump_key,
+                HeatingCircuit.config_prefix,
+                HeatingCircuit.mqtt_device_name,
                 HeatingCircuit.delta_threshold,
                 HeatingCircuit.display_order,
             )

@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 from app.repositories.chart_repository import ChartRepository
 
@@ -44,6 +44,7 @@ class ChartService:
         chart_type: str,
         start: datetime | None = None,
         end: datetime | None = None,
+        default_days: int = 100,
     ) -> dict:
         """Return chart data. Static for PZA curves, dynamic for sensor history."""
 
@@ -58,9 +59,9 @@ class ChartService:
             return {"labels": [], "datasets": []}
 
         if end is None:
-            end = datetime.now()
+            end = datetime.now(UTC)
         if start is None:
-            start = end - timedelta(days=100)
+            start = end - timedelta(days=default_days)
 
         return await self.chart_repo.get_history(
             datatype_id=config["datatype_id"],

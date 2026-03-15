@@ -51,6 +51,7 @@ class DatabaseInfoResponse(BaseModel):
 
 class DatabaseUpdateRequest(BaseModel):
     type: Literal["sqlite", "postgresql"]
+    path: str = "./sensors.db"
     host: str = ""
     port: int = 5432
     dbname: str = ""

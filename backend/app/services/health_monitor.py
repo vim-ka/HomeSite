@@ -1,0 +1,225 @@
+"""Background health monitor — single source of truth for service/sensor status.
+
+Caches state in memory, writes EventLog on changes. Health endpoints read cached state.
+"""
+
+import asyncio
+from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta
+
+import httpx
+from sqlalchemy import func, select, text
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+from app.core.logging import get_logger
+from app.models.event import EventLog
+from app.models.sensor import Sensor, SensorData
+from app.models.pending_sensor import PendingSensor
+from app.models.config import ConfigKV
+
+logger = get_logger(__name__)
+
+DEFAULT_POLL_INTERVAL = 30  # seconds
+DEFAULT_STALE_MINUTES = 5
+
+
+@dataclass
+class HealthState:
+    """Cached health state — read by /health/* endpoints."""
+
+    # Services
+    backend: bool = True
+    database: bool = False
+    gateway: bool = False
+    mqtt: bool = False
+
+    # Sensors
+    sensor_total: int = 0
+    sensor_active: int = 0
+    sensor_pending: int = 0
+
+    # Config (exposed to frontend)
+    poll_seconds: int = DEFAULT_POLL_INTERVAL
+
+    updated_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+
+
+class HealthMonitor:
+    def __init__(
+        self,
+        session_factory: async_sessionmaker[AsyncSession],
+        gateway_url: str,
+    ):
+        self.session_factory = session_factory
+        self.gateway_url = gateway_url
+        self.state = HealthState()
+
+        # Previous state for change detection
+        self._prev_services: dict[str, bool] = {}
+        self._prev_active_sensor_ids: set[int] = set()
+        self._prev_pending_names: set[str] = set()
+        self._initialized = False
+
+    async def run(self) -> None:
+        """Main loop — polls at configured interval."""
+        while True:
+            try:
+                await self._check()
+            except Exception as e:
+                logger.error("health_monitor_error", error=str(e))
+            await asyncio.sleep(self._poll_interval)
+
+    @property
+    def _poll_interval(self) -> int:
+        return self.state.poll_seconds if hasattr(self.state, "poll_seconds") else DEFAULT_POLL_INTERVAL
+
+    async def _check(self) -> None:
+        async with self.session_factory() as session:
+            events: list[EventLog] = []
+
+            # --- Load config from config_kv ---
+            config_keys = ["sensor_stale_minutes", "health_poll_seconds", "gateway_timeout_seconds"]
+            result = await session.execute(
+                select(ConfigKV.key, ConfigKV.value).where(ConfigKV.key.in_(config_keys))
+            )
+            kv = {r[0]: r[1] for r in result}
+
+            stale_minutes = DEFAULT_STALE_MINUTES
+            try:
+                stale_minutes = int(kv.get("sensor_stale_minutes", DEFAULT_STALE_MINUTES))
+            except ValueError:
+                pass
+
+            poll_seconds = DEFAULT_POLL_INTERVAL
+            try:
+                poll_seconds = int(kv.get("health_poll_seconds", DEFAULT_POLL_INTERVAL))
+            except ValueError:
+                pass
+
+            gateway_timeout = 3.0
+            try:
+                gateway_timeout = float(kv.get("gateway_timeout_seconds", "3"))
+            except ValueError:
+                pass
+
+            # --- Service checks ---
+            services = await self._check_services(session, gateway_timeout)
+            for name, ok in services.items():
+                prev = self._prev_services.get(name)
+                if prev is not None and prev != ok:
+                    if not ok:
+                        events.append(EventLog(
+                            level="ERROR",
+                            source="health_monitor",
+                            message=f"Service '{name}' is down",
+                        ))
+                    else:
+                        events.append(EventLog(
+                            level="INFO",
+                            source="health_monitor",
+                            message=f"Service '{name}' is back online",
+                        ))
+            self._prev_services = services
+
+            # --- Sensor activity checks ---
+            now = datetime.now(UTC)
+            stale_threshold = now - timedelta(minutes=stale_minutes)
+
+            result = await session.execute(select(Sensor.id))
+            all_ids = {row[0] for row in result}
+
+            result = await session.execute(
+                select(SensorData.sensor_id).where(
+                    SensorData.timestamp >= stale_threshold
+                ).distinct()
+            )
+            active_ids = {row[0] for row in result} & all_ids
+
+            if self._initialized:
+                lost = self._prev_active_sensor_ids - active_ids
+                if lost:
+                    result = await session.execute(
+                        select(Sensor.id, Sensor.name).where(Sensor.id.in_(lost))
+                    )
+                    for sid, name in result:
+                        events.append(EventLog(
+                            level="WARNING",
+                            source="health_monitor",
+                            message=f"Sensor '{name}' (id={sid}) stopped responding",
+                        ))
+
+                recovered = active_ids - self._prev_active_sensor_ids
+                if recovered:
+                    result = await session.execute(
+                        select(Sensor.id, Sensor.name).where(Sensor.id.in_(recovered))
+                    )
+                    for sid, name in result:
+                        events.append(EventLog(
+                            level="INFO",
+                            source="health_monitor",
+                            message=f"Sensor '{name}' (id={sid}) is back online",
+                        ))
+
+            self._prev_active_sensor_ids = active_ids
+
+            # --- Pending (new) sensor checks ---
+            result = await session.execute(select(PendingSensor.device_name))
+            current_pending = {row[0] for row in result}
+
+            if self._initialized:
+                new_pending = current_pending - self._prev_pending_names
+                for name in new_pending:
+                    events.append(EventLog(
+                        level="INFO",
+                        source="health_monitor",
+                        message=f"New device discovered: '{name}'",
+                    ))
+
+            self._prev_pending_names = current_pending
+
+            # --- Write events ---
+            if events:
+                for e in events:
+                    session.add(e)
+                await session.commit()
+                for e in events:
+                    logger.info("health_event", level=e.level, message=e.message)
+
+            # --- Update cached state ---
+            self.state = HealthState(
+                backend=True,
+                database=services.get("database", False),
+                gateway=services.get("gateway", False),
+                mqtt=services.get("mqtt", False),
+                sensor_total=len(all_ids),
+                sensor_active=len(active_ids),
+                sensor_pending=len(current_pending),
+                poll_seconds=poll_seconds,
+                updated_at=now,
+            )
+
+            self._initialized = True
+
+    async def _check_services(self, session: AsyncSession, gateway_timeout: float = 3.0) -> dict[str, bool]:
+        db_ok = True
+        try:
+            await session.execute(text("SELECT 1"))
+        except Exception:
+            db_ok = False
+
+        gw_ok = False
+        mqtt_ok = False
+        try:
+            async with httpx.AsyncClient(base_url=self.gateway_url, timeout=gateway_timeout) as client:
+                resp = await client.get("/health")
+                if resp.status_code == 200:
+                    gw_ok = True
+                    mqtt_ok = resp.json().get("mqtt_connected", False)
+        except Exception:
+            pass
+
+        return {
+            "database": db_ok,
+            "gateway": gw_ok,
+            "mqtt": mqtt_ok,
+        }

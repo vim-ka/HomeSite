@@ -1,5 +1,5 @@
 from collections import defaultdict
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import Float, case, cast, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,13 +17,45 @@ from app.models.sensor import (
     SystemType,
 )
 
+DEFAULT_STALE_MINUTES = 5
+
 
 class SensorRepository:
     def __init__(self, db: AsyncSession):
         self.db = db
+        self._stale_threshold: datetime | None = None
+
+    async def _get_stale_threshold(self) -> datetime:
+        """Load sensor_stale_minutes from config_kv and compute threshold."""
+        if self._stale_threshold is not None:
+            return self._stale_threshold
+        result = await self.db.execute(
+            select(ConfigKV.value).where(ConfigKV.key == "sensor_stale_minutes")
+        )
+        minutes = DEFAULT_STALE_MINUTES
+        row = result.scalar_one_or_none()
+        if row:
+            try:
+                minutes = int(row)
+            except ValueError:
+                pass
+        self._stale_threshold = datetime.now(UTC) - timedelta(minutes=minutes)
+        return self._stale_threshold
 
     async def get_all_sensors(self) -> list[dict]:
-        """List all sensors with their type, mount point, place, and system."""
+        """List all sensors with their type, mount point, place, system, and last reading time."""
+        from sqlalchemy import func as sa_func
+
+        # Subquery: latest timestamp per sensor from sensor_data
+        last_reading_sq = (
+            select(
+                SensorData.sensor_id,
+                sa_func.max(SensorData.timestamp).label("last_reading"),
+            )
+            .group_by(SensorData.sensor_id)
+            .subquery()
+        )
+
         stmt = (
             select(
                 Sensor.id,
@@ -32,18 +64,21 @@ class SensorRepository:
                 MountPoint.name.label("mount_point"),
                 Place.name.label("place"),
                 SystemType.name.label("system"),
+                last_reading_sq.c.last_reading,
             )
             .join(SensorType, Sensor.sensor_type_id == SensorType.id)
             .join(MountPoint, Sensor.mount_point_id == MountPoint.id)
             .join(Place, MountPoint.place_id == Place.id)
             .join(SystemType, MountPoint.system_id == SystemType.id)
+            .outerjoin(last_reading_sq, Sensor.id == last_reading_sq.c.sensor_id)
             .order_by(Sensor.id)
         )
         result = await self.db.execute(stmt)
         return [dict(row._mapping) for row in result]
 
     async def get_climate_data(self) -> list[dict]:
-        """Get current climate readings by room (system_id=3 = Climate)."""
+        """Get current climate readings by room (system_id=3 = Climate). Stale data excluded."""
+        stale_threshold = await self._get_stale_threshold()
         stmt = (
             select(
                 Place.name.label("room"),
@@ -62,7 +97,7 @@ class SensorRepository:
             )
             .outerjoin(MountPoint, (MountPoint.place_id == Place.id) & (MountPoint.system_id == 3))
             .outerjoin(Sensor, Sensor.mount_point_id == MountPoint.id)
-            .outerjoin(SensorData, Sensor.id == SensorData.sensor_id)
+            .outerjoin(SensorData, (Sensor.id == SensorData.sensor_id) & (SensorData.timestamp >= stale_threshold))
             .outerjoin(SensorDataType, SensorData.datatype_id == SensorDataType.id)
             .group_by(Place.name, SensorDataType.name, SensorData.value)
         )
@@ -114,7 +149,8 @@ class SensorRepository:
         return results
 
     async def get_water_supply_status(self) -> list[dict]:
-        """Get water supply status (system_id=2)."""
+        """Get water supply status (system_id=2). Stale data excluded."""
+        stale_threshold = await self._get_stale_threshold()
         stmt = (
             select(
                 MountPoint.id,
@@ -124,7 +160,7 @@ class SensorRepository:
             .select_from(MountPoint)
             .join(SystemType, SystemType.id == MountPoint.system_id)
             .outerjoin(Sensor, Sensor.mount_point_id == MountPoint.id)
-            .outerjoin(SensorData, (SensorData.sensor_id == Sensor.id) & (SensorData.datatype_id == 1))
+            .outerjoin(SensorData, (SensorData.sensor_id == Sensor.id) & (SensorData.datatype_id == 1) & (SensorData.timestamp >= stale_threshold))
             .where(SystemType.id == 2)
         )
         rows = (await self.db.execute(stmt)).all()
@@ -170,9 +206,11 @@ class SensorRepository:
     async def _get_sensor_value(self, sensor_id: int | None, datatype_id: int) -> float | None:
         if sensor_id is None:
             return None
+        stale_threshold = await self._get_stale_threshold()
         stmt = select(SensorData.value).where(
             SensorData.sensor_id == sensor_id,
             SensorData.datatype_id == datatype_id,
+            SensorData.timestamp >= stale_threshold,
         )
         result = await self.db.execute(stmt)
         row = result.scalar_one_or_none()

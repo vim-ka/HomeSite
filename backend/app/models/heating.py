@@ -26,6 +26,12 @@ class HeatingCircuit(Base, TimestampMixin):
     config_temp_key: Mapped[str | None] = mapped_column(String(64), nullable=True)
     config_pump_key: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
+    # Prefix for config_kv keys (e.g., "heating_boiler" → keys heating_boiler_temp, heating_boiler_power, ...)
+    config_prefix: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+    # MQTT device name to send commands to (e.g., "boiler_unit")
+    mqtt_device_name: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
     # Display order on dashboard
     display_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 

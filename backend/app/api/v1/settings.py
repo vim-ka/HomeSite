@@ -94,9 +94,8 @@ async def update_mqtt_settings(
     user: User = Depends(require_role([UserRole.ADMIN])),
     service: SettingsService = Depends(get_settings_service),
 ):
-    """Update MQTT broker settings. Admin only."""
-    await service.update_mqtt_settings(payload.host, payload.port, payload.user, payload.password)
-    return {"success": True}
+    """Update MQTT broker settings and signal gateway to reconnect. Admin only."""
+    return await service.update_mqtt_settings(payload.host, payload.port, payload.user, payload.password)
 
 
 @router.post("/toggle", response_model=ToggleResponse)
@@ -136,7 +135,7 @@ async def update_database(
 ):
     """Save new database URL. Requires app restart. Admin only."""
     if payload.type == "sqlite":
-        new_url = f"sqlite+aiosqlite:///./sensors.db"
+        new_url = f"sqlite+aiosqlite:///{payload.path}"
     else:
         new_url = (
             f"postgresql+asyncpg://{payload.user}:{payload.password}"

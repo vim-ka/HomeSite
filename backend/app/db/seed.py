@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from app.core.config import get_settings
 from app.core.security import get_password_hash
 from app.models.base import Base
-from app.models.config import ConfigKV, Schedule, ScheduleDetail
+from app.models.config import Actuator, ConfigKV, Schedule, ScheduleDetail
 from app.models.heating import HeatingCircuit
 from app.models.sensor import (
     MountPoint,
@@ -178,6 +178,23 @@ async def seed(session: AsyncSession) -> None:
         {"id": 29, "key": "watersupply_alm_duration", "value": "30"},
         {"id": 30, "key": "heating_radiator_curve", "value": "3"},
         {"id": 31, "key": "heating_floorheating_curve", "value": "3"},
+        # MQTT
+        {"id": 32, "key": "mqtt_host", "value": "127.0.0.1"},
+        {"id": 33, "key": "mqtt_port", "value": "1883"},
+        {"id": 34, "key": "mqtt_user", "value": ""},
+        {"id": 35, "key": "mqtt_pass", "value": ""},
+        # System tuning
+        {"id": 36, "key": "access_token_expire_minutes", "value": "30"},
+        {"id": 37, "key": "refresh_token_expire_days", "value": "7"},
+        {"id": 38, "key": "rate_limit_default", "value": "60/minute"},
+        {"id": 39, "key": "log_level", "value": "INFO"},
+        {"id": 40, "key": "device_gateway_url", "value": "http://localhost:8001"},
+        {"id": 41, "key": "sensor_stale_minutes", "value": "5"},
+        {"id": 42, "key": "health_poll_seconds", "value": "30"},
+        {"id": 43, "key": "gateway_timeout_seconds", "value": "5"},
+        {"id": 44, "key": "chart_history_days", "value": "100"},
+        {"id": 45, "key": "frontend_poll_seconds", "value": "30"},
+        {"id": 46, "key": "mqtt_topic_prefix", "value": "home/devices/"},
     ]
 
     # --- Schedules ---
@@ -211,6 +228,8 @@ async def seed(session: AsyncSession) -> None:
             "delta_threshold": 5.0,
             "config_temp_key": "heating_boiler_temp",
             "config_pump_key": "heating_boiler_power",
+            "config_prefix": "heating_boiler",
+            "mqtt_device_name": "boiler_unit",
             "display_order": 1,
         },
         {
@@ -219,6 +238,8 @@ async def seed(session: AsyncSession) -> None:
             "delta_threshold": 5.0,
             "config_temp_key": "heating_radiator_temp",
             "config_pump_key": "heating_radiator_pump",
+            "config_prefix": "heating_radiator",
+            "mqtt_device_name": "boiler_unit",
             "display_order": 2,
         },
         {
@@ -227,6 +248,8 @@ async def seed(session: AsyncSession) -> None:
             "delta_threshold": 3.0,
             "config_temp_key": "heating_floorheating_temp",
             "config_pump_key": "heating_floorheating_pump",
+            "config_prefix": "heating_floorheating",
+            "mqtt_device_name": "boiler_unit",
             "display_order": 3,
         },
         {
@@ -235,7 +258,19 @@ async def seed(session: AsyncSession) -> None:
             "delta_threshold": 5.0,
             "config_temp_key": "watersupply_ihb_temp",
             "config_pump_key": "watersupply_ihb_pump",
+            "config_prefix": "watersupply_ihb",
+            "mqtt_device_name": "boiler_unit",
             "display_order": 4,
+        },
+        {
+            "id": 5,
+            "circuit_name": "Водоснабжение",
+            "delta_threshold": 5.0,
+            "config_temp_key": None,
+            "config_pump_key": "watersupply_pump",
+            "config_prefix": "watersupply",
+            "mqtt_device_name": "boiler_unit",
+            "display_order": 5,
         },
     ]
 
@@ -265,6 +300,13 @@ async def seed(session: AsyncSession) -> None:
             await session.execute(sensor_datatype_link.insert().values(**link))
     await session.flush()
 
+    # --- Actuators (physical devices that receive MQTT commands) ---
+
+    actuators = [
+        {"id": 1, "name": "Контроллер котельной", "mqtt_device_name": "boiler_unit", "description": "ESP32 — управление котлом, насосами, клапанами"},
+    ]
+
+    await merge_if_missing(session, Actuator, actuators)
     await merge_if_missing(session, User, users)
     await merge_if_missing(session, ConfigKV, default_settings)
     await merge_if_missing(session, Schedule, schedules)

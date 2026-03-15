@@ -9,8 +9,6 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from device_gateway.config import (
-    MQTT_SUBSCRIBE_TOPIC,
-    MQTT_TOPIC_PREFIX,
     PARAMETER_MAP,
     GatewaySettings,
 )
@@ -34,10 +32,25 @@ class MQTTHandler:
         self.settings = settings
         self.session_factory = session_factory
         self._connected = False
+        self._reconnect_requested = False
+        self._active_client: aiomqtt.Client | None = None
 
     @property
     def is_connected(self) -> bool:
         return self._connected
+
+    def reload_settings(self, new_settings: GatewaySettings) -> None:
+        """Update MQTT settings and trigger reconnect."""
+        self.settings = new_settings
+        self._reconnect_requested = True
+        # Force disconnect to trigger reconnect loop with new settings
+        if self._active_client is not None:
+            self._active_client._disconnected.set_result(None) if not self._active_client._disconnected.done() else None
+        logger.info(
+            "mqtt_reload_requested",
+            host=new_settings.mqtt_broker_host,
+            port=new_settings.mqtt_broker_port,
+        )
 
     async def run(self) -> None:
         """Main loop — connects to broker, processes messages, auto-reconnects on failure."""
@@ -45,11 +58,15 @@ class MQTTHandler:
 
         while True:
             try:
+                self._reconnect_requested = False
                 await self._connect_and_listen()
             except aiomqtt.MqttError as e:
                 self._connected = False
-                logger.warning("mqtt_disconnected", error=str(e))
-                await asyncio.sleep(self.settings.mqtt_reconnect_interval)
+                if self._reconnect_requested:
+                    logger.info("mqtt_reconnecting_with_new_settings")
+                else:
+                    logger.warning("mqtt_disconnected", error=str(e))
+                    await asyncio.sleep(self.settings.mqtt_reconnect_interval)
             except Exception as e:
                 self._connected = False
                 logger.error("mqtt_unexpected_error", error=str(e))
@@ -66,13 +83,14 @@ class MQTTHandler:
             connect_kwargs["password"] = self.settings.mqtt_password
 
         async with aiomqtt.Client(**connect_kwargs) as client:
+            self._active_client = client
             self._connected = True
             logger.info(
                 "mqtt_connected",
                 host=self.settings.mqtt_broker_host,
                 port=self.settings.mqtt_broker_port,
             )
-            await client.subscribe(MQTT_SUBSCRIBE_TOPIC)
+            await client.subscribe(self.settings.mqtt_topic_prefix + "#")
 
             async for message in client.messages:
                 try:
@@ -87,13 +105,17 @@ class MQTTHandler:
     async def _handle_message(self, message: aiomqtt.Message) -> None:
         """Parse topic, extract device name, upsert sensor values."""
         topic_str = str(message.topic)
-        if not topic_str.startswith(MQTT_TOPIC_PREFIX):
+        prefix = self.settings.mqtt_topic_prefix
+        if not topic_str.startswith(prefix):
             return
 
-        # Topic format: home/devices/{device_name}
-        # The device_name is extracted from after the prefix
-        remainder = topic_str[len(MQTT_TOPIC_PREFIX):]
+        # Topic format: {prefix}{device_name}
+        # Ignore command topics ({prefix}{id}/command/{param}) — those are our own outgoing messages
+        remainder = topic_str[len(prefix):]
         parts = remainder.split("/")
+        if len(parts) > 1 and parts[1] in ("command", "cmd"):
+            return
+
         device_name = parts[0]
 
         payload = message.payload

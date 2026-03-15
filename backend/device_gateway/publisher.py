@@ -1,10 +1,10 @@
-"""MQTT command publisher — sends commands to devices."""
+"""MQTT command publisher — sends grouped commands to devices."""
 
 import json
 
 import aiomqtt
 
-from device_gateway.config import MQTT_TOPIC_PREFIX, GatewaySettings
+from device_gateway.config import GatewaySettings
 
 import structlog
 
@@ -12,10 +12,10 @@ logger = structlog.get_logger(__name__)
 
 
 class CommandPublisher:
-    """Publishes commands to MQTT topics.
+    """Publishes grouped commands to MQTT topics.
 
-    Topic format: home/devices/{device_id}/command/{parameter}
-    Payload: JSON {"value": <value>}
+    Topic format: home/devices/{device_id}/command
+    Payload: JSON {"key1": "value1", "key2": "value2", ...}
     QoS: 1 (at least once), retain: True
     """
 
@@ -43,21 +43,23 @@ class CommandPublisher:
             self._client = None
             logger.info("publisher_disconnected")
 
-    async def publish(self, device_id: str, parameter: str, value: str) -> str | None:
-        """Publish a command to a device.
+    async def publish_grouped(self, device_id: str, params: dict[str, str]) -> str | None:
+        """Publish grouped commands as a single MQTT message.
 
-        Returns the topic string on success, None on failure.
+        Topic: {prefix}{device_id}/command
+        Payload: {"heating_boiler_temp": "60", "heating_boiler_power": "1", ...}
+        Duplicate keys are already deduplicated by the dispatcher.
         """
         if self._client is None:
             logger.warning("publisher_not_connected")
             return None
 
-        topic = f"{MQTT_TOPIC_PREFIX}{device_id}/command/{parameter}"
-        payload = json.dumps({"value": value})
+        topic = f"{self.settings.mqtt_topic_prefix}{device_id}/cmd"
 
         try:
+            payload = json.dumps(params)
             await self._client.publish(topic, payload, qos=1, retain=True)
-            logger.info("command_published", topic=topic, value=value)
+            logger.info("command_published", topic=topic, params=list(params.keys()))
             return topic
         except Exception as e:
             logger.error("publish_failed", topic=topic, error=str(e))

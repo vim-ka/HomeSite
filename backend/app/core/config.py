@@ -23,12 +23,17 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 30
     refresh_token_expire_days: int = 7
 
-    # MQTT / Device Gateway
+    # Device Gateway
     device_gateway_url: str = "http://localhost:8001"
+
+    # MQTT (bootstrap defaults — runtime values are in config_kv)
     mqtt_broker_host: str = "127.0.0.1"
     mqtt_broker_port: int = 1883
     mqtt_username: str = ""
     mqtt_password: str = ""
+
+    # CORS
+    cors_origins: str = "http://localhost:3000,http://localhost:5173"
 
     # Internal communication
     internal_api_secret: str = "CHANGE-ME-internal-secret"

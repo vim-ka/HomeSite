@@ -19,6 +19,21 @@ class ConfigKV(Base, TimestampMixin):
         return f"<ConfigKV {self.key}={self.value}>"
 
 
+
+class Actuator(Base):
+    """Physical actuator device that receives MQTT commands (e.g. boiler controller, relay module)."""
+
+    __tablename__ = "actuators"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(64), nullable=False)
+    mqtt_device_name: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    description: Mapped[str | None] = mapped_column(String(256), nullable=True)
+
+    def __repr__(self) -> str:
+        return f"<Actuator {self.name} ({self.mqtt_device_name})>"
+
+
 class Schedule(Base):
     """Named schedule (e.g., Anti-Legionella, Water pump)."""
 

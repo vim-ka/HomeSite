@@ -9,12 +9,14 @@ import {
   ScrollText,
   Settings,
   Info,
-  Menu,
   PanelLeftClose,
   LogOut,
 } from "lucide-react";
 import { useAuthStore } from "@/stores/authStore";
 import { useWebSocket } from "@/hooks/useWebSocket";
+import AlertBell from "@/components/AlertBell";
+import ThemeToggle from "@/components/ThemeToggle";
+import ServiceStatus from "@/components/ServiceStatus";
 import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
@@ -70,7 +72,8 @@ export default function Layout() {
           )}
         >
           {!collapsed && (
-            <span className="text-lg font-bold text-primary-700">
+            <span className="flex items-center gap-2 text-lg font-bold text-primary-700">
+              <img src="/logo.png" alt="HomeSite" className="h-7 w-7 rounded-md" />
               HomeSite{" "}
               <span className="text-xs font-normal text-gray-400">v2</span>
             </span>
@@ -81,7 +84,7 @@ export default function Layout() {
             aria-label={collapsed ? "Развернуть меню" : "Свернуть меню"}
           >
             {collapsed ? (
-              <Menu className="h-5 w-5" />
+              <img src="/logo.png" alt="HomeSite" className="h-7 w-7 rounded-md" />
             ) : (
               <PanelLeftClose className="h-5 w-5" />
             )}
@@ -132,7 +135,10 @@ export default function Layout() {
         {/* Header */}
         <header className="flex h-14 items-center justify-between border-b border-gray-200 bg-white px-4 shadow-sm">
           <span className="text-sm text-gray-500">{formattedDate}</span>
+          <ServiceStatus />
           <div className="flex items-center gap-4">
+            <ThemeToggle />
+            <AlertBell />
             {user && (
               <span className="text-sm text-gray-500">{user.username}</span>
             )}

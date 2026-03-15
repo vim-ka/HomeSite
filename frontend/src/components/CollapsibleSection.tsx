@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useState, useEffect, useRef, type ReactNode } from "react";
 import { ChevronDown, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -7,16 +7,28 @@ export default function CollapsibleSection({
   icon: Icon,
   children,
   defaultOpen = true,
+  id,
+  forceOpen,
 }: {
   title: string;
   icon: LucideIcon;
   children: ReactNode;
   defaultOpen?: boolean;
+  id?: string;
+  forceOpen?: boolean;
 }) {
   const [open, setOpen] = useState(defaultOpen);
+  const ref = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    if (forceOpen) {
+      setOpen(true);
+      ref.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, [forceOpen]);
 
   return (
-    <section>
+    <section id={id} ref={ref}>
       <button
         onClick={() => setOpen(!open)}
         className="mb-3 flex w-full items-center gap-2 text-left"

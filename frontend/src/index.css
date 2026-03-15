@@ -4,10 +4,69 @@
 
 @layer base {
   body {
-    @apply h-screen overflow-hidden;
+    @apply h-screen overflow-hidden bg-gray-50 text-gray-900;
     font-family: Inter, system-ui, -apple-system, sans-serif;
     -webkit-font-smoothing: antialiased;
   }
+
+  .dark body,
+  html.dark body {
+    @apply bg-gray-900 text-gray-100;
+  }
+
+  /* Card and surface backgrounds */
+  html.dark .bg-white { background-color: #1f2937 !important; }
+  html.dark .bg-gray-50 { background-color: #111827 !important; }
+  html.dark .bg-slate-50 { background-color: #1e293b !important; }
+
+  /* Text colors */
+  html.dark .text-gray-900 { color: #f3f4f6 !important; }
+  html.dark .text-gray-800 { color: #e5e7eb !important; }
+  html.dark .text-gray-700 { color: #d1d5db !important; }
+  html.dark .text-gray-600 { color: #b0b8c4 !important; }
+  html.dark .text-gray-500 { color: #b0b8c4 !important; }
+  html.dark .text-gray-400 { color: #8b95a5 !important; }
+
+  /* Sidebar nav text */
+  html.dark .text-slate-600 { color: #c8cdd5 !important; }
+
+  /* Borders */
+  html.dark .border-gray-200 { border-color: #374151 !important; }
+  html.dark .border-gray-100 { border-color: #1f2937 !important; }
+
+  /* Hover states */
+  html.dark .hover\:bg-gray-50:hover { background-color: #374151 !important; }
+  html.dark .hover\:bg-gray-100:hover { background-color: #374151 !important; }
+  html.dark .hover\:bg-gray-200\/60:hover { background-color: rgba(55, 65, 81, 0.6) !important; }
+
+  /* Inputs */
+  html.dark input,
+  html.dark select,
+  html.dark textarea {
+    background-color: #374151 !important;
+    border-color: #4b5563 !important;
+    color: #e5e7eb !important;
+  }
+  html.dark input::placeholder { color: #6b7280 !important; }
+
+  /* Tables */
+  html.dark .bg-gray-50 th { background-color: #1f2937 !important; }
+  html.dark thead.bg-gray-50 { background-color: #1f2937 !important; }
+  html.dark .divide-gray-100 > :not([hidden]) ~ :not([hidden]) { border-color: #374151 !important; }
+
+  /* Shadow override */
+  html.dark .shadow-sm { box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.3) !important; }
+  html.dark .shadow { box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.4) !important; }
+  html.dark .shadow-lg { box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5) !important; }
+
+  /* Primary text in dark */
+  html.dark .text-primary-700 { color: #93c5fd !important; }
+  html.dark .bg-primary-600\/10 { background-color: rgba(37, 99, 235, 0.2) !important; }
+
+  /* Amber alerts in dark */
+  html.dark .bg-amber-50 { background-color: #451a03 !important; }
+  html.dark .border-amber-200 { border-color: #92400e !important; }
+  html.dark .border-amber-100 { border-color: #78350f !important; }
 }
 
 @layer utilities {

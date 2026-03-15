@@ -18,6 +18,10 @@ class CommandRequest(BaseModel):
     params: dict[str, Any]
 
 
+class SettingsRequest(BaseModel):
+    settings: dict[str, str]
+
+
 class HealthResponse(BaseModel):
     status: str
     mqtt_connected: bool
@@ -26,6 +30,8 @@ class HealthResponse(BaseModel):
 def create_gateway_api(
     dispatcher: AsyncCommandDispatcher,
     mqtt_connected_fn: Any,
+    handler: Any = None,
+    publisher: Any = None,
     settings: GatewaySettings | None = None,
 ) -> FastAPI:
     """Factory: creates internal API with injected dispatcher and health check."""
@@ -53,6 +59,32 @@ def create_gateway_api(
         )
         return {"queued": True, "device_id": payload.device_id}
 
+    @app.post("/settings")
+    async def receive_settings(
+        payload: SettingsRequest,
+        _: None = Depends(verify_secret),
+    ) -> dict:
+        """Accept settings update. Maps config_key → device via prefix from heating_circuits."""
+        from device_gateway.config_db import load_device_prefixes
+
+        prefixes = await load_device_prefixes(_settings.database_url)
+        dispatched = 0
+
+        for config_key, value in payload.settings.items():
+            for prefix, mqtt_device in prefixes:
+                if config_key.startswith(prefix + "_") or config_key == prefix:
+                    await dispatcher.add_param(mqtt_device, config_key, value)
+                    dispatched += 1
+                    break
+
+        logger.info(
+            "settings_dispatched",
+            total_keys=len(payload.settings),
+            dispatched=dispatched,
+        )
+
+        return {"status": "ok", "dispatched": dispatched}
+
     @app.get("/health", response_model=HealthResponse)
     async def health() -> HealthResponse:
         """Health check — reports MQTT connection status."""
@@ -61,5 +93,41 @@ def create_gateway_api(
             status="ok" if connected else "degraded",
             mqtt_connected=connected,
         )
+
+    @app.post("/reload-mqtt")
+    async def reload_mqtt(
+        _: None = Depends(verify_secret),
+    ) -> dict:
+        """Re-read MQTT settings from config_kv and reconnect."""
+        if handler is None:
+            return {"reloaded": False, "error": "handler not available"}
+
+        from device_gateway.config_db import load_mqtt_from_db
+
+        db_mqtt = await load_mqtt_from_db(_settings.database_url)
+        if not db_mqtt.get("mqtt_host"):
+            return {"reloaded": False, "error": "no mqtt settings in database"}
+
+        # Build updated settings
+        new_settings = _settings.model_copy()
+        new_settings.mqtt_broker_host = db_mqtt["mqtt_host"]
+        new_settings.mqtt_broker_port = int(db_mqtt.get("mqtt_port", _settings.mqtt_broker_port))
+        new_settings.mqtt_username = db_mqtt.get("mqtt_user", "")
+        new_settings.mqtt_password = db_mqtt.get("mqtt_pass", "")
+        if db_mqtt.get("mqtt_topic_prefix"):
+            new_settings.mqtt_topic_prefix = db_mqtt["mqtt_topic_prefix"]
+
+        handler.reload_settings(new_settings)
+
+        # Reconnect publisher too
+        if publisher is not None:
+            try:
+                await publisher.disconnect()
+                publisher.settings = new_settings
+                await publisher.connect()
+            except Exception as e:
+                logger.warning("publisher_reconnect_error", error=str(e))
+
+        return {"reloaded": True}
 
     return app

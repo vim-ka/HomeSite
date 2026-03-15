@@ -44,11 +44,19 @@ class SettingsService:
 
     async def update_mqtt_settings(
         self, host: str, port: str, user: str, password: str
-    ) -> bool:
+    ) -> dict:
         await self.settings_repo.upsert_many({
             "mqtt_host": host,
             "mqtt_port": port,
             "mqtt_user": user,
             "mqtt_pass": password,
         })
-        return True
+
+        gateway_reloaded = False
+        if self.gateway_client:
+            try:
+                gateway_reloaded = await self.gateway_client.reload_mqtt()
+            except Exception:
+                logger.warning("gateway_reload_failed")
+
+        return {"success": True, "gateway_reloaded": gateway_reloaded}

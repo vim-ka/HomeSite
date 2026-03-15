@@ -10,9 +10,6 @@ PARAMETER_MAP: dict[str, int] = {
     "hmt": 3,  # Humidity
 }
 
-MQTT_TOPIC_PREFIX = "home/devices/"
-MQTT_SUBSCRIBE_TOPIC = "home/devices/#"
-
 
 class GatewaySettings(BaseSettings):
     model_config = SettingsConfigDict(
@@ -27,6 +24,7 @@ class GatewaySettings(BaseSettings):
     mqtt_username: str = ""
     mqtt_password: str = ""
     mqtt_reconnect_interval: float = 5.0
+    mqtt_topic_prefix: str = "home/devices/"
 
     # Database (same DB as backend — gateway writes sensor data directly)
     database_url: str = "sqlite+aiosqlite:///./sensors.db"

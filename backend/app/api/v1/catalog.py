@@ -1,8 +1,11 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import require_role
 from app.db.session import get_db
+from app.models.config import Actuator
 from app.models.user import User, UserRole
 from app.repositories.catalog_repository import CatalogRepository
 from app.schemas.catalog import (
@@ -297,3 +300,66 @@ async def delete_heating_circuit(
     service: CatalogService = Depends(get_catalog_service),
 ):
     await service.delete_heating_circuit(circuit_id)
+
+
+# ---- Actuators (physical MQTT devices) ----
+
+
+class ActuatorRequest(BaseModel):
+    name: str
+    mqtt_device_name: str
+    description: str | None = None
+
+
+@router.get("/actuators")
+async def list_actuators(
+    _user: User = Depends(admin_only),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(select(Actuator).order_by(Actuator.id))
+    return [
+        {"id": a.id, "name": a.name, "mqtt_device_name": a.mqtt_device_name, "description": a.description}
+        for a in result.scalars().all()
+    ]
+
+
+@router.post("/actuators", status_code=201)
+async def create_actuator(
+    payload: ActuatorRequest,
+    _user: User = Depends(admin_only),
+    db: AsyncSession = Depends(get_db),
+):
+    actuator = Actuator(**payload.model_dump())
+    db.add(actuator)
+    await db.commit()
+    await db.refresh(actuator)
+    return {"id": actuator.id, "name": actuator.name, "mqtt_device_name": actuator.mqtt_device_name, "description": actuator.description}
+
+
+@router.put("/actuators/{actuator_id}")
+async def update_actuator(
+    actuator_id: int,
+    payload: ActuatorRequest,
+    _user: User = Depends(admin_only),
+    db: AsyncSession = Depends(get_db),
+):
+    actuator = await db.get(Actuator, actuator_id)
+    if not actuator:
+        raise HTTPException(status_code=404, detail="Actuator not found")
+    actuator.name = payload.name
+    actuator.mqtt_device_name = payload.mqtt_device_name
+    actuator.description = payload.description
+    await db.commit()
+    return {"id": actuator.id, "name": actuator.name, "mqtt_device_name": actuator.mqtt_device_name, "description": actuator.description}
+
+
+@router.delete("/actuators/{actuator_id}", status_code=204)
+async def delete_actuator(
+    actuator_id: int,
+    _user: User = Depends(admin_only),
+    db: AsyncSession = Depends(get_db),
+):
+    actuator = await db.get(Actuator, actuator_id)
+    if actuator:
+        await db.delete(actuator)
+        await db.commit()

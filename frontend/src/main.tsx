@@ -6,6 +6,7 @@ import App from "./App";
 import { ToastProvider } from "./components/Toast";
 import "./index.css";
 import "./i18n";
+import "./stores/themeStore"; // Initialize theme on load
 
 const queryClient = new QueryClient({
   defaultOptions: {

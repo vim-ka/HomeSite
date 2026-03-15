@@ -1,6 +1,7 @@
 """Async command dispatcher — debounce + grouping by device ID.
 
-Replaces v1's threading.Lock + Timer with asyncio.Lock + asyncio.Task.
+Accumulates params per device, deduplicates keys (last write wins),
+then flushes as a single grouped MQTT message per device after debounce.
 """
 
 import asyncio
@@ -16,9 +17,9 @@ logger = structlog.get_logger(__name__)
 class AsyncCommandDispatcher:
     """Debounces outgoing commands per device.
 
-    When add_param() is called, the command is queued. After `debounce_seconds`
-    of inactivity (no new params for any device), all queued commands are flushed
-    via CommandPublisher.
+    When add_param() is called, the param is queued. Duplicate keys are
+    overwritten (last value wins). After `debounce_seconds` of inactivity,
+    all accumulated params are flushed as one MQTT message per device.
     """
 
     def __init__(self, publisher: CommandPublisher, debounce_seconds: float = 5.0):
@@ -48,36 +49,19 @@ class AsyncCommandDispatcher:
         await self.flush_all()
 
     async def flush_all(self) -> None:
-        """Flush all queued commands immediately."""
+        """Flush all queued commands — one grouped MQTT message per device."""
         async with self._lock:
             items = self._device_store.copy()
             self._device_store.clear()
 
         for device_id, params in items.items():
-            for key, value in params.items():
-                try:
-                    await self.publisher.publish(device_id, key, str(value))
-                except Exception as e:
-                    logger.error(
-                        "dispatch_publish_error",
-                        device_id=device_id,
-                        key=key,
-                        error=str(e),
-                    )
-
-    async def flush_device(self, device_id: str) -> None:
-        """Flush commands for a specific device immediately."""
-        async with self._lock:
-            params = self._device_store.pop(device_id, {})
-
-        for key, value in params.items():
             try:
-                await self.publisher.publish(device_id, key, str(value))
+                str_params = {k: str(v) for k, v in params.items()}
+                await self.publisher.publish_grouped(device_id, str_params)
             except Exception as e:
                 logger.error(
                     "dispatch_publish_error",
                     device_id=device_id,
-                    key=key,
                     error=str(e),
                 )
 

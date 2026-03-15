@@ -10,6 +10,7 @@ class SensorResponse(BaseModel):
     mount_point: str
     place: str
     system: str
+    last_reading: datetime | None = None
 
     model_config = {"from_attributes": True}
 

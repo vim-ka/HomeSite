@@ -105,6 +105,7 @@ class SensorDetailResponse(BaseModel):
     place_name: str
     system_name: str
     datatype_ids: list[int] = []
+    last_reading: datetime | None = None
 
     model_config = {"from_attributes": True}
 
@@ -156,6 +157,8 @@ class HeatingCircuitResponse(BaseModel):
     return_mount_point_name: str | None = None
     config_temp_key: str | None
     config_pump_key: str | None
+    config_prefix: str | None = None
+    mqtt_device_name: str | None = None
     delta_threshold: float
     display_order: int
 
@@ -168,6 +171,8 @@ class HeatingCircuitCreateRequest(BaseModel):
     return_mount_point_id: int | None = None
     config_temp_key: str | None = None
     config_pump_key: str | None = None
+    config_prefix: str | None = None
+    mqtt_device_name: str | None = None
     delta_threshold: float = 5.0
     display_order: int = 0
 
@@ -178,5 +183,7 @@ class HeatingCircuitUpdateRequest(BaseModel):
     return_mount_point_id: int | None = None
     config_temp_key: str | None = None
     config_pump_key: str | None = None
+    config_prefix: str | None = None
+    mqtt_device_name: str | None = None
     delta_threshold: float = 5.0
     display_order: int = 0
