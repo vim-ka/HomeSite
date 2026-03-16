@@ -275,6 +275,12 @@ async def seed(session: AsyncSession) -> None:
             "show_on_dashboard": False,
             "display_order": 5,
         },
+        # Virtual entries for command routing (not shown on dashboard)
+        {"id": 6, "circuit_name": "Расписание", "delta_threshold": 5.0, "config_prefix": "heating_schedule", "mqtt_device_name": "boiler_unit", "show_on_dashboard": False, "display_order": 99},
+        {"id": 7, "circuit_name": "Давление", "delta_threshold": 5.0, "config_prefix": "heating_pressure", "mqtt_device_name": "boiler_unit", "show_on_dashboard": False, "display_order": 99},
+        {"id": 8, "circuit_name": "Автоподпитка", "delta_threshold": 5.0, "config_prefix": "heating_autofill", "mqtt_device_name": "boiler_unit", "show_on_dashboard": False, "display_order": 99},
+        {"id": 9, "circuit_name": "Антилегионелла", "delta_threshold": 5.0, "config_prefix": "watersupply_alm", "mqtt_device_name": "boiler_unit", "show_on_dashboard": False, "display_order": 99},
+        {"id": 10, "circuit_name": "ТЭН", "delta_threshold": 5.0, "config_prefix": "watersupply_ihb_teh", "mqtt_device_name": "boiler_unit", "show_on_dashboard": False, "display_order": 99},
     ]
 
     # --- Insert all data (order matters for FK constraints) ---
