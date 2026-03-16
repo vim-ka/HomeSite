@@ -118,7 +118,7 @@ function HeatingCard({ circuit: c }: { circuit: HeatingCircuit }) {
               ПЗА кр.{c.pza_curve}
             </span>
           ) : c.pza_capable ? (
-            <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-500">
+            <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-gray-200 text-gray-700 dark:bg-gray-600 dark:text-gray-200">
               Ручн.
             </span>
           ) : null}

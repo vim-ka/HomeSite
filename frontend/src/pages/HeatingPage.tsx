@@ -335,7 +335,7 @@ function Indicator({
             <span className={`text-[9px] px-1 py-0.5 rounded ${
               badgeColor === "green"
                 ? "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300"
-                : "bg-gray-100 text-gray-500"
+                : "bg-gray-200 text-gray-700 dark:bg-gray-600 dark:text-gray-200"
             }`}>
               {badge}
             </span>
@@ -445,7 +445,7 @@ export default function HeatingPage() {
                             ПЗА кр.{c.pza_curve}
                           </span>
                         ) : c.pza_capable ? (
-                          <span className="text-[9px] px-1 py-0.5 rounded bg-gray-100 text-gray-500">
+                          <span className="text-[9px] px-1 py-0.5 rounded bg-gray-200 text-gray-700 dark:bg-gray-600 dark:text-gray-200">
                             Ручн.
                           </span>
                         ) : null}
