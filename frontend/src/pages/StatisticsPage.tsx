@@ -289,15 +289,15 @@ export default function StatisticsPage() {
         <h2 className="text-xl font-bold text-gray-800">{t("statistics.title")}</h2>
 
         {/* Period selector */}
-        <div className="flex gap-1.5 bg-gray-100 rounded-lg p-1">
+        <div className="flex gap-1.5 bg-gray-100 dark:bg-gray-700 rounded-lg p-1">
           {PERIODS.map((p) => (
             <button
               key={p.key}
               onClick={() => setPeriod(p.key)}
               className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
                 period === p.key
-                  ? "bg-white text-gray-800 shadow-sm"
-                  : "text-gray-500 hover:text-gray-700"
+                  ? "bg-white dark:bg-gray-500 text-gray-800 dark:text-gray-100 shadow-sm"
+                  : "text-gray-500 dark:text-gray-300 hover:text-gray-700 dark:hover:text-gray-100"
               }`}
             >
               {p.label}
