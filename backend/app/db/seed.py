@@ -158,8 +158,16 @@ async def seed(session: AsyncSession) -> None:
         {"id": 9, "key": "heating_floorheating_pump", "value": "1"},
         {"id": 10, "key": "heating_floorheating_temp", "value": "30"},
         {"id": 11, "key": "heating_floorheating_off_ihb", "value": "0"},
-        {"id": 12, "key": "heating_schedule_enabled", "value": "1"},
-        {"id": 13, "key": "heating_schedule_delta", "value": "-10"},
+        {"id": 12, "key": "heating_radiator_schedule_enabled", "value": "1"},
+        {"id": 13, "key": "heating_radiator_schedule_delta", "value": "-10"},
+        {"id": 49, "key": "heating_floorheating_schedule_delta", "value": "-5"},
+        {"id": 50, "key": "heating_floorheating_schedule_enabled", "value": "1"},
+        {"id": 51, "key": "heating_radiator_schedule_days", "value": "1,2,3,4,5"},
+        {"id": 52, "key": "heating_floorheating_schedule_days", "value": "1,2,3,4,5"},
+        {"id": 53, "key": "heating_radiator_schedule_start", "value": "23:00"},
+        {"id": 54, "key": "heating_floorheating_schedule_start", "value": "23:00"},
+        {"id": 55, "key": "heating_radiator_schedule_end", "value": "06:00"},
+        {"id": 56, "key": "heating_floorheating_schedule_end", "value": "06:00"},
         {"id": 14, "key": "heating_autofill_enabled", "value": "1"},
         {"id": 15, "key": "heating_pressure_min", "value": "1.0"},
         {"id": 16, "key": "heating_pressure_max", "value": "1.8"},
@@ -275,12 +283,6 @@ async def seed(session: AsyncSession) -> None:
             "show_on_dashboard": False,
             "display_order": 5,
         },
-        # Virtual entries for command routing (not shown on dashboard)
-        {"id": 6, "circuit_name": "Расписание", "delta_threshold": 5.0, "config_prefix": "heating_schedule", "mqtt_device_name": "boiler_unit", "show_on_dashboard": False, "display_order": 99},
-        {"id": 7, "circuit_name": "Давление", "delta_threshold": 5.0, "config_prefix": "heating_pressure", "mqtt_device_name": "boiler_unit", "show_on_dashboard": False, "display_order": 99},
-        {"id": 8, "circuit_name": "Автоподпитка", "delta_threshold": 5.0, "config_prefix": "heating_autofill", "mqtt_device_name": "boiler_unit", "show_on_dashboard": False, "display_order": 99},
-        {"id": 9, "circuit_name": "Антилегионелла", "delta_threshold": 5.0, "config_prefix": "watersupply_alm", "mqtt_device_name": "boiler_unit", "show_on_dashboard": False, "display_order": 99},
-        {"id": 10, "circuit_name": "ТЭН", "delta_threshold": 5.0, "config_prefix": "watersupply_ihb_teh", "mqtt_device_name": "boiler_unit", "show_on_dashboard": False, "display_order": 99},
     ]
 
     # --- Insert all data (order matters for FK constraints) ---

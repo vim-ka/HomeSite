@@ -386,6 +386,19 @@ export default function HeatingPage() {
   const set = (key: string, value: string | number) =>
     update({ [key]: String(value) });
 
+  // Schedule helpers — write to both radiator and floor keys
+  const schedBool = (suffix: string) => s(`heating_radiator_${suffix}`, "0") === "1";
+  const schedVal = (suffix: string, fallback = "") => s(`heating_radiator_${suffix}`, fallback);
+  const schedSet = (suffix: string, value: string) =>
+    update({
+      [`heating_radiator_${suffix}`]: value,
+      [`heating_floorheating_${suffix}`]: value,
+    });
+  const schedToggle = (suffix: string) => {
+    const v = schedBool(suffix) ? "0" : "1";
+    schedSet(suffix, v);
+  };
+
   const radCurveIdx = num("heating_radiator_curve", "3") - 1;
   const floorCurveIdx = num("heating_floorheating_curve", "3") - 1;
 
@@ -666,37 +679,37 @@ export default function HeatingPage() {
             <div className="divide-y divide-gray-100">
               <SettingRow label={t("heating.scheduleEnabled")}>
                 <Toggle
-                  value={bool("heating_schedule_enabled")}
-                  onChange={() => toggle("heating_schedule_enabled")}
+                  value={schedBool("schedule_enabled")}
+                  onChange={() => schedToggle("schedule_enabled")}
                 />
               </SettingRow>
               <SettingRow label={t("heating.scheduleDeltaRadiators")}>
                 <TempSlider
-                  value={num("heating_schedule_delta_radiators", "-10")}
+                  value={num("heating_radiator_schedule_delta", "-10")}
                   min={-20}
                   max={0}
-                  onChange={(v) => set("heating_schedule_delta_radiators", v)}
-                  disabled={!bool("heating_schedule_enabled")}
+                  onChange={(v) => set("heating_radiator_schedule_delta", v)}
+                  disabled={!schedBool("schedule_enabled")}
                 />
               </SettingRow>
               <SettingRow label={t("heating.scheduleDeltaFloor")}>
                 <TempSlider
-                  value={num("heating_schedule_delta_floor", "-5")}
+                  value={num("heating_floorheating_schedule_delta", "-5")}
                   min={-20}
                   max={0}
-                  onChange={(v) => set("heating_schedule_delta_floor", v)}
-                  disabled={!bool("heating_schedule_enabled")}
+                  onChange={(v) => set("heating_floorheating_schedule_delta", v)}
+                  disabled={!schedBool("schedule_enabled")}
                 />
               </SettingRow>
             </div>
-            {bool("heating_schedule_enabled") && (
+            {schedBool("schedule_enabled") && (
               <>
                 <div className="mt-3 flex items-center justify-between gap-3 flex-wrap">
                   <div>
                     <p className="text-xs font-medium text-gray-600 mb-1.5">{t("heating.scheduleDays")}</p>
                     <div className="flex gap-1.5">
                       {[1, 2, 3, 4, 5, 6, 7].map((d) => {
-                        const days = (settings?.["heating_schedule_days"] ?? "1,2,3,4,5").split(",").filter(Boolean);
+                        const days = (schedVal("schedule_days", "1,2,3,4,5")).split(",").filter(Boolean);
                         const active = days.includes(String(d));
                         const labels = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
                         return (
@@ -705,7 +718,7 @@ export default function HeatingPage() {
                             onClick={() => {
                               const ds = new Set(days.map(Number));
                               if (ds.has(d)) ds.delete(d); else ds.add(d);
-                              set("heating_schedule_days", Array.from(ds).sort().join(","));
+                              schedSet("schedule_days", Array.from(ds).sort().join(","));
                             }}
                             className={`px-2.5 py-1 rounded-lg text-xs font-semibold border transition-colors ${
                               active
@@ -723,13 +736,13 @@ export default function HeatingPage() {
                     <p className="text-xs font-medium text-gray-600 mb-1.5">{t("heating.scheduleHours")}</p>
                     <div className="flex items-center gap-1.5">
                       <TimeInput
-                        value={settings?.["heating_schedule_start"] ?? "23:00"}
-                        onChange={(v) => set("heating_schedule_start", v)}
+                        value={schedVal("schedule_start", "23:00")}
+                        onChange={(v) => schedSet("schedule_start", v)}
                       />
                       <span className="text-gray-400 text-sm">—</span>
                       <TimeInput
-                        value={settings?.["heating_schedule_end"] ?? "06:00"}
-                        onChange={(v) => set("heating_schedule_end", v)}
+                        value={schedVal("schedule_end", "06:00")}
+                        onChange={(v) => schedSet("schedule_end", v)}
                       />
                     </div>
                   </div>
@@ -748,35 +761,35 @@ export default function HeatingPage() {
             <div className="divide-y divide-gray-100">
               <SettingRow label={t("heating.autofillEnabled")}>
                 <Toggle
-                  value={bool("heating_autofill_enabled")}
-                  onChange={() => toggle("heating_autofill_enabled")}
+                  value={bool("heating_boiler_autofill_enabled")}
+                  onChange={() => toggle("heating_boiler_autofill_enabled")}
                 />
               </SettingRow>
               <SettingRow label={t("heating.pressureMin")}>
                 <TempSlider
-                  value={num("heating_pressure_min", "1.0") * 10}
+                  value={num("heating_boiler_pressure_min", "1.0") * 10}
                   min={1}
                   max={30}
                   unit=" бар"
                   onChange={(v) => {
-                    if (v / 10 >= num("heating_pressure_max", "1.8")) return;
-                    set("heating_pressure_min", (v / 10).toFixed(1));
+                    if (v / 10 >= num("heating_boiler_pressure_max", "1.8")) return;
+                    set("heating_boiler_pressure_min", (v / 10).toFixed(1));
                   }}
-                  disabled={!bool("heating_autofill_enabled")}
+                  disabled={!bool("heating_boiler_autofill_enabled")}
                   formatValue={(v) => (v / 10).toFixed(1)}
                 />
               </SettingRow>
               <SettingRow label={t("heating.pressureMax")}>
                 <TempSlider
-                  value={num("heating_pressure_max", "1.8") * 10}
+                  value={num("heating_boiler_pressure_max", "1.8") * 10}
                   min={1}
                   max={30}
                   unit=" бар"
                   onChange={(v) => {
-                    if (v / 10 <= num("heating_pressure_min", "1.0")) return;
-                    set("heating_pressure_max", (v / 10).toFixed(1));
+                    if (v / 10 <= num("heating_boiler_pressure_min", "1.0")) return;
+                    set("heating_boiler_pressure_max", (v / 10).toFixed(1));
                   }}
-                  disabled={!bool("heating_autofill_enabled")}
+                  disabled={!bool("heating_boiler_autofill_enabled")}
                   formatValue={(v) => (v / 10).toFixed(1)}
                 />
               </SettingRow>
