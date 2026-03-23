@@ -10,11 +10,10 @@ from device_gateway.dispatcher import AsyncCommandDispatcher
 
 class FakePublisher:
     def __init__(self):
-        self.calls: list[tuple[str, str, str]] = []
+        self.calls: list[tuple[str, dict]] = []  # (device_id, params)
 
-    async def publish(self, device_id: str, parameter: str, value: str) -> str:
-        self.calls.append((device_id, parameter, value))
-        return f"topic/{device_id}"
+    async def publish_grouped(self, device_id: str, params: dict[str, str]) -> None:
+        self.calls.append((device_id, dict(params)))
 
 
 @pytest.fixture
@@ -82,9 +81,12 @@ async def test_post_command(api_app, dispatcher, publisher):
     assert data["queued"] is True
     assert data["device_id"] == "boiler"
 
-    # Flush and verify params were queued
+    # Flush and verify params were sent as one grouped message
     await dispatcher.flush_all()
-    assert len(publisher.calls) == 2
+    assert len(publisher.calls) == 1
+    device_id, params = publisher.calls[0]
+    assert device_id == "boiler"
+    assert set(params.keys()) == {"tmp", "prs"}
 
 
 @pytest.mark.asyncio

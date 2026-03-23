@@ -86,7 +86,8 @@ All timestamps are **UTC throughout the entire system**. Follow these rules stri
 Runtime settings stored in `config_kv` table (not in `.env`):
 - MQTT: `mqtt_host`, `mqtt_port`, `mqtt_user`, `mqtt_pass`, `mqtt_topic_prefix`
 - Sensors: `sensor_stale_minutes`
-- Monitoring: `health_poll_seconds`, `frontend_poll_seconds`, `gateway_timeout_seconds`
+- Monitoring: `health_poll_seconds`, `frontend_poll_seconds`, `gateway_timeout_seconds`, `ack_timeout_seconds`, `heartbeat_timeout_seconds`
+- Range alerts: `heating_pressure_min`, `heating_pressure_max`, `heating_boiler_max_temp`
 - System: `access_token_expire_minutes`, `refresh_token_expire_days`, `log_level`, `device_gateway_url`
 - Charts: `chart_history_days`
 
@@ -131,14 +132,14 @@ CI/CD planned via GitHub Actions self-hosted runner.
 ### High Priority
 - [ ] **Deploy to VM**: Install script for Ubuntu (Python, Node, Mosquitto, Nginx, systemd units)
 - [ ] **CI/CD**: GitHub Actions self-hosted runner on the VM
-- [ ] **ESP32 firmware**: Add `/ack` response and `/heartbeat` publishing to firmware
-- [ ] **Range monitoring**: Pressure outside min/max → ERROR, boiler overheating → ERROR
+- [x] **ESP32 firmware**: Add `/ack` response and `/heartbeat` publishing to firmware
+- [x] **Range monitoring**: Pressure outside min/max → ERROR, boiler overheating → ERROR
 
 ### Medium Priority
 - [ ] **Data migration**: Transfer data from SQLite → PostgreSQL (not just schema + seed)
-- [ ] **SSL/HTTPS**: Let's Encrypt or self-signed for production
-- [ ] **Rate limiting**: Middleware implementation (setting exists, middleware not wired)
-- [ ] **Log rotation**: structlog → file with rotation
+- [x] **SSL/HTTPS**: Nginx HTTPS + self-signed cert, Let's Encrypt ready
+- [x] **Rate limiting**: SlowAPIMiddleware + strict limits on auth endpoints
+- [x] **Log rotation**: RotatingFileHandler via LOG_FILE env var
 
 ### Low Priority
 - [ ] **Mobile app**: Update React Native app for new endpoints

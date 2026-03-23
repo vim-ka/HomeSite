@@ -1,7 +1,8 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, require_role
+from app.core.rate_limit import limiter
 from app.db.session import get_db
 from app.models.user import User, UserRole
 from app.repositories.user_repository import UserRepository
@@ -23,14 +24,16 @@ def get_auth_service(db: AsyncSession = Depends(get_db)) -> AuthService:
 
 
 @router.post("/login", response_model=TokenResponse)
-async def login(payload: LoginRequest, service: AuthService = Depends(get_auth_service)):
+@limiter.limit("10/minute")
+async def login(request: Request, payload: LoginRequest, service: AuthService = Depends(get_auth_service)):
     """Authenticate user and return JWT tokens."""
     return await service.authenticate(payload.username, payload.password)
 
 
 @router.post("/refresh", response_model=TokenResponse)
+@limiter.limit("20/minute")
 async def refresh_token(
-    payload: RefreshRequest, service: AuthService = Depends(get_auth_service)
+    request: Request, payload: RefreshRequest, service: AuthService = Depends(get_auth_service)
 ):
     """Exchange refresh token for a new token pair."""
     return await service.refresh(payload.refresh_token)

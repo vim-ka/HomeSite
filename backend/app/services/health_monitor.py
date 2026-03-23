@@ -13,7 +13,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.logging import get_logger
 from app.models.event import EventLog
-from app.models.sensor import Sensor, SensorData
+from app.models.heating import HeatingCircuit
+from app.models.sensor import Sensor, SensorData, SensorDataType
 from app.models.pending_sensor import PendingSensor
 from app.models.config import Actuator, ConfigKV
 
@@ -66,6 +67,8 @@ class HealthMonitor:
         self._prev_services: dict[str, bool] = {}
         self._prev_active_sensor_ids: set[int] = set()
         self._prev_pending_names: set[str] = set()
+        self._pressure_alert_sensor_ids: set[int] = set()
+        self._boiler_overheat: bool = False
         self._initialized = False
 
     async def run(self) -> None:
@@ -86,7 +89,10 @@ class HealthMonitor:
             events: list[EventLog] = []
 
             # --- Load config from config_kv ---
-            config_keys = ["sensor_stale_minutes", "health_poll_seconds", "gateway_timeout_seconds"]
+            config_keys = [
+                "sensor_stale_minutes", "health_poll_seconds", "gateway_timeout_seconds",
+                "heating_pressure_min", "heating_pressure_max", "heating_boiler_max_temp",
+            ]
             result = await session.execute(
                 select(ConfigKV.key, ConfigKV.value).where(ConfigKV.key.in_(config_keys))
             )
@@ -185,6 +191,25 @@ class HealthMonitor:
 
             self._prev_pending_names = current_pending
 
+            # --- Range monitoring (pressure + boiler overtemp) ---
+            if self._initialized:
+                pressure_min = 1.0
+                pressure_max = 1.8
+                boiler_max_temp = 85.0
+                try:
+                    pressure_min = float(kv.get("heating_pressure_min", "1.0"))
+                    pressure_max = float(kv.get("heating_pressure_max", "1.8"))
+                    boiler_max_temp = float(kv.get("heating_boiler_max_temp", "85.0"))
+                except ValueError:
+                    pass
+
+                await self._check_pressure_ranges(
+                    session, pressure_min, pressure_max, stale_threshold, events
+                )
+                await self._check_boiler_overtemp(
+                    session, boiler_max_temp, stale_threshold, events
+                )
+
             # --- Write events ---
             if events:
                 for e in events:
@@ -241,6 +266,100 @@ class HealthMonitor:
             )
 
             self._initialized = True
+
+    async def _check_pressure_ranges(
+        self,
+        session: AsyncSession,
+        p_min: float,
+        p_max: float,
+        stale_threshold: datetime,
+        events: list[EventLog],
+    ) -> None:
+        """Check all pressure sensors against [p_min, p_max]; emit ERROR/INFO on state changes."""
+        result = await session.execute(
+            select(SensorData.sensor_id, SensorData.value, Sensor.name)
+            .join(Sensor, SensorData.sensor_id == Sensor.id)
+            .join(SensorDataType, SensorData.datatype_id == SensorDataType.id)
+            .where(SensorDataType.code == "prs")
+            .where(SensorData.timestamp >= stale_threshold)
+        )
+        rows = result.all()
+
+        current_alerts: set[int] = set()
+        for sensor_id, value, name in rows:
+            if value < p_min or value > p_max:
+                current_alerts.add(sensor_id)
+                if sensor_id not in self._pressure_alert_sensor_ids:
+                    direction = "низкое" if value < p_min else "высокое"
+                    events.append(EventLog(
+                        level="ERROR",
+                        source="health_monitor",
+                        message=(
+                            f"Давление вне нормы: {name} = {value:.2f} бар"
+                            f" ({direction}, норма {p_min}–{p_max} бар)"
+                        ),
+                    ))
+            elif sensor_id in self._pressure_alert_sensor_ids:
+                events.append(EventLog(
+                    level="INFO",
+                    source="health_monitor",
+                    message=f"Давление восстановилось: {name} = {value:.2f} бар",
+                ))
+
+        self._pressure_alert_sensor_ids = current_alerts
+
+    async def _check_boiler_overtemp(
+        self,
+        session: AsyncSession,
+        max_temp: float,
+        stale_threshold: datetime,
+        events: list[EventLog],
+    ) -> None:
+        """Check boiler supply temperature against max_temp; emit ERROR/INFO on state change."""
+        # Find boiler supply mount point via HeatingCircuit
+        mp_result = await session.execute(
+            select(HeatingCircuit.supply_mount_point_id)
+            .where(HeatingCircuit.config_prefix == "heating_boiler")
+        )
+        supply_mp_id = mp_result.scalar_one_or_none()
+        if supply_mp_id is None:
+            return
+
+        # Find temperature reading for any sensor at that mount point
+        temp_dt_result = await session.execute(
+            select(SensorDataType.id).where(SensorDataType.code == "tmp")
+        )
+        tmp_dt_id = temp_dt_result.scalar_one_or_none()
+        if tmp_dt_id is None:
+            return
+
+        result = await session.execute(
+            select(SensorData.value, Sensor.name)
+            .join(Sensor, SensorData.sensor_id == Sensor.id)
+            .where(Sensor.mount_point_id == supply_mp_id)
+            .where(SensorData.datatype_id == tmp_dt_id)
+            .where(SensorData.timestamp >= stale_threshold)
+        )
+        row = result.first()
+        if row is None:
+            return
+
+        temp, name = row
+        if temp > max_temp:
+            if not self._boiler_overheat:
+                self._boiler_overheat = True
+                events.append(EventLog(
+                    level="ERROR",
+                    source="health_monitor",
+                    message=f"Перегрев котла: {name} = {temp:.1f}°C (макс. {max_temp:.0f}°C)",
+                ))
+        elif self._boiler_overheat:
+            self._boiler_overheat = False
+            events.append(EventLog(
+                level="INFO",
+                source="health_monitor",
+                message=f"Температура котла в норме: {name} = {temp:.1f}°C",
+            ))
 
     async def _check_services(self, session: AsyncSession, gateway_timeout: float = 3.0) -> dict[str, bool]:
         db_ok = True

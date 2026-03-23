@@ -44,6 +44,9 @@ class Settings(BaseSettings):
     # Logging
     log_level: str = "INFO"
     log_format: str = "json"  # "json" or "console"
+    log_file: str = ""  # Path to log file. Empty = stdout only. E.g. "/opt/homesite/logs/backend.log"
+    log_max_bytes: int = 10_485_760  # 10 MB per file
+    log_backup_count: int = 5  # Keep 5 rotated files → max ~50 MB total
 
     @property
     def is_sqlite(self) -> bool:

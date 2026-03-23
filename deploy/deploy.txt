@@ -1,0 +1,334 @@
+1. Подготовка
+
+  1. Скачай Ubuntu Server 22.04 LTS ISO: https://ubuntu.com/download/server
+  2. Положи ISO на диск, например C:\ISO\ubuntu-22.04.iso
+
+  2. Создание VM в Hyper-V Manager
+
+  1. Открой Hyper-V Manager (Win+S → "Hyper-V")
+  2. Action → New → Virtual Machine
+  3. Настройки:
+    - Name: homesite
+    - Generation: 2 (UEFI, лучше производительность)
+    - Memory: 3072 MB, снять галку "Dynamic Memory" (для стабильности)
+    - Network: выбери External Switch (если нет — создай: Virtual Switch Manager → New → External, привязать к сетевой
+  карте)
+    - Hard Disk: 20 GB (можно расширить позже)
+    - Install OS from bootable image: указать путь к ISO
+  4. Перед запуском — отключи Secure Boot:
+    - ПКМ на VM → Settings → Security → снять Enable Secure Boot (иначе Ubuntu может не загрузиться)
+
+  3. Установка Ubuntu
+
+  1. Запусти VM → Connect
+  2. Выбери Ubuntu Server (не Desktop — нам GUI не нужен)
+  3. Язык: English
+  4. Сеть: DHCP подхватит автоматически (запомни IP — будешь ходить по SSH)
+  5. Disk: Use entire disk → Done
+  6. Profile:
+    - Name: homesite
+    - Server name: homesite
+    - Username: admin (или как хочешь)
+    - Password: задай
+  7. Install OpenSSH server — поставь галку (важно!)
+  8. Featured snaps — ничего не выбирай
+  9. Дождись установки → Reboot
+
+  4. После установки
+
+  # Зайди по SSH с Windows (PowerShell):
+  ssh admin@<IP-адрес-VM>
+
+  # Обнови систему
+  sudo apt update && sudo apt upgrade -y
+
+  # Проверь IP (понадобится для настройки)
+  ip addr show eth0
+
+  5. Автозапуск VM при загрузке Windows
+
+  PowerShell от админа:
+  Set-VM -Name "homesite" -AutomaticStartAction Start -AutomaticStartDelay 30
+  Set-VM -Name "homesite" -AutomaticStopAction ShutDown
+
+  Теперь VM стартует через 30 секунд после загрузки Windows и корректно выключается.
+
+  ---
+  Резервное копирование VM
+
+  Вариант 1: Hyper-V Checkpoint (быстрый снапшот)
+
+  # Создать снапшот (PowerShell от админа)
+  Checkpoint-VM -Name "homesite" -SnapshotName "before-update-$(Get-Date -Format yyyy-MM-dd)"
+
+  # Откатить к снапшоту
+  Restore-VMCheckpoint -Name "before-update-2026-03-15" -VMName "homesite" -Confirm:$false
+
+  # Список снапшотов
+  Get-VMCheckpoint -VMName "homesite"
+
+  # Удалить старый снапшот
+  Remove-VMCheckpoint -VMName "homesite" -Name "old-snapshot"
+
+  Плюс: мгновенно, можно откатить. Минус: занимает место, не переносим.
+
+  Вариант 2: Export VM (полный бэкап)
+
+  # Экспорт VM (можно на внешний диск)
+  Export-VM -Name "homesite" -Path "D:\Backups\HyperV"
+
+  # Импорт обратно (при восстановлении)
+  Import-VM -Path "D:\Backups\HyperV\homesite\Virtual Machines\*.vmcx" -Copy -GenerateNewId
+
+  Плюс: полная копия, можно перенести на другой ПК. Минус: медленнее, нужно место.
+
+  Вариант 3: Автоматический бэкап по расписанию
+
+  Создай скрипт C:\Scripts\backup-vm.ps1:
+
+  $vmName = "homesite"
+  $backupPath = "D:\Backups\HyperV"
+  $date = Get-Date -Format "yyyy-MM-dd"
+  $keepDays = 7
+
+  # Создать checkpoint перед экспортом
+  Checkpoint-VM -Name $vmName -SnapshotName "auto-backup-$date"
+
+  # Экспорт
+  $exportPath = Join-Path $backupPath $date
+  Export-VM -Name $vmName -Path $exportPath
+
+  # Удалить бэкапы старше $keepDays дней
+  Get-ChildItem $backupPath -Directory | Where-Object {
+      $_.CreationTime -lt (Get-Date).AddDays(-$keepDays)
+  } | Remove-Item -Recurse -Force
+
+  # Удалить checkpoint (чтобы не копились)
+  Remove-VMCheckpoint -VMName $vmName -Name "auto-backup-$date"
+
+  Добавь в Task Scheduler:
+  1. Win+S → "Task Scheduler" → Create Basic Task
+  2. Name: Backup HomeSite VM
+  3. Trigger: Daily, 03:00
+  4. Action: Start a program
+    - Program: powershell.exe
+    - Arguments: -ExecutionPolicy Bypass -File C:\Scripts\backup-vm.ps1
+  5. "Run with highest privileges" — галку
+
+  -----------------------------------------------
+  Когда VM установлена и работает — скажи, подготовлю скрипт деплоя HomeSite.
+
+✻ Worked for 32s
+
+Шаг 1 — Установка зависимостей
+
+  sudo apt update && sudo apt upgrade -y
+
+  # Python 3.12 (уже есть в Ubuntu 24.04), pip, venv
+  sudo apt install -y python3.12 python3.12-venv python3-pip
+
+  # Node.js 20 (для сборки фронтенда)
+  curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+  sudo apt install -y nodejs
+
+  # Nginx, Mosquitto, Git
+  sudo apt install -y nginx mosquitto mosquitto-clients git
+
+  Шаг 2 — Скопировать код на сервер
+
+  Либо через git (если репо на GitHub):
+  git clone https://github.com/<user>/homesite-v2.git ~/homesite-v2
+  cd ~/homesite-v2
+
+  Либо с Windows через scp:
+  # В PowerShell на Windows:
+  scp -r C:\Projects\Python\homesite-v2 user@<IP_СЕРВЕРА>:~/homesite-v2
+
+  Шаг 3 — Настроить .env перед установкой
+
+  cd ~/homesite-v2/backend
+  cp .env.example .env
+  nano .env
+
+  Обязательно поменять:
+  JWT_SECRET_KEY=<случайная строка, например: openssl rand -hex 32>
+  INTERNAL_API_SECRET=<другая случайная строка>
+  APP_ENV=production
+  DEBUG=false
+  LOG_FILE=/opt/homesite/logs/backend.log
+
+  Шаг 4 — Запустить install.sh
+
+  cd ~/homesite-v2
+  sudo bash deploy/install.sh
+
+  Скрипт сделает всё сам: создаст пользователя, venv, соберёт фронтенд, сгенерирует SSL-сертификат, установит systemd
+  юниты и nginx конфиг.
+
+  Шаг 5 — Засидить БД
+
+  sudo -u homesite /opt/homesite/venv/bin/python -m app.db.seed
+
+  (работает из /opt/homesite/backend)
+
+  Шаг 6 — Проверить что всё работает
+
+  # Статус сервисов
+  systemctl status homesite-backend homesite-gateway
+
+  # Проверить backend
+  curl http://127.0.0.1:8000/health
+
+  # Проверить nginx
+  curl -k https://homesite.local/health   # -k т.к. self-signed
+
+  Шаг 7 — Добавить DNS/hosts запись (на Windows-машине)
+
+  Чтобы открывался https://homesite.local:
+
+  # C:\Windows\System32\drivers\etc\hosts  (открыть от администратора)
+  192.168.X.X   homesite.local   # IP твоего Ubuntu сервера
+
+  Шаг 8 — Добавить сертификат в доверенные (Windows)
+
+  certlm.msc → Trusted Root Certification Authorities → Import
+  Файл: /etc/ssl/homesite/cert.pem  (скопировать с сервера)
+
+  ---
+  Полезные команды после деплоя:
+  # Логи backend
+  journalctl -u homesite-backend -f
+  # или
+  tail -f /opt/homesite/logs/backend.log
+
+  # Перезапуск после обновления кода
+  sudo systemctl restart homesite-backend homesite-gateway
+
+  # Обновить код с git
+  cd ~/homesite-v2 && git pull && sudo bash deploy/install.sh
+  
+  Два шага:
+
+  1 — Узнать IP сервера
+
+  ip addr show | grep "inet " | grep -v 127.0.0.1
+
+  Запомни адрес вида 192.168.1.XX.
+
+  2 — На каждом устройстве добавить в hosts
+
+  Windows (открыть Блокнот от администратора → C:\Windows\System32\drivers\etc\hosts):
+  192.168.1.XX   homesite.local
+
+  macOS / Linux (sudo nano /etc/hosts):
+  192.168.1.XX   homesite.local
+
+  Android / iOS — hosts не редактируются без root. Варианта два:
+  - Открывать по IP напрямую: https://192.168.1.XX (но сертификат будет ругаться)
+  - Настроить локальный DNS на роутере (следующий раздел)
+
+  ---
+  Опционально — DNS на роутере (тогда hosts не нужен нигде)
+
+  Если роутер поддерживает локальный DNS (большинство OpenWRT, MikroTik, Keenetic):
+
+  - Добавить запись: homesite.local → 192.168.1.XX
+  - Тогда все устройства в сети резолвят homesite.local автоматически
+
+  ---
+  Сертификат на других устройствах
+
+  После добавления hosts — браузер покажет предупреждение об SSL. Чтобы убрать, нужно установить сертификат в
+  доверенные.
+
+  Скачай cert.pem с сервера:
+  # На Windows в PowerShell:
+  scp user@192.168.1.XX:/etc/ssl/homesite/cert.pem ~/Downloads/homesite.crt
+
+  Затем установи:
+  - Windows: двойной клик → «Установить сертификат» → «Локальный компьютер» → «Доверенные корневые центры»
+  - Android: Настройки → Безопасность → Установить сертификат → CA-сертификат
+  - iOS: AirDrop файл на телефон → Настройки → Профиль загружен → Установить → Настройки → Основные → Доверие
+  сертификатам → включить
+  
+  
+  
+  
+  а в какую папку на сервере лучше залить репу и куда установить сайт?
+
+● Стандартная практика для Linux:
+
+  ┌───────────────────────────┬────────────────────┬───────────────────────────────────────────────────┐
+  │        Назначение         │        Путь        │                      Почему                       │
+  ├───────────────────────────┼────────────────────┼───────────────────────────────────────────────────┤
+  │ Исходники (репо)          │ /srv/homesite      │ /srv — для данных сервисов, стандарт FHS          │
+  ├───────────────────────────┼────────────────────┼───────────────────────────────────────────────────┤
+  │ Установка (рабочие файлы) │ /opt/homesite      │ /opt — для стороннего ПО, уже прописан в скриптах │
+  ├───────────────────────────┼────────────────────┼───────────────────────────────────────────────────┤
+  │ Логи                      │ /opt/homesite/logs │ рядом с приложением, уже прописано                │
+  ├───────────────────────────┼────────────────────┼───────────────────────────────────────────────────┤
+  │ База данных               │ /opt/homesite/data │ уже прописано                                     │
+  └───────────────────────────┴────────────────────┴───────────────────────────────────────────────────┘
+
+  ---
+  У нас install.sh уже использует /opt/homesite — менять ничего не нужно.
+
+  Только нужно добавить переменную REPO_DIR в update.sh и убедиться что клонируем в /srv/homesite:
+
+  # Клонировать репо
+  git clone https://github.com/<user>/homesite-v2.git /srv/homesite
+
+  # update.sh — исправить путь к репо
+  cd /srv/homesite
+  git pull
+  ...
+
+  Итого структура на сервере:
+  /srv/homesite/        ← git репо (исходники)
+  /opt/homesite/        ← рабочие файлы (venv, dist, data, logs)
+  /opt/homesite/.env    ← конфиг продакшна
+  /etc/ssl/homesite/    ← TLS сертификаты
+  
+  
+  
+  
+   Вариант 1 — простой (уже сейчас работает)
+
+  На сервере создаёшь скрипт ~/update.sh:
+
+  #!/bin/bash
+  set -euo pipefail
+
+  cd ~/homesite-v2
+  git pull
+
+  # Пересобрать фронтенд
+  cd frontend && npm ci && npm run build
+  cp -r dist /opt/homesite/frontend/dist
+  cd ..
+
+  # Обновить бэкенд
+  /opt/homesite/venv/bin/pip install --no-cache-dir backend/
+
+  # Применить миграции (если есть)
+  cd /opt/homesite/backend
+  sudo -u homesite /opt/homesite/venv/bin/alembic upgrade head
+  cd ~/homesite-v2
+
+  # Перезапустить сервисы
+  systemctl restart homesite-backend homesite-gateway
+
+  echo "Deploy done. $(date)"
+
+  chmod +x ~/update.sh
+
+  Деплой одной командой:
+  sudo bash ~/update.sh
+
+  ---
+  Вариант 2 — GitHub Actions (из TODO, когда будет нужно)
+
+  Пуш в main → GitHub запускает runner на сервере → он сам делает git pull + update.sh. Без захода на сервер вообще.
+
+  ---
+  Сейчас достаточно варианта 1. Хочешь добавить update.sh в репозиторий рядом с install.sh?

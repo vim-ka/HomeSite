@@ -6,14 +6,13 @@ import pytest
 
 
 class FakePublisher:
-    """Records publish calls instead of using real MQTT."""
+    """Records publish_grouped calls instead of using real MQTT."""
 
     def __init__(self):
-        self.calls: list[tuple[str, str, str]] = []
+        self.calls: list[tuple[str, dict]] = []  # (device_id, params)
 
-    async def publish(self, device_id: str, parameter: str, value: str) -> str:
-        self.calls.append((device_id, parameter, value))
-        return f"home/devices/{device_id}/command/{parameter}"
+    async def publish_grouped(self, device_id: str, params: dict[str, str]) -> None:
+        self.calls.append((device_id, dict(params)))
 
 
 @pytest.fixture
@@ -29,7 +28,7 @@ def dispatcher(publisher):
 
 @pytest.mark.asyncio
 async def test_add_and_flush(dispatcher, publisher):
-    """Commands are queued and flushed after debounce."""
+    """Commands are queued and flushed as a single grouped message after debounce."""
     await dispatcher.add_param("boiler", "tmp", "55")
     await dispatcher.add_param("boiler", "prs", "1.5")
 
@@ -39,11 +38,11 @@ async def test_add_and_flush(dispatcher, publisher):
     # Wait for debounce to fire
     await asyncio.sleep(0.2)
 
-    assert len(publisher.calls) == 2
-    devices = {c[0] for c in publisher.calls}
-    assert devices == {"boiler"}
-    params = {c[1] for c in publisher.calls}
-    assert params == {"tmp", "prs"}
+    # One grouped message for the device
+    assert len(publisher.calls) == 1
+    device_id, params = publisher.calls[0]
+    assert device_id == "boiler"
+    assert params == {"tmp": "55", "prs": "1.5"}
 
 
 @pytest.mark.asyncio
@@ -57,34 +56,35 @@ async def test_debounce_resets(dispatcher, publisher):
     # Should not have flushed yet (0.05 + 0.05 < reset timer of 0.1)
     assert len(publisher.calls) == 0
 
-    # Wait for debounce to complete
+    # Wait for debounce to complete — one grouped message
     await asyncio.sleep(0.15)
-    assert len(publisher.calls) == 2
+    assert len(publisher.calls) == 1
+    assert publisher.calls[0][1] == {"power": "1", "speed": "3"}
 
 
 @pytest.mark.asyncio
 async def test_flush_all_immediate(dispatcher, publisher):
-    """flush_all sends everything immediately without waiting for debounce."""
+    """flush_all sends one grouped message per device immediately."""
     await dispatcher.add_param("dev1", "k1", "v1")
     await dispatcher.add_param("dev2", "k2", "v2")
     await dispatcher.flush_all()
 
     assert len(publisher.calls) == 2
+    devices = {c[0] for c in publisher.calls}
+    assert devices == {"dev1", "dev2"}
 
 
 @pytest.mark.asyncio
-async def test_flush_device(dispatcher, publisher):
-    """flush_device sends only that device's commands."""
+async def test_pending_for(dispatcher, publisher):
+    """pending_for returns queued params for a device without flushing."""
     await dispatcher.add_param("dev1", "k1", "v1")
     await dispatcher.add_param("dev2", "k2", "v2")
-    await dispatcher.flush_device("dev1")
 
-    assert len(publisher.calls) == 1
-    assert publisher.calls[0] == ("dev1", "k1", "v1")
-
-    # dev2 still pending
     pending = await dispatcher.pending_for("dev2")
     assert pending == {"k2": "v2"}
+
+    # Nothing flushed yet
+    assert len(publisher.calls) == 0
 
 
 @pytest.mark.asyncio
@@ -95,7 +95,9 @@ async def test_overwrite_same_key(dispatcher, publisher):
     await dispatcher.flush_all()
 
     assert len(publisher.calls) == 1
-    assert publisher.calls[0] == ("boiler", "tmp", "55")
+    device_id, params = publisher.calls[0]
+    assert device_id == "boiler"
+    assert params == {"tmp": "55"}
 
 
 @pytest.mark.asyncio
@@ -105,3 +107,4 @@ async def test_shutdown_flushes(dispatcher, publisher):
     await dispatcher.shutdown()
 
     assert len(publisher.calls) == 1
+    assert publisher.calls[0] == ("dev1", {"k1": "v1"})

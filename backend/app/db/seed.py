@@ -171,6 +171,7 @@ async def seed(session: AsyncSession) -> None:
         {"id": 14, "key": "heating_autofill_enabled", "value": "1"},
         {"id": 15, "key": "heating_pressure_min", "value": "1.0"},
         {"id": 16, "key": "heating_pressure_max", "value": "1.8"},
+        {"id": 57, "key": "heating_boiler_max_temp", "value": "85"},
         {"id": 17, "key": "watersupply_ihb_automode", "value": "1"},
         {"id": 18, "key": "watersupply_ihb_pump", "value": "1"},
         {"id": 19, "key": "watersupply_ihb_temp", "value": "45"},
@@ -235,6 +236,8 @@ async def seed(session: AsyncSession) -> None:
         {
             "id": 1,
             "circuit_name": "Котёл",
+            "supply_mount_point_id": 1,   # Котел, подача → tsboiler_s
+            "return_mount_point_id": 2,   # Котел, возврат → tsboiler_b
             "delta_threshold": 5.0,
             "config_temp_key": "heating_boiler_temp",
             "config_pump_key": "heating_boiler_power",
@@ -245,6 +248,8 @@ async def seed(session: AsyncSession) -> None:
         {
             "id": 2,
             "circuit_name": "Радиаторы",
+            "supply_mount_point_id": 3,   # Радиаторы, подача → tsrad_s
+            "return_mount_point_id": 4,   # Радиаторы, возврат → tsrad_b
             "delta_threshold": 5.0,
             "config_temp_key": "heating_radiator_temp",
             "config_pump_key": "heating_radiator_pump",
@@ -255,6 +260,8 @@ async def seed(session: AsyncSession) -> None:
         {
             "id": 3,
             "circuit_name": "Тёплый пол",
+            "supply_mount_point_id": 5,   # Теплый пол, подача → tsfloor_s
+            "return_mount_point_id": 6,   # Теплый пол, возврат → tsfloor_b
             "delta_threshold": 3.0,
             "config_temp_key": "heating_floorheating_temp",
             "config_pump_key": "heating_floorheating_pump",
@@ -265,6 +272,8 @@ async def seed(session: AsyncSession) -> None:
         {
             "id": 4,
             "circuit_name": "БКН",
+            "supply_mount_point_id": 7,   # БКН, подача → tsihb_s
+            "return_mount_point_id": 8,   # БКН, возврат → tsihb_b
             "delta_threshold": 5.0,
             "config_temp_key": "watersupply_ihb_temp",
             "config_pump_key": "watersupply_ihb_pump",

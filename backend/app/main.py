@@ -5,11 +5,14 @@ import httpx
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 from sqlalchemy import func, select, text
 
 from app.api.router import api_v1_router
 from app.core.config import get_settings
 from app.core.logging import get_logger, setup_logging
+from app.core.rate_limit import limiter, rate_limit_exceeded_handler
 from app.db.session import engine, AsyncSessionLocal
 
 settings = get_settings()
@@ -91,7 +94,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     import asyncio
     from app.services.health_monitor import HealthMonitor
 
-    setup_logging(log_level=settings.log_level, log_format=settings.log_format)
+    setup_logging(
+        log_level=settings.log_level,
+        log_format=settings.log_format,
+        log_file=settings.log_file,
+        log_max_bytes=settings.log_max_bytes,
+        log_backup_count=settings.log_backup_count,
+    )
     await ensure_tables_exist()
     await ensure_seed_data()
     await ensure_config_kv_populated()
@@ -132,6 +141,12 @@ def create_app() -> FastAPI:
             {"name": "internal", "description": "Internal API (DeviceGateway → Backend)"},
         ],
     )
+
+    # Rate limiting — disabled in test env to avoid test interference
+    app.state.limiter = limiter
+    if settings.app_env != "test":
+        app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
+        app.add_middleware(SlowAPIMiddleware)
 
     # CORS — allow frontend origins
     app.add_middleware(
