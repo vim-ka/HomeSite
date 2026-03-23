@@ -51,6 +51,7 @@ fi
 
 # Set permissions
 chown -R "$USER:$USER" "$INSTALL_DIR"
+chmod 755 "$INSTALL_DIR"
 
 # Install systemd units
 cp deploy/systemd/*.service /etc/systemd/system/
@@ -98,7 +99,7 @@ echo "  2. sudo certbot --nginx -d <YOUR_DOMAIN>"
 echo "  3. In deploy/nginx/homesite.conf replace ssl_certificate lines (see comments)"
 echo ""
 echo "Seed the database:"
-echo "  cd $INSTALL_DIR/backend && sudo -u $USER $INSTALL_DIR/venv/bin/python -m app.db.seed"
+echo "  sudo bash -c \"cd $INSTALL_DIR/backend && sudo -u $USER $INSTALL_DIR/venv/bin/python -m app.db.seed\""
 echo ""
 echo "Run Alembic migrations:"
-echo "  cd $INSTALL_DIR/backend && sudo -u $USER $INSTALL_DIR/venv/bin/alembic upgrade head"
+echo "  sudo bash -c \"cd $INSTALL_DIR/backend && sudo -u $USER $INSTALL_DIR/venv/bin/alembic upgrade head\""
