@@ -67,15 +67,20 @@ function Toggle({
 
 function SettingRow({
   label,
+  hint,
   children,
 }: {
   label: string;
+  hint?: string;
   children: React.ReactNode;
 }) {
   return (
     <div className="flex items-center justify-between gap-4 py-2">
-      <span className="text-sm text-gray-600">{label}</span>
-      <div className="flex items-center gap-2">{children}</div>
+      <div>
+        <span className="text-sm text-gray-600">{label}</span>
+        {hint && <p className="text-xs text-gray-400 mt-0.5">{hint}</p>}
+      </div>
+      <div className="flex items-center gap-2 shrink-0">{children}</div>
     </div>
   );
 }
@@ -227,20 +232,20 @@ export default function WaterSupplyPage() {
         <section className="bg-white rounded-lg shadow p-4">
           <CollapsibleSection title={t("waterSupply.ihb")} icon={Flame}>
             <div className="divide-y divide-gray-100">
-              <SettingRow label={t("waterSupply.ihbAutoMode")}>
+              <SettingRow label={t("waterSupply.ihbAutoMode")} hint={t("waterSupply.hints.ihbAutoMode")}>
                 <Toggle
                   value={ihbAuto}
                   onChange={() => toggle("watersupply_ihb_automode")}
                 />
               </SettingRow>
-              <SettingRow label={t("waterSupply.ihbPump")}>
+              <SettingRow label={t("waterSupply.ihbPump")} hint={t("waterSupply.hints.ihbPump")}>
                 <Toggle
                   value={bool("watersupply_ihb_pump")}
                   onChange={() => toggle("watersupply_ihb_pump")}
                   disabled={ihbAuto}
                 />
               </SettingRow>
-              <SettingRow label={t("waterSupply.ihbTemp")}>
+              <SettingRow label={t("waterSupply.ihbTemp")} hint={t("waterSupply.hints.ihbTemp")}>
                 <TempSlider
                   value={num("watersupply_ihb_temp", "45")}
                   min={40}
@@ -261,13 +266,13 @@ export default function WaterSupplyPage() {
         <section className="bg-white rounded-lg shadow p-4">
           <CollapsibleSection title={t("waterSupply.pumps")} icon={Waves}>
             <div className="divide-y divide-gray-100">
-              <SettingRow label={t("waterSupply.coldPump")}>
+              <SettingRow label={t("waterSupply.coldPump")} hint={t("waterSupply.hints.coldPump")}>
                 <Toggle
                   value={bool("watersupply_pump")}
                   onChange={() => toggle("watersupply_pump")}
                 />
               </SettingRow>
-              <SettingRow label={t("waterSupply.hotPump")}>
+              <SettingRow label={t("waterSupply.hotPump")} hint={t("waterSupply.hints.hotPump")}>
                 <Toggle
                   value={bool("watersupply_pump_hot")}
                   onChange={() => toggle("watersupply_pump_hot")}
@@ -284,13 +289,13 @@ export default function WaterSupplyPage() {
         <section className="bg-white rounded-lg shadow p-4">
           <CollapsibleSection title={t("waterSupply.ten")} icon={Zap}>
             <div className="divide-y divide-gray-100">
-              <SettingRow label={t("waterSupply.tenAutoMode")}>
+              <SettingRow label={t("waterSupply.tenAutoMode")} hint={t("waterSupply.hints.tenAutoMode")}>
                 <Toggle
                   value={bool("watersupply_ihb_teh_automode")}
                   onChange={() => toggle("watersupply_ihb_teh_automode")}
                 />
               </SettingRow>
-              <SettingRow label={t("waterSupply.tenDelay")}>
+              <SettingRow label={t("waterSupply.tenDelay")} hint={t("waterSupply.hints.tenDelay")}>
                 <TempSlider
                   value={num("watersupply_ihb_teh_heating_delay", "120")}
                   min={1}
@@ -300,7 +305,7 @@ export default function WaterSupplyPage() {
                   disabled={!bool("watersupply_ihb_teh_automode")}
                 />
               </SettingRow>
-              <SettingRow label={t("waterSupply.tenPower")}>
+              <SettingRow label={t("waterSupply.tenPower")} hint={t("waterSupply.hints.tenPower")}>
                 <Toggle
                   value={bool("watersupply_ihb_teh_power")}
                   onChange={() => toggle("watersupply_ihb_teh_power")}
@@ -320,13 +325,13 @@ export default function WaterSupplyPage() {
         <section className="bg-white rounded-lg shadow p-4">
           <CollapsibleSection title={t("waterSupply.antiLegionella")} icon={ShieldCheck}>
             <div className="divide-y divide-gray-100">
-              <SettingRow label={t("waterSupply.almEnabled")}>
+              <SettingRow label={t("waterSupply.almEnabled")} hint={t("waterSupply.hints.almEnabled")}>
                 <Toggle
                   value={almEnabled}
                   onChange={() => toggle("watersupply_ihb_alm_mode")}
                 />
               </SettingRow>
-              <SettingRow label={t("waterSupply.almTemp")}>
+              <SettingRow label={t("waterSupply.almTemp")} hint={t("waterSupply.hints.almTemp")}>
                 <TempSlider
                   value={num("watersupply_alm_temp", "60")}
                   min={55}
@@ -336,9 +341,8 @@ export default function WaterSupplyPage() {
                 />
               </SettingRow>
               <div className="py-2">
-                <span className="text-sm text-gray-600 block mb-2">
-                  {t("waterSupply.almDays")}
-                </span>
+                <span className="text-sm text-gray-600 block mb-1">{t("waterSupply.almDays")}</span>
+                <p className="text-xs text-gray-400 mb-2">{t("waterSupply.hints.almDays")}</p>
                 <div className="flex flex-wrap gap-1.5">
                   {DAYS.map((d) => (
                     <button
@@ -356,14 +360,14 @@ export default function WaterSupplyPage() {
                   ))}
                 </div>
               </div>
-              <SettingRow label={t("waterSupply.almStartTime")}>
+              <SettingRow label={t("waterSupply.almStartTime")} hint={t("waterSupply.hints.almStartTime")}>
                 <TimeInput
                   value={s("watersupply_alm_start_time", "03:00")}
                   onChange={(v) => set("watersupply_alm_start_time", v)}
                   disabled={!almEnabled}
                 />
               </SettingRow>
-              <SettingRow label={t("waterSupply.almDuration")}>
+              <SettingRow label={t("waterSupply.almDuration")} hint={t("waterSupply.hints.almDuration")}>
                 <TempSlider
                   value={num("watersupply_alm_duration", "30")}
                   min={10}

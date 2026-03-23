@@ -99,15 +99,20 @@ function Toggle({
 
 function SettingRow({
   label,
+  hint,
   children,
 }: {
   label: string;
+  hint?: string;
   children: React.ReactNode;
 }) {
   return (
     <div className="flex items-center justify-between gap-4 py-2">
-      <span className="text-sm text-gray-600">{label}</span>
-      <div className="flex items-center gap-2">{children}</div>
+      <div>
+        <span className="text-sm text-gray-600">{label}</span>
+        {hint && <p className="text-xs text-gray-400 mt-0.5">{hint}</p>}
+      </div>
+      <div className="flex items-center gap-2 shrink-0">{children}</div>
     </div>
   );
 }
@@ -501,17 +506,17 @@ export default function HeatingPage() {
         <section className="bg-white rounded-lg shadow p-4">
           <CollapsibleSection title={t("heating.boiler")} icon={Flame}>
             <div className="divide-y divide-gray-100">
-              <SettingRow label={t("heating.autoRegulation")}>
+              <SettingRow label={t("heating.autoRegulation")} hint={t("heating.hints.autoRegulation")}>
                 <Toggle value={boilerAuto} onChange={() => toggle("heating_boiler_automode")} />
               </SettingRow>
-              <SettingRow label={t("heating.boilerPower")}>
+              <SettingRow label={t("heating.boilerPower")} hint={t("heating.hints.boilerPower")}>
                 <Toggle
                   value={bool("heating_boiler_power")}
                   onChange={() => toggle("heating_boiler_power")}
                   disabled={boilerAuto}
                 />
               </SettingRow>
-              <SettingRow label={t("heating.boilerTemp")}>
+              <SettingRow label={t("heating.boilerTemp")} hint={t("heating.hints.boilerTemp")}>
                 <TempSlider
                   value={num("heating_boiler_temp", "50")}
                   min={30}
@@ -533,20 +538,20 @@ export default function HeatingPage() {
         <section className="bg-white rounded-lg shadow p-4">
           <CollapsibleSection title={t("heating.ihb")} icon={Droplets}>
             <div className="divide-y divide-gray-100">
-              <SettingRow label={t("waterSupply.ihbAutoMode")}>
+              <SettingRow label={t("waterSupply.ihbAutoMode")} hint={t("waterSupply.hints.ihbAutoMode")}>
                 <Toggle
                   value={bool("watersupply_ihb_automode")}
                   onChange={() => toggle("watersupply_ihb_automode")}
                 />
               </SettingRow>
-              <SettingRow label={t("waterSupply.ihbPump")}>
+              <SettingRow label={t("waterSupply.ihbPump")} hint={t("waterSupply.hints.ihbPump")}>
                 <Toggle
                   value={bool("watersupply_ihb_pump")}
                   onChange={() => toggle("watersupply_ihb_pump")}
                   disabled={bool("watersupply_ihb_automode")}
                 />
               </SettingRow>
-              <SettingRow label={t("waterSupply.ihbTemp")}>
+              <SettingRow label={t("waterSupply.ihbTemp")} hint={t("waterSupply.hints.ihbTemp")}>
                 <TempSlider
                   value={num("watersupply_ihb_temp", "45")}
                   min={40}
@@ -570,20 +575,20 @@ export default function HeatingPage() {
         <section className="bg-white rounded-lg shadow p-4">
           <CollapsibleSection title={t("heating.radiators")} icon={Heater}>
             <div className="divide-y divide-gray-100">
-              <SettingRow label={t("heating.pzaMode")}>
+              <SettingRow label={t("heating.pzaMode")} hint={t("heating.hints.pzaMode")}>
                 <Toggle
                   value={bool("heating_radiator_wbm")}
                   onChange={() => toggle("heating_radiator_wbm")}
                 />
               </SettingRow>
-              <SettingRow label={t("dashboard.pump")}>
+              <SettingRow label={t("dashboard.pump")} hint={t("heating.hints.pump")}>
                 <Toggle
                   value={bool("heating_radiator_pump")}
                   onChange={() => toggle("heating_radiator_pump")}
                   disabled={bool("heating_radiator_wbm")}
                 />
               </SettingRow>
-              <SettingRow label={t("heating.supplyTemp")}>
+              <SettingRow label={t("heating.supplyTemp")} hint={t("heating.hints.supplyTemp")}>
                 <TempSlider
                   value={num("heating_radiator_temp", "45")}
                   min={30}
@@ -592,7 +597,7 @@ export default function HeatingPage() {
                   disabled={bool("heating_radiator_wbm")}
                 />
               </SettingRow>
-              <SettingRow label={t("heating.disableDuringIHB")}>
+              <SettingRow label={t("heating.disableDuringIHB")} hint={t("heating.hints.disableDuringIHB")}>
                 <Toggle
                   value={bool("heating_radiator_off_ihb")}
                   onChange={() => toggle("heating_radiator_off_ihb")}
@@ -622,20 +627,20 @@ export default function HeatingPage() {
         <section className="bg-white rounded-lg shadow p-4">
           <CollapsibleSection title={t("heating.floorHeating")} icon={Waves}>
             <div className="divide-y divide-gray-100">
-              <SettingRow label={t("heating.pzaMode")}>
+              <SettingRow label={t("heating.pzaMode")} hint={t("heating.hints.pzaMode")}>
                 <Toggle
                   value={bool("heating_floorheating_wbm")}
                   onChange={() => toggle("heating_floorheating_wbm")}
                 />
               </SettingRow>
-              <SettingRow label={t("dashboard.pump")}>
+              <SettingRow label={t("dashboard.pump")} hint={t("heating.hints.pump")}>
                 <Toggle
                   value={bool("heating_floorheating_pump")}
                   onChange={() => toggle("heating_floorheating_pump")}
                   disabled={bool("heating_floorheating_wbm")}
                 />
               </SettingRow>
-              <SettingRow label={t("heating.supplyTemp")}>
+              <SettingRow label={t("heating.supplyTemp")} hint={t("heating.hints.supplyTemp")}>
                 <TempSlider
                   value={num("heating_floorheating_temp", "30")}
                   min={25}
@@ -644,7 +649,7 @@ export default function HeatingPage() {
                   disabled={bool("heating_floorheating_wbm")}
                 />
               </SettingRow>
-              <SettingRow label={t("heating.disableDuringIHB")}>
+              <SettingRow label={t("heating.disableDuringIHB")} hint={t("heating.hints.disableDuringIHB")}>
                 <Toggle
                   value={bool("heating_floorheating_off_ihb")}
                   onChange={() => toggle("heating_floorheating_off_ihb")}
@@ -677,13 +682,13 @@ export default function HeatingPage() {
         <section className="bg-white rounded-lg shadow p-4">
           <CollapsibleSection title={t("heating.schedule")} icon={Calendar}>
             <div className="divide-y divide-gray-100">
-              <SettingRow label={t("heating.scheduleEnabled")}>
+              <SettingRow label={t("heating.scheduleEnabled")} hint={t("heating.hints.scheduleEnabled")}>
                 <Toggle
                   value={schedBool("schedule_enabled")}
                   onChange={() => schedToggle("schedule_enabled")}
                 />
               </SettingRow>
-              <SettingRow label={t("heating.scheduleDeltaRadiators")}>
+              <SettingRow label={t("heating.scheduleDeltaRadiators")} hint={t("heating.hints.scheduleDelta")}>
                 <TempSlider
                   value={num("heating_radiator_schedule_delta", "-10")}
                   min={-20}
@@ -692,7 +697,7 @@ export default function HeatingPage() {
                   disabled={!schedBool("schedule_enabled")}
                 />
               </SettingRow>
-              <SettingRow label={t("heating.scheduleDeltaFloor")}>
+              <SettingRow label={t("heating.scheduleDeltaFloor")} hint={t("heating.hints.scheduleDelta")}>
                 <TempSlider
                   value={num("heating_floorheating_schedule_delta", "-5")}
                   min={-20}
@@ -759,13 +764,13 @@ export default function HeatingPage() {
         <section className="bg-white rounded-lg shadow p-4">
           <CollapsibleSection title={t("heating.autofill")} icon={Gauge}>
             <div className="divide-y divide-gray-100">
-              <SettingRow label={t("heating.autofillEnabled")}>
+              <SettingRow label={t("heating.autofillEnabled")} hint={t("heating.hints.autofillEnabled")}>
                 <Toggle
                   value={bool("heating_boiler_autofill_enabled")}
                   onChange={() => toggle("heating_boiler_autofill_enabled")}
                 />
               </SettingRow>
-              <SettingRow label={t("heating.pressureMin")}>
+              <SettingRow label={t("heating.pressureMin")} hint={t("heating.hints.pressureMin")}>
                 <TempSlider
                   value={num("heating_boiler_pressure_min", "1.0") * 10}
                   min={1}
@@ -779,7 +784,7 @@ export default function HeatingPage() {
                   formatValue={(v) => (v / 10).toFixed(1)}
                 />
               </SettingRow>
-              <SettingRow label={t("heating.pressureMax")}>
+              <SettingRow label={t("heating.pressureMax")} hint={t("heating.hints.pressureMax")}>
                 <TempSlider
                   value={num("heating_boiler_pressure_max", "1.8") * 10}
                   min={1}
