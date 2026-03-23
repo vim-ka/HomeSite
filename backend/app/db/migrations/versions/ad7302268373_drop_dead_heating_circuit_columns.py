@@ -28,8 +28,13 @@ COLUMNS_TO_DROP = [
 
 
 def upgrade() -> None:
+    conn = op.get_bind()
+    existing = {row[1] for row in conn.execute(sa.text("PRAGMA table_info(heating_circuits)"))}
+    cols_to_drop = [col for col in COLUMNS_TO_DROP if col in existing]
+    if not cols_to_drop:
+        return
     with op.batch_alter_table("heating_circuits") as batch_op:
-        for col in COLUMNS_TO_DROP:
+        for col in cols_to_drop:
             batch_op.drop_column(col)
 
 
