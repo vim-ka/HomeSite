@@ -1,6 +1,6 @@
 #!/bin/bash
 # HomeSite v2 — Installation script for systemd deployment
-# Usage: sudo bash install.sh
+# Usage: cd /srv/homesite && sudo bash deploy/install.sh
 
 set -euo pipefail
 
@@ -8,6 +8,14 @@ INSTALL_DIR="/opt/homesite"
 USER="homesite"
 
 echo "=== HomeSite v2 Installation ==="
+
+# Install Python 3.12 (Ubuntu 22.04 ships 3.10 — needs deadsnakes PPA)
+if ! command -v python3.12 &>/dev/null; then
+    echo "Installing Python 3.12..."
+    add-apt-repository ppa:deadsnakes/ppa -y
+    apt update -q
+    apt install -y python3.12 python3.12-venv python3.12-distutils
+fi
 
 # Create user
 if ! id "$USER" &>/dev/null; then
@@ -90,7 +98,7 @@ echo "  2. sudo certbot --nginx -d <YOUR_DOMAIN>"
 echo "  3. In deploy/nginx/homesite.conf replace ssl_certificate lines (see comments)"
 echo ""
 echo "Seed the database:"
-echo "  sudo -u $USER $INSTALL_DIR/venv/bin/python -m app.db.seed"
+echo "  cd $INSTALL_DIR/backend && sudo -u $USER $INSTALL_DIR/venv/bin/python -m app.db.seed"
 echo ""
 echo "Run Alembic migrations:"
 echo "  cd $INSTALL_DIR/backend && sudo -u $USER $INSTALL_DIR/venv/bin/alembic upgrade head"
