@@ -1,5 +1,6 @@
 import { useTranslation } from "react-i18next";
 import TimeInput from "@/components/TimeInput";
+import TipLabel from "@/components/TipLabel";
 import { useQuery } from "@tanstack/react-query";
 import {
   Flame,
@@ -76,10 +77,7 @@ function SettingRow({
 }) {
   return (
     <div className="flex items-center justify-between gap-4 py-2">
-      <div>
-        <span className="text-sm text-gray-600">{label}</span>
-        {hint && <p className="text-xs text-gray-400 mt-0.5">{hint}</p>}
-      </div>
+      <TipLabel text={label} tip={hint} className="text-sm text-gray-600" />
       <div className="flex items-center gap-2 shrink-0">{children}</div>
     </div>
   );
@@ -341,8 +339,7 @@ export default function WaterSupplyPage() {
                 />
               </SettingRow>
               <div className="py-2">
-                <span className="text-sm text-gray-600 block mb-1">{t("waterSupply.almDays")}</span>
-                <p className="text-xs text-gray-400 mb-2">{t("waterSupply.hints.almDays")}</p>
+                <TipLabel text={t("waterSupply.almDays")} tip={t("waterSupply.hints.almDays")} className="text-sm text-gray-600 mb-2" />
                 <div className="flex flex-wrap gap-1.5">
                   {DAYS.map((d) => (
                     <button
