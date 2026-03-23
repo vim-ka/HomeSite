@@ -2,13 +2,6 @@ import { useEffect, useRef, useCallback } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuthStore } from "@/stores/authStore";
 
-interface SensorUpdate {
-  type: "sensor_update";
-  device_name: string;
-  sensor_id: number;
-  data: Record<string, number>;
-}
-
 export function useWebSocket() {
   const wsRef = useRef<WebSocket | null>(null);
   const queryClient = useQueryClient();
