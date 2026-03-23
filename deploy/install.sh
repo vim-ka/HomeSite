@@ -38,6 +38,7 @@ python3.12 -m venv "$INSTALL_DIR/venv"
 cd frontend
 npm ci
 npm run build
+rm -rf "$INSTALL_DIR/frontend/dist"
 cp -r dist "$INSTALL_DIR/frontend/dist"
 cd ..
 
