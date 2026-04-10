@@ -91,7 +91,13 @@ def create_gateway_api(
         connected = mqtt_connected_fn()
         heartbeats = {}
         if handler:
-            heartbeats = {name: ts.isoformat() for name, ts in handler.heartbeats.items()}
+            heartbeats = {
+                name: {
+                    "timestamp": hb["timestamp"].isoformat(),
+                    "data": hb.get("data", {}),
+                }
+                for name, hb in handler.heartbeats.items()
+            }
 
         return {
             "status": "ok" if connected else "degraded",

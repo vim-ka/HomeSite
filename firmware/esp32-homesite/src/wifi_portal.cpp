@@ -4,6 +4,25 @@
 static const char* AP_PREFIX = "HomeSite-";
 static const byte DNS_PORT = 53;
 
+static const char* RELAY_LABELS[] = {
+    "Boiler power",
+    "Radiator pump",
+    "Floor pump",
+    "IHB pump",
+    "Water pump",
+    "Hot water pump",
+    "TEH",
+    "Autofill valve",
+    "Rad valve OPEN",
+    "Rad valve CLOSE",
+    "Floor valve OPEN",
+    "Floor valve CLOSE",
+    "Lamp WARNING",
+    "Lamp CRITICAL",
+    "Spare 1",
+    "Spare 2",
+};
+
 void WifiPortal::start(ConfigManager& config, SensorReader& sensors) {
     _config = &config;
     _sensors = &sensors;
@@ -59,6 +78,19 @@ void WifiPortal::_handleRoot() {
     page.replace("{{MQTT_HOST}}", _config->mqttHost());
     page.replace("{{MQTT_PORT}}", String(_config->mqttPort()));
     page.replace("{{INTERVAL}}", String(_config->readIntervalMs() / 1000));
+    page.replace("{{TIMEZONE}}", _config->timezone());
+
+    // Relay pins
+    page.replace("{{RELAY_PINS}}", _buildRelayRows());
+    page.replace("{{RELAY_INVERT}}", _config->relayInvert() ? "checked" : "");
+
+    // Pressure sensors
+    PressureConfig prsH = _config->pressureHeating();
+    PressureConfig prsW = _config->pressureWater();
+    page.replace("{{PRS_HEAT_PIN}}", String(prsH.pin));
+    page.replace("{{PRS_HEAT_NAME}}", prsH.name);
+    page.replace("{{PRS_WATER_PIN}}", String(prsW.pin));
+    page.replace("{{PRS_WATER_NAME}}", prsW.name);
 
     _server->send(200, "text/html", page);
 }
@@ -86,6 +118,9 @@ void WifiPortal::_handleSave() {
     if (interval < 5) interval = 5;
     _config->setReadInterval(interval * 1000);
 
+    // Timezone
+    _config->setTimezone(_server->arg("timezone"));
+
     // Sensors — collect from form fields sensor_name_0, sensor_addr_0, sensor_type_0, ...
     std::vector<SensorMapping> mappings;
     for (int i = 0; i < 20; i++) {
@@ -105,6 +140,25 @@ void WifiPortal::_handleSave() {
         mappings.push_back(m);
     }
     _config->setSensors(mappings);
+
+    // Relay pins
+    uint8_t relayPins[16];
+    for (int i = 0; i < 16; i++) {
+        String key = "relay_pin_" + String(i);
+        relayPins[i] = _server->arg(key).toInt();
+    }
+    _config->setRelayPins(relayPins);
+    _config->setRelayInvert(_server->hasArg("relay_invert"));
+
+    // Pressure sensors
+    _config->setPressureHeating(
+        _server->arg("prs_heat_pin").toInt(),
+        _server->arg("prs_heat_name")
+    );
+    _config->setPressureWater(
+        _server->arg("prs_water_pin").toInt(),
+        _server->arg("prs_water_name")
+    );
 
     _server->send(200, "text/html",
         "<html><body style='font-family:sans-serif;text-align:center;padding:40px'>"
@@ -157,9 +211,16 @@ String WifiPortal::_buildSensorRows() {
             }
         }
 
+        // Format temperature
+        String tempStr = "—";
+        if (ds.temp > -55.0 && ds.temp < 125.0) {
+            tempStr = String(ds.temp, 1) + "&deg;C";
+        }
+
         html += "<div class='sensor-row'>";
         html += "<span class='type-badge'>DS18B20</span>";
-        html += "<span class='addr'>" + ds.addr.substring(0, 4) + "-" + ds.addr.substring(4, 8) + "-..." + "</span>";
+        html += "<span class='addr'>" + ds.addr.substring(0, 4) + "-" + ds.addr.substring(4, 8) + "-...</span>";
+        html += "<span class='temp'>" + tempStr + "</span>";
         html += "<input type='text' name='sensor_name_" + String(idx) + "' value='" + existingName + "' placeholder='sensor name'>";
         html += "<input type='hidden' name='sensor_addr_" + String(idx) + "' value='" + ds.addr + "'>";
         html += "<input type='hidden' name='sensor_type_" + String(idx) + "' value='ds18b20'>";
@@ -191,5 +252,19 @@ String WifiPortal::_buildSensorRows() {
         html = "<p class='info'>No sensors detected. Check wiring.</p>";
     }
 
+    return html;
+}
+
+String WifiPortal::_buildRelayRows() {
+    uint8_t pins[16];
+    _config->relayPins(pins);
+
+    String html;
+    for (int i = 0; i < 16; i++) {
+        html += "<div class='relay-row'>";
+        html += "<span>" + String(RELAY_LABELS[i]) + "</span>";
+        html += "<input type='number' name='relay_pin_" + String(i) + "' value='" + String(pins[i]) + "' min='0' max='39'>";
+        html += "</div>";
+    }
     return html;
 }

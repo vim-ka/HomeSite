@@ -7,7 +7,7 @@ import Section from "../../src/components/Section";
 import Toggle from "../../src/components/Toggle";
 import TempSlider from "../../src/components/TempSlider";
 import StatusBadge from "../../src/components/StatusBadge";
-import { colors } from "../../src/theme/colors";
+import { useTheme } from "../../src/hooks/useTheme";
 
 const DAYS = [1, 2, 3, 4, 5, 6, 7];
 
@@ -17,6 +17,7 @@ function fmt(v: number | null): string {
 
 export default function HeatingScreen() {
   const { t } = useTranslation();
+  const { colors } = useTheme();
   const { data: settings, isLoading, refetch } = useSettings();
   const { data: dashboard } = useDashboard();
   const update = useSettingUpdate();
@@ -32,14 +33,14 @@ export default function HeatingScreen() {
   if (isLoading) {
     return (
       <View style={styles.center}>
-        <Text style={styles.loadingText}>{t("common.loading")}</Text>
+        <Text style={{ color: colors.gray[500] }}>{t("common.loading")}</Text>
       </View>
     );
   }
 
   return (
     <ScrollView
-      style={styles.container}
+      style={[styles.container, { backgroundColor: colors.gray[100] }]}
       contentContainerStyle={styles.content}
       refreshControl={<RefreshControl refreshing={isLoading} onRefresh={refetch} />}
     >
@@ -48,11 +49,11 @@ export default function HeatingScreen() {
         <ScrollView horizontal showsHorizontalScrollIndicator={false}>
           {dashboard?.heating.map((c) => (
             <Card key={c.circuit} style={styles.circuitCard}>
-              <Text style={styles.circuitTitle}>{c.circuit}</Text>
-              <Text style={styles.circuitTemp}>
+              <Text style={[styles.circuitTitle, { color: colors.gray[700] }]}>{c.circuit}</Text>
+              <Text style={[styles.circuitTemp, { color: colors.orange[500] }]}>
                 {c.temp_supply != null ? `${fmt(c.temp_supply)}°` : "—"}
               </Text>
-              <Text style={styles.circuitLabel}>{t("heating.supplyTemp")}</Text>
+              <Text style={[styles.circuitLabel, { color: colors.gray[400] }]}>{t("heating.supplyTemp")}</Text>
               <View style={styles.circuitPump}>
                 <StatusBadge on={c.pump === "1"} labelOn={t("dashboard.on")} labelOff={t("dashboard.off")} />
               </View>
@@ -64,7 +65,7 @@ export default function HeatingScreen() {
       {/* Boiler + IHB */}
       <View style={styles.row}>
         <Card style={styles.flex1}>
-          <Text style={styles.sectionTitle}>{t("heating.boiler")}</Text>
+          <Text style={[styles.sectionTitle, { color: colors.gray[800] }]}>{t("heating.boiler")}</Text>
           <Toggle
             label={t("heating.boilerPower")}
             value={boilerPower}
@@ -86,7 +87,7 @@ export default function HeatingScreen() {
         </Card>
 
         <Card style={[styles.flex1, { marginLeft: 8 }]}>
-          <Text style={styles.sectionTitle}>{t("heating.ihb")}</Text>
+          <Text style={[styles.sectionTitle, { color: colors.gray[800] }]}>{t("heating.ihb")}</Text>
           <Toggle
             label={t("waterSupply.ihbAutoMode")}
             value={s.watersupply_ihb_automode === "1"}
@@ -111,7 +112,7 @@ export default function HeatingScreen() {
 
       {/* Radiators */}
       <Card style={styles.sectionCard}>
-        <Text style={styles.sectionTitle}>{t("heating.radiators")}</Text>
+        <Text style={[styles.sectionTitle, { color: colors.gray[800] }]}>{t("heating.radiators")}</Text>
         <Toggle
           label={t("dashboard.pump")}
           value={s.heating_radiator_pump === "1"}
@@ -139,7 +140,7 @@ export default function HeatingScreen() {
 
       {/* Floor Heating */}
       <Card style={styles.sectionCard}>
-        <Text style={styles.sectionTitle}>{t("heating.floorHeating")}</Text>
+        <Text style={[styles.sectionTitle, { color: colors.gray[800] }]}>{t("heating.floorHeating")}</Text>
         <Toggle
           label={t("dashboard.pump")}
           value={s.heating_floorheating_pump === "1"}
@@ -168,7 +169,7 @@ export default function HeatingScreen() {
       {/* Schedule + Autofill */}
       <View style={styles.row}>
         <Card style={styles.flex1}>
-          <Text style={styles.sectionTitle}>{t("heating.schedule")}</Text>
+          <Text style={[styles.sectionTitle, { color: colors.gray[800] }]}>{t("heating.schedule")}</Text>
           <Toggle
             label={t("heating.scheduleEnabled")}
             value={schedEnabled}
@@ -192,7 +193,7 @@ export default function HeatingScreen() {
           />
           {schedEnabled && (
             <>
-              <Text style={styles.smallLabel}>{t("heating.scheduleDays")}</Text>
+              <Text style={[styles.smallLabel, { color: colors.gray[600] }]}>{t("heating.scheduleDays")}</Text>
               <View style={styles.daysRow}>
                 {DAYS.map((d) => {
                   const days = (s.heating_schedule_days ?? "1,2,3,4,5").split(",").filter(Boolean);
@@ -200,14 +201,18 @@ export default function HeatingScreen() {
                   return (
                     <TouchableOpacity
                       key={d}
-                      style={[styles.dayBtn, active && styles.dayBtnActive]}
+                      style={[
+                        styles.dayBtn,
+                        { backgroundColor: colors.gray[100], borderColor: colors.gray[200] },
+                        active && { backgroundColor: colors.primary[600], borderColor: colors.primary[600] },
+                      ]}
                       onPress={() => {
                         const ds = new Set(days.map(Number));
                         if (ds.has(d)) ds.delete(d); else ds.add(d);
                         update("heating_schedule_days", Array.from(ds).sort().join(","));
                       }}
                     >
-                      <Text style={[styles.dayText, active && styles.dayTextActive]}>
+                      <Text style={[{ fontSize: 11, color: colors.gray[600] }, active && { color: "#ffffff", fontWeight: "600" }]}>
                         {t(`days.${d}`)}
                       </Text>
                     </TouchableOpacity>
@@ -215,14 +220,14 @@ export default function HeatingScreen() {
                 })}
               </View>
               <View style={styles.timeRow}>
-                <Text style={styles.smallLabel}>{s.heating_schedule_start ?? "23:00"} — {s.heating_schedule_end ?? "06:00"}</Text>
+                <Text style={[styles.smallLabel, { color: colors.gray[600] }]}>{s.heating_schedule_start ?? "23:00"} — {s.heating_schedule_end ?? "06:00"}</Text>
               </View>
             </>
           )}
         </Card>
 
         <Card style={[styles.flex1, { marginLeft: 8 }]}>
-          <Text style={styles.sectionTitle}>{t("heating.autofill")}</Text>
+          <Text style={[styles.sectionTitle, { color: colors.gray[800] }]}>{t("heating.autofill")}</Text>
           <Toggle
             label={t("heating.autofillEnabled")}
             value={autofillEnabled}
@@ -255,34 +260,25 @@ export default function HeatingScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.gray[100] },
+  container: { flex: 1 },
   content: { padding: 16, paddingBottom: 32 },
   center: { flex: 1, justifyContent: "center", alignItems: "center" },
-  loadingText: { color: colors.gray[500] },
   row: { flexDirection: "row", marginBottom: 12 },
   flex1: { flex: 1 },
   sectionCard: { marginBottom: 12 },
-  sectionTitle: { fontSize: 14, fontWeight: "700", color: colors.gray[800], marginBottom: 6 },
+  sectionTitle: { fontSize: 14, fontWeight: "700", marginBottom: 6 },
   circuitCard: { width: 120, marginRight: 10, alignItems: "center", paddingVertical: 12 },
-  circuitTitle: { fontSize: 13, fontWeight: "600", color: colors.gray[700], marginBottom: 6 },
-  circuitTemp: { fontSize: 22, fontWeight: "800", color: colors.orange[500] },
-  circuitLabel: { fontSize: 11, color: colors.gray[400], marginTop: 2 },
+  circuitTitle: { fontSize: 13, fontWeight: "600", marginBottom: 6 },
+  circuitTemp: { fontSize: 22, fontWeight: "800" },
+  circuitLabel: { fontSize: 11, marginTop: 2 },
   circuitPump: { marginTop: 8 },
-  smallLabel: { fontSize: 12, color: colors.gray[600], marginTop: 8, marginBottom: 6 },
+  smallLabel: { fontSize: 12, marginTop: 8, marginBottom: 6 },
   daysRow: { flexDirection: "row", flexWrap: "wrap", gap: 4 },
   dayBtn: {
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 8,
-    backgroundColor: colors.gray[100],
     borderWidth: 1,
-    borderColor: colors.gray[200],
   },
-  dayBtnActive: {
-    backgroundColor: colors.primary[600],
-    borderColor: colors.primary[600],
-  },
-  dayText: { fontSize: 11, color: colors.gray[600] },
-  dayTextActive: { color: colors.white, fontWeight: "600" },
   timeRow: { marginTop: 6 },
 });

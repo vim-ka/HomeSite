@@ -18,11 +18,15 @@ std::vector<DiscoveredSensor> SensorReader::scanOneWire() {
     std::vector<DiscoveredSensor> result;
     DeviceAddress addr;
 
+    // Request temperatures from all sensors first
+    _dallas->requestTemperatures();
+
     _oneWire->reset_search();
     while (_oneWire->search(addr)) {
         DiscoveredSensor ds;
         ds.addr = addressToString(addr);
         ds.type = "ds18b20";
+        ds.temp = _dallas->getTempC(addr);
         result.push_back(ds);
     }
     return result;

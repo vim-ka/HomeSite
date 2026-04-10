@@ -15,6 +15,7 @@ struct SensorReading {
 struct DiscoveredSensor {
     String addr;
     String type;  // "ds18b20"
+    float temp;   // current reading (DEVICE_DISCONNECTED_C if failed)
 };
 
 class SensorReader {

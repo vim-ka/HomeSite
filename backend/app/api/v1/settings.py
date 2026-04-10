@@ -93,9 +93,16 @@ async def update_mqtt_settings(
     payload: MqttSettingsRequest,
     user: User = Depends(require_role([UserRole.ADMIN])),
     service: SettingsService = Depends(get_settings_service),
+    db: AsyncSession = Depends(get_db),
 ):
     """Update MQTT broker settings and signal gateway to reconnect. Admin only."""
-    return await service.update_mqtt_settings(payload.host, payload.port, payload.user, payload.password)
+    result = await service.update_mqtt_settings(payload.host, payload.port, payload.user, payload.password)
+    db.add(EventLog(
+        level="INFO", source="settings", method="PUT", path="/api/v1/settings/mqtt",
+        message=f"Обновлены настройки MQTT: host={payload.host}, port={payload.port}",
+        user_id=user.id,
+    ))
+    return result
 
 
 @router.post("/retry-unsynced")
@@ -142,6 +149,7 @@ async def get_database_info(
 async def update_database(
     payload: DatabaseUpdateRequest,
     user: User = Depends(require_role([UserRole.ADMIN])),
+    db: AsyncSession = Depends(get_db),
 ):
     """Save new database URL after validating connection. Requires app restart. Admin only."""
     if payload.type == "sqlite":
@@ -188,6 +196,11 @@ async def update_database(
     with open(env_path, "w", encoding="utf-8") as f:
         f.writelines(lines)
 
+    db.add(EventLog(
+        level="INFO", source="settings", method="PUT", path="/api/v1/settings/database",
+        message=f"Обновлена конфигурация БД: type={payload.type}",
+        user_id=user.id,
+    ))
     return {"success": True, "restart_required": True}
 
 
@@ -198,9 +211,16 @@ async def update_database(
 async def create_backup(
     user: User = Depends(require_role([UserRole.ADMIN])),
     service: BackupService = Depends(get_backup_service),
+    db: AsyncSession = Depends(get_db),
 ):
     """Create a database backup now. Admin only."""
-    return await service.create_backup()
+    result = await service.create_backup()
+    db.add(EventLog(
+        level="INFO", source="settings", method="POST", path="/api/v1/settings/backup",
+        message=f"Создан бэкап: {result.filename}",
+        user_id=user.id,
+    ))
+    return result
 
 
 @router.get("/backups", response_model=list[BackupResponse])
@@ -242,6 +262,13 @@ async def update_backup_schedule(
     payload: BackupScheduleRequest,
     user: User = Depends(require_role([UserRole.ADMIN])),
     service: BackupService = Depends(get_backup_service),
+    db: AsyncSession = Depends(get_db),
 ):
     """Update backup schedule. Admin only."""
-    return await service.update_schedule(payload.enabled, payload.interval, payload.time)
+    result = await service.update_schedule(payload.enabled, payload.interval, payload.time)
+    db.add(EventLog(
+        level="INFO", source="settings", method="PUT", path="/api/v1/settings/backup-schedule",
+        message=f"Расписание бэкапов: enabled={payload.enabled}, {payload.interval} {payload.time}",
+        user_id=user.id,
+    ))
+    return result

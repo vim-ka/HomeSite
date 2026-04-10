@@ -204,18 +204,33 @@ def create_app() -> FastAPI:
     # Device health — live query (pending/unsynced change rapidly, can't use cache)
     @app.get("/health/devices", tags=["health"])
     async def health_devices(request: Request):
+        from datetime import UTC, datetime
+
         from app.models.config import Actuator
 
         monitor = request.app.state.health_monitor
         s = monitor.state
+        hb_timeout = 60  # default
 
-        # Actuator count from cache
-        device_total = s.device_total
+        # Load actuators from DB
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(select(Actuator))
+            actuators = result.scalars().all()
 
-        # Pending + unsynced from gateway (live, not cached)
+            # Get heartbeat timeout from config
+            from app.models.config import ConfigKV
+
+            kv_result = await session.execute(
+                select(ConfigKV.value).where(ConfigKV.key == "heartbeat_timeout_seconds")
+            )
+            kv_val = kv_result.scalar_one_or_none()
+            if kv_val:
+                hb_timeout = int(kv_val)
+
+        # Fetch gateway health (heartbeats + command queues)
         pending_commands = 0
         unsynced_commands = 0
-        device_online = s.device_online
+        heartbeats: dict = {}
         try:
             async with httpx.AsyncClient(base_url=settings.device_gateway_url, timeout=2.0) as client:
                 resp = await client.get("/health")
@@ -223,12 +238,47 @@ def create_app() -> FastAPI:
                     gw = resp.json()
                     pending_commands = gw.get("pending_commands", 0)
                     unsynced_commands = gw.get("unsynced_commands", 0)
+                    heartbeats = gw.get("heartbeats", {})
         except Exception:
             pass
 
+        now = datetime.now(UTC)
+        devices = []
+        online_count = 0
+
+        for act in actuators:
+            hb_info = heartbeats.get(act.mqtt_device_name)
+            online = False
+            last_heartbeat = None
+            heartbeat_data = {}
+
+            if hb_info and isinstance(hb_info, dict):
+                ts_str = hb_info.get("timestamp")
+                heartbeat_data = hb_info.get("data", {})
+                if ts_str:
+                    try:
+                        ts = datetime.fromisoformat(ts_str)
+                        last_heartbeat = ts_str
+                        if (now - ts).total_seconds() < hb_timeout:
+                            online = True
+                            online_count += 1
+                    except (ValueError, TypeError):
+                        pass
+
+            devices.append({
+                "id": act.id,
+                "name": act.name,
+                "mqtt_device_name": act.mqtt_device_name,
+                "description": act.description,
+                "online": online,
+                "last_heartbeat": last_heartbeat,
+                "heartbeat_data": heartbeat_data,
+            })
+
         return {
-            "total": device_total,
-            "online": device_online,
+            "devices": devices,
+            "total": len(actuators),
+            "online": online_count,
             "pending_commands": pending_commands,
             "unsynced_commands": unsynced_commands,
         }

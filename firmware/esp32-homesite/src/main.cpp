@@ -6,10 +6,14 @@
 #include "mqtt_client.h"
 #include "sensor_reader.h"
 #include "pza_controller.h"
+#include "relay_controller.h"
+#include "pressure_reader.h"
+#include "boiler_logic.h"
+#include "ntp_time.h"
 
 // --- Pin configuration ---
 #define ONE_WIRE_PIN    4    // DS18B20 data pin
-#define DHT_PIN         15   // DHT22 data pin
+#define DHT_PIN         15   // DHT22 data pin (unused on boiler_unit, but wired)
 #define RESET_BTN_PIN   0    // BOOT button on most ESP32 boards
 #define LED_PIN         2    // Built-in LED
 
@@ -22,14 +26,22 @@ WifiPortal portal;
 MqttClient mqtt;
 SensorReader sensors;
 PZAController pza;
+RelayController relays;
+PressureReader pressure;
+BoilerLogic boilerLogic;
+NtpTime ntpTime;
 
 unsigned long lastReadTime = 0;
 unsigned long lastHeartbeat = 0;
 unsigned long resetBtnStart = 0;
 bool resetBtnActive = false;
 
-// Current settings received from backend
-String outdoorSensorName = "clm_street_thp";  // sensor that reports outdoor temp
+// Outdoor sensor name for PZA (receives temp from climate ESP32 via MQTT)
+String outdoorSensorName = "clm_street_thp";
+
+// Pressure sensor names for MQTT publishing
+String pressureHeatingName;
+String pressureWaterName;
 
 // --- Ack: collect keys to acknowledge ---
 JsonDocument ackDoc;
@@ -69,34 +81,126 @@ void onCommand(const String& key, const String& value) {
             Serial.print("Interval updated: ");
             Serial.println(ms);
         }
+        return;
+    }
+    if (key == "node_name") {
+        config.setNodeName(value);
+        Serial.print("Node name updated: ");
+        Serial.println(value);
+        // Reconnect MQTT to subscribe to new cmd topic
+        sendAck();
+        mqtt.reconnect(config);
+        return;
+    }
+    if (key == "timezone") {
+        config.setTimezone(value);
+        ntpTime.begin(value);
+        Serial.print("Timezone updated: ");
+        Serial.println(value);
+        return;
     }
 
-    // Radiator PZA
-    if (key == "heating_radiator_wbm") {
-        pza.setRadiatorWBM(value == "1");
-        Serial.print("Radiator WBM: ");
-        Serial.println(pza.isRadiatorWBM() ? "ON" : "OFF");
-    }
-    if (key == "heating_radiator_curve") {
-        pza.setRadiatorCurve(value.toInt());
-        Serial.print("Radiator curve: ");
-        Serial.println(pza.radiatorCurve());
+    // --- MQTT settings (hot reload, no reboot) ---
+
+    if (key == "mqtt_host" || key == "mqtt_port" ||
+        key == "mqtt_user" || key == "mqtt_pass") {
+        if (key == "mqtt_host") config.setMqtt(value, config.mqttPort(), config.mqttUser(), config.mqttPass());
+        else if (key == "mqtt_port") config.setMqtt(config.mqttHost(), value.toInt(), config.mqttUser(), config.mqttPass());
+        else if (key == "mqtt_user") config.setMqtt(config.mqttHost(), config.mqttPort(), value, config.mqttPass());
+        else if (key == "mqtt_pass") config.setMqtt(config.mqttHost(), config.mqttPort(), config.mqttUser(), value);
+
+        sendAck();
+        mqtt.reconnect(config);
+        return;
     }
 
-    // Floor heating PZA
-    if (key == "heating_floorheating_wbm") {
-        pza.setFloorWBM(value == "1");
-        Serial.print("Floor WBM: ");
-        Serial.println(pza.isFloorWBM() ? "ON" : "OFF");
-    }
-    if (key == "heating_floorheating_curve") {
-        pza.setFloorCurve(value.toInt());
-        Serial.print("Floor curve: ");
-        Serial.println(pza.floorCurve());
+    // --- Sensor management commands ---
+
+    if (key == "scan_sensors") {
+        // Scan OneWire bus and publish discovered sensors with temperatures
+        auto discovered = sensors.scanOneWire();
+        JsonDocument scanDoc;
+        JsonArray arr = scanDoc.to<JsonArray>();
+        for (auto& ds : discovered) {
+            JsonObject obj = arr.add<JsonObject>();
+            obj["addr"] = ds.addr;
+            obj["type"] = ds.type;
+            if (ds.temp > -55.0 && ds.temp < 125.0) {
+                obj["temp"] = round(ds.temp * 10) / 10.0;
+            }
+            // Check if already assigned
+            auto existing = config.sensors();
+            for (auto& m : existing) {
+                if (m.addr == ds.addr) {
+                    obj["name"] = m.name;
+                    break;
+                }
+            }
+        }
+        String topic = "home/devices/" + config.nodeName() + "/sensors";
+        String payload;
+        serializeJson(scanDoc, payload);
+        mqtt.publishRaw(topic, payload);
+        Serial.print("Scan result: ");
+        Serial.println(payload);
+        return;
     }
 
-    // All other settings are accepted (ack sent) but not acted on yet
-    // E.g. heating_boiler_temp, heating_boiler_power, watersupply_*, etc.
+    if (key == "sensor_assign") {
+        // Assign name to sensor address. Value format: "28FFA32C64140000:tsboiler_s"
+        int sep = value.indexOf(':');
+        if (sep < 0) {
+            ackDoc[key] = "error:format";
+            return;
+        }
+        String addr = value.substring(0, sep);
+        String name = value.substring(sep + 1);
+        addr.trim();
+        name.trim();
+
+        auto mappings = config.sensors();
+        bool found = false;
+        for (auto& m : mappings) {
+            if (m.addr == addr) {
+                m.name = name;
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            SensorMapping m;
+            m.addr = addr;
+            m.name = name;
+            m.type = "ds18b20";
+            mappings.push_back(m);
+        }
+        config.setSensors(mappings);
+        sensors.setMappings(mappings);
+        Serial.print("Sensor assigned: ");
+        Serial.print(addr);
+        Serial.print(" -> ");
+        Serial.println(name);
+        return;
+    }
+
+    if (key == "sensor_remove") {
+        // Remove sensor mapping by address. Value = address string.
+        String addr = value;
+        addr.trim();
+        auto mappings = config.sensors();
+        std::vector<SensorMapping> updated;
+        for (auto& m : mappings) {
+            if (m.addr != addr) updated.push_back(m);
+        }
+        config.setSensors(updated);
+        sensors.setMappings(updated);
+        Serial.print("Sensor removed: ");
+        Serial.println(addr);
+        return;
+    }
+
+    // All boiler/heating/water settings go to BoilerLogic
+    boilerLogic.onSettingChanged(key, value);
 }
 
 void checkResetButton() {
@@ -136,8 +240,11 @@ bool connectWiFi() {
 void sendHeartbeat() {
     String topic = "home/devices/" + config.nodeName() + "/heartbeat";
     JsonDocument doc;
+
     doc["uptime"] = millis() / 1000;
     doc["free_heap"] = ESP.getFreeHeap();
+
+    // PZA status
     doc["rad_wbm"] = pza.isRadiatorWBM();
     doc["rad_curve"] = pza.radiatorCurve();
     doc["floor_wbm"] = pza.isFloorWBM();
@@ -150,6 +257,13 @@ void sendHeartbeat() {
         if (floorTarget >= 0) doc["floor_target"] = round(floorTarget * 10) / 10.0;
     }
 
+    // Pressure
+    doc["prs_heat"] = round(pressure.readHeatingPressure() * 100) / 100.0;
+    doc["prs_water"] = round(pressure.readWaterPressure() * 100) / 100.0;
+
+    // Boiler logic status (relays, automode, schedules, etc.)
+    boilerLogic.fillHeartbeat(doc);
+
     String payload;
     serializeJson(doc, payload);
     mqtt.publishRaw(topic, payload);
@@ -160,7 +274,7 @@ void sendHeartbeat() {
 void setup() {
     Serial.begin(115200);
     delay(100);
-    Serial.println("\n=== HomeSite Sensor Node ===");
+    Serial.println("\n=== HomeSite Boiler Unit ===");
 
     pinMode(RESET_BTN_PIN, INPUT_PULLUP);
     pinMode(LED_PIN, OUTPUT);
@@ -195,6 +309,24 @@ void setup() {
     sensors.setMappings(mappings);
     Serial.print("Configured sensors: ");
     Serial.println(mappings.size());
+
+    // Initialize relays
+    uint8_t relayPins[16];
+    config.relayPins(relayPins);
+    relays.begin(relayPins, config.relayInvert());
+
+    // Initialize pressure sensors
+    PressureConfig prsHeat = config.pressureHeating();
+    PressureConfig prsWater = config.pressureWater();
+    pressure.begin(prsHeat.pin, prsWater.pin);
+    pressureHeatingName = prsHeat.name;
+    pressureWaterName = prsWater.name;
+
+    // Initialize NTP
+    ntpTime.begin(config.timezone());
+
+    // Initialize boiler logic
+    boilerLogic.begin(&relays, &pza, &pressure, &ntpTime, &config);
 
     // Start MQTT
     mqtt.begin(config);
@@ -240,12 +372,24 @@ void loop() {
 
         auto readings = sensors.readAll();
 
-        // Update outdoor temp for PZA
+        // Build temperature map for boiler logic
+        TempMap tempMap;
         for (auto& r : readings) {
+            if (r.paramKey == "tmp") {
+                tempMap[r.name] = r.value;
+            }
+            // Update outdoor temp for PZA
             if (r.name == outdoorSensorName && r.paramKey == "tmp") {
                 pza.setOutdoorTemp(r.value);
             }
         }
+
+        // Read pressure sensors
+        float heatPrs = pressure.readHeatingPressure();
+        float waterPrs = pressure.readWaterPressure();
+
+        // Run control logic
+        boilerLogic.update(tempMap, heatPrs, waterPrs);
 
         // Log PZA targets
         if (pza.isRadiatorWBM() && pza.hasOutdoorTemp()) {
@@ -253,14 +397,14 @@ void loop() {
             Serial.print(pza.outdoorTemp(), 1);
             Serial.print(" -> target=");
             Serial.print(pza.getRadiatorTarget(), 1);
-            Serial.println("°C");
+            Serial.println("C");
         }
         if (pza.isFloorWBM() && pza.hasOutdoorTemp()) {
             Serial.print("PZA Floor: outdoor=");
             Serial.print(pza.outdoorTemp(), 1);
             Serial.print(" -> target=");
             Serial.print(pza.getFloorTarget(), 1);
-            Serial.println("°C");
+            Serial.println("C");
         }
 
         // Group readings by sensor name
@@ -269,7 +413,7 @@ void loop() {
             grouped[r.name].push_back({r.paramKey, r.value});
         }
 
-        // Publish grouped
+        // Publish temperature sensor readings
         for (auto& [name, params] : grouped) {
             mqtt.publishGrouped(name, params);
             Serial.print("Published ");
@@ -279,6 +423,22 @@ void loop() {
                 Serial.print(p.first + "=" + String(p.second, 1) + " ");
             }
             Serial.println();
+        }
+
+        // Publish pressure as separate sensor readings
+        if (pressureHeatingName.length() > 0) {
+            mqtt.publish(pressureHeatingName, "prs", heatPrs);
+            Serial.print("Published ");
+            Serial.print(pressureHeatingName);
+            Serial.print(": prs=");
+            Serial.println(heatPrs, 2);
+        }
+        if (pressureWaterName.length() > 0) {
+            mqtt.publish(pressureWaterName, "prs", waterPrs);
+            Serial.print("Published ");
+            Serial.print(pressureWaterName);
+            Serial.print(": prs=");
+            Serial.println(waterPrs, 2);
         }
 
         // Blink LED

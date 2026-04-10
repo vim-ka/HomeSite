@@ -5,7 +5,7 @@ import type { ClimateRoom, HeatingCircuit, WaterSupplyItem } from "../../src/hoo
 import Card from "../../src/components/Card";
 import Section from "../../src/components/Section";
 import StatusBadge from "../../src/components/StatusBadge";
-import { colors } from "../../src/theme/colors";
+import { useTheme } from "../../src/hooks/useTheme";
 
 function fmt(v: number | null): string {
   return v != null ? v.toFixed(1) : "—";
@@ -13,23 +13,24 @@ function fmt(v: number | null): string {
 
 function ClimateCard({ room }: { room: ClimateRoom }) {
   const { t } = useTranslation();
+  const { colors } = useTheme();
   return (
     <Card style={styles.halfCard}>
-      <Text style={styles.cardTitle} numberOfLines={1}>{room.room}</Text>
+      <Text style={[styles.cardTitle, { color: colors.gray[800] }]} numberOfLines={1}>{room.room}</Text>
       <View style={styles.metric}>
-        <Text style={styles.metricLabel}>{t("dashboard.temperature")}</Text>
+        <Text style={[styles.metricLabel, { color: colors.gray[500] }]}>{t("dashboard.temperature")}</Text>
         <Text style={[styles.metricValue, { color: colors.orange[500] }]}>
           {room.temperature != null ? `${fmt(room.temperature)}°` : "—"}
         </Text>
       </View>
       <View style={styles.metric}>
-        <Text style={styles.metricLabel}>{t("dashboard.humidity")}</Text>
+        <Text style={[styles.metricLabel, { color: colors.gray[500] }]}>{t("dashboard.humidity")}</Text>
         <Text style={[styles.metricValue, { color: colors.sky[500] }]}>
           {room.humidity != null ? `${fmt(room.humidity)}%` : "—"}
         </Text>
       </View>
       <View style={styles.metric}>
-        <Text style={styles.metricLabel}>{t("dashboard.pressure")}</Text>
+        <Text style={[styles.metricLabel, { color: colors.gray[500] }]}>{t("dashboard.pressure")}</Text>
         <Text style={[styles.metricValue, { color: colors.emerald[500] }]}>
           {room.pressure != null ? fmt(room.pressure) : "—"}
         </Text>
@@ -40,25 +41,26 @@ function ClimateCard({ room }: { room: ClimateRoom }) {
 
 function HeatingCard({ circuit: c }: { circuit: HeatingCircuit }) {
   const { t } = useTranslation();
+  const { colors } = useTheme();
   return (
     <Card style={styles.halfCard}>
-      <Text style={styles.cardTitle} numberOfLines={1}>{c.circuit}</Text>
+      <Text style={[styles.cardTitle, { color: colors.gray[800] }]} numberOfLines={1}>{c.circuit}</Text>
       <View style={styles.metric}>
-        <Text style={styles.metricLabel}>{t("dashboard.tempSet")}</Text>
+        <Text style={[styles.metricLabel, { color: colors.gray[500] }]}>{t("dashboard.tempSet")}</Text>
         <Text style={[styles.metricValueLg, { color: colors.orange[500] }]}>
           {c.temp_set != null ? `${fmt(c.temp_set)}°` : "—"}
         </Text>
       </View>
       <View style={styles.metric}>
-        <Text style={styles.metricLabel}>{t("dashboard.tempSupply")}</Text>
-        <Text style={styles.metricValueSm}>{c.temp_supply != null ? `${fmt(c.temp_supply)}°` : "—"}</Text>
+        <Text style={[styles.metricLabel, { color: colors.gray[500] }]}>{t("dashboard.tempSupply")}</Text>
+        <Text style={[styles.metricValueSm, { color: colors.gray[700] }]}>{c.temp_supply != null ? `${fmt(c.temp_supply)}°` : "—"}</Text>
       </View>
       <View style={styles.metric}>
-        <Text style={styles.metricLabel}>{t("dashboard.tempReturn")}</Text>
-        <Text style={styles.metricValueSm}>{c.temp_return != null ? `${fmt(c.temp_return)}°` : "—"}</Text>
+        <Text style={[styles.metricLabel, { color: colors.gray[500] }]}>{t("dashboard.tempReturn")}</Text>
+        <Text style={[styles.metricValueSm, { color: colors.gray[700] }]}>{c.temp_return != null ? `${fmt(c.temp_return)}°` : "—"}</Text>
       </View>
       <View style={styles.metric}>
-        <Text style={styles.metricLabel}>{t("dashboard.pump")}</Text>
+        <Text style={[styles.metricLabel, { color: colors.gray[500] }]}>{t("dashboard.pump")}</Text>
         <StatusBadge on={c.pump === "1"} labelOn={t("dashboard.on")} labelOff={t("dashboard.off")} />
       </View>
     </Card>
@@ -67,23 +69,24 @@ function HeatingCard({ circuit: c }: { circuit: HeatingCircuit }) {
 
 function WaterCard({ item: w }: { item: WaterSupplyItem }) {
   const { t } = useTranslation();
+  const { colors } = useTheme();
   return (
     <Card style={styles.halfCard}>
-      <Text style={styles.cardTitle} numberOfLines={1}>{w.type}</Text>
+      <Text style={[styles.cardTitle, { color: colors.gray[800] }]} numberOfLines={1}>{w.type}</Text>
       <View style={styles.metric}>
-        <Text style={styles.metricLabel}>{t("dashboard.tempSet")}</Text>
+        <Text style={[styles.metricLabel, { color: colors.gray[500] }]}>{t("dashboard.tempSet")}</Text>
         <Text style={[styles.metricValueLg, { color: colors.orange[500] }]}>
           {w.temp_set != null ? `${fmt(w.temp_set)}°` : "—"}
         </Text>
       </View>
       <View style={styles.metric}>
-        <Text style={styles.metricLabel}>{t("dashboard.temperature")}</Text>
+        <Text style={[styles.metricLabel, { color: colors.gray[500] }]}>{t("dashboard.temperature")}</Text>
         <Text style={[styles.metricValue, { color: colors.sky[500] }]}>
           {w.temp_fact != null ? `${fmt(w.temp_fact)}°` : "—"}
         </Text>
       </View>
       <View style={styles.metric}>
-        <Text style={styles.metricLabel}>{t("dashboard.pump")}</Text>
+        <Text style={[styles.metricLabel, { color: colors.gray[500] }]}>{t("dashboard.pump")}</Text>
         <StatusBadge on={w.pump === "1"} labelOn={t("dashboard.on")} labelOff={t("dashboard.off")} />
       </View>
     </Card>
@@ -92,12 +95,13 @@ function WaterCard({ item: w }: { item: WaterSupplyItem }) {
 
 export default function DashboardScreen() {
   const { t } = useTranslation();
+  const { colors } = useTheme();
   const { data, isLoading, error, refetch } = useDashboard();
 
   if (isLoading) {
     return (
       <View style={styles.center}>
-        <Text style={styles.loadingText}>{t("common.loading")}</Text>
+        <Text style={[styles.loadingText, { color: colors.gray[500] }]}>{t("common.loading")}</Text>
       </View>
     );
   }
@@ -105,18 +109,17 @@ export default function DashboardScreen() {
   if (error) {
     return (
       <View style={styles.center}>
-        <Text style={styles.errorText}>{t("common.error")}</Text>
+        <Text style={[styles.errorText, { color: colors.red[600] }]}>{t("common.error")}</Text>
       </View>
     );
   }
 
   return (
     <ScrollView
-      style={styles.container}
+      style={[styles.container, { backgroundColor: colors.gray[100] }]}
       contentContainerStyle={styles.content}
       refreshControl={<RefreshControl refreshing={isLoading} onRefresh={refetch} />}
     >
-      {/* Climate */}
       <Section title={t("dashboard.climate")}>
         <View style={styles.grid}>
           {data?.climate.map((r) => (
@@ -125,7 +128,6 @@ export default function DashboardScreen() {
         </View>
       </Section>
 
-      {/* Heating */}
       <Section title={t("dashboard.heating")}>
         <View style={styles.grid}>
           {data?.heating.map((c) => (
@@ -134,7 +136,6 @@ export default function DashboardScreen() {
         </View>
       </Section>
 
-      {/* Water */}
       <Section title={t("dashboard.waterSupply")}>
         {data?.water_supply && data.water_supply.length > 0 ? (
           <View style={styles.grid}>
@@ -143,7 +144,7 @@ export default function DashboardScreen() {
             ))}
           </View>
         ) : (
-          <Text style={styles.noData}>{t("dashboard.noData")}</Text>
+          <Text style={[styles.noData, { color: colors.gray[400] }]}>{t("dashboard.noData")}</Text>
         )}
       </Section>
     </ScrollView>
@@ -151,18 +152,18 @@ export default function DashboardScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.gray[100] },
+  container: { flex: 1 },
   content: { padding: 16, paddingBottom: 32 },
   center: { flex: 1, justifyContent: "center", alignItems: "center" },
-  loadingText: { color: colors.gray[500], fontSize: 16 },
-  errorText: { color: colors.red[600], fontSize: 16 },
-  noData: { color: colors.gray[400], fontSize: 14 },
+  loadingText: { fontSize: 16 },
+  errorText: { fontSize: 16 },
+  noData: { fontSize: 14 },
   grid: { flexDirection: "row", flexWrap: "wrap", marginHorizontal: -6 },
   halfCard: { width: "47%", marginHorizontal: "1.5%", marginBottom: 12 },
-  cardTitle: { fontSize: 14, fontWeight: "700", color: colors.gray[800], marginBottom: 10 },
+  cardTitle: { fontSize: 14, fontWeight: "700", marginBottom: 10 },
   metric: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 6 },
-  metricLabel: { fontSize: 11, color: colors.gray[500], flexShrink: 1 },
+  metricLabel: { fontSize: 11, flexShrink: 1 },
   metricValue: { fontSize: 16, fontWeight: "700" },
   metricValueLg: { fontSize: 20, fontWeight: "800" },
-  metricValueSm: { fontSize: 14, fontWeight: "600", color: colors.gray[700] },
+  metricValueSm: { fontSize: 14, fontWeight: "600" },
 });

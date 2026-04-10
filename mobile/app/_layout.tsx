@@ -3,6 +3,8 @@ import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useAuthStore } from "../src/stores/authStore";
+import { useThemeStore } from "../src/stores/themeStore";
+import { useTheme } from "../src/hooks/useTheme";
 import { setBaseURL } from "../src/api/client";
 import "../src/i18n";
 
@@ -12,13 +14,29 @@ const queryClient = new QueryClient({
   },
 });
 
+function ThemedStack() {
+  const { colors, isDark } = useTheme();
+  return (
+    <>
+      <StatusBar style={isDark ? "light" : "dark"} />
+      <Stack
+        screenOptions={{
+          headerShown: false,
+          contentStyle: { backgroundColor: colors.gray[100] },
+        }}
+      />
+    </>
+  );
+}
+
 export default function RootLayout() {
   const [ready, setReady] = useState(false);
-  const loadFromStorage = useAuthStore((s) => s.loadFromStorage);
+  const loadAuth = useAuthStore((s) => s.loadFromStorage);
+  const loadTheme = useThemeStore((s) => s.loadFromStorage);
   const serverUrl = useAuthStore((s) => s.serverUrl);
 
   useEffect(() => {
-    loadFromStorage().then(() => setReady(true));
+    Promise.all([loadAuth(), loadTheme()]).then(() => setReady(true));
   }, []);
 
   useEffect(() => {
@@ -29,13 +47,7 @@ export default function RootLayout() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <StatusBar style="light" />
-      <Stack
-        screenOptions={{
-          headerShown: false,
-          contentStyle: { backgroundColor: "#f3f4f6" },
-        }}
-      />
+      <ThemedStack />
     </QueryClientProvider>
   );
 }

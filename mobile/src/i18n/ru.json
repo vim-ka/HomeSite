@@ -49,6 +49,9 @@
     "schedule": "Расписание",
     "scheduleEnabled": "По расписанию",
     "scheduleDelta": "Дельта",
+    "scheduleDeltaRadiators": "Дельта радиаторы",
+    "scheduleDeltaFloor": "Дельта тёплый пол",
+    "scheduleDays": "Дни недели",
     "autofill": "Автоподпитка",
     "autofillEnabled": "Автоподпитка",
     "pressureMin": "Давление мин.",
@@ -87,7 +90,8 @@
   },
   "events": {
     "title": "Журнал",
-    "noEvents": "Нет событий"
+    "noEvents": "Нет событий",
+    "user": "Пользователь"
   },
   "settings": {
     "title": "Настройки",
@@ -95,7 +99,11 @@
     "logout": "Выйти",
     "events": "Журнал событий",
     "about": "О приложении",
-    "version": "Версия"
+    "version": "Версия",
+    "theme": "Тема оформления",
+    "theme_light": "Светлая",
+    "theme_dark": "Тёмная",
+    "theme_system": "Системная"
   },
   "common": {
     "loading": "Загрузка...",

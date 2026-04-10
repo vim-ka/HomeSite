@@ -2,12 +2,19 @@
 
 // HTML page served by the Captive Portal.
 // Placeholders replaced at runtime:
-//   {{NETWORKS}}   - WiFi scan results as <option> tags
-//   {{SENSORS}}    - discovered sensors as form rows
-//   {{NODE_NAME}}  - current node name
-//   {{MQTT_HOST}}  - saved MQTT host
-//   {{MQTT_PORT}}  - saved MQTT port
-//   {{INTERVAL}}   - read interval in seconds
+//   {{NETWORKS}}          - WiFi scan results as <option> tags
+//   {{SENSORS}}           - discovered sensors as form rows
+//   {{NODE_NAME}}         - current node name
+//   {{MQTT_HOST}}         - saved MQTT host
+//   {{MQTT_PORT}}         - saved MQTT port
+//   {{INTERVAL}}          - read interval in seconds
+//   {{RELAY_PINS}}        - relay pin input fields
+//   {{RELAY_INVERT}}      - "checked" if relay invert is on
+//   {{PRS_HEAT_PIN}}      - pressure heating GPIO pin
+//   {{PRS_HEAT_NAME}}     - pressure heating sensor name
+//   {{PRS_WATER_PIN}}     - pressure water GPIO pin
+//   {{PRS_WATER_NAME}}    - pressure water sensor name
+//   {{TIMEZONE}}          - timezone string
 
 const char CONFIG_PAGE[] PROGMEM = R"rawliteral(
 <!DOCTYPE html>
@@ -29,6 +36,7 @@ input:focus,select:focus{outline:none;border-color:#3b82f6;box-shadow:0 0 0 3px 
 .sensor-row .addr{font-family:monospace;font-size:.8rem;color:#6b7280;flex:0 0 auto;min-width:120px}
 .sensor-row input{flex:1}
 .sensor-row .type-badge{font-size:.7rem;padding:2px 8px;border-radius:12px;background:#dbeafe;color:#1e40af;white-space:nowrap}
+.sensor-row .temp{font-size:.85rem;font-weight:600;color:#059669;min-width:60px;text-align:right}
 .btn{display:block;width:100%;padding:14px;border:none;border-radius:10px;font-size:1rem;font-weight:600;cursor:pointer;margin-top:20px;transition:background .2s}
 .btn-primary{background:#2563eb;color:#fff}
 .btn-primary:hover{background:#1d4ed8}
@@ -37,6 +45,14 @@ input:focus,select:focus{outline:none;border-color:#3b82f6;box-shadow:0 0 0 3px 
 .info{font-size:.8rem;color:#9ca3af;margin-top:4px}
 .status{text-align:center;padding:8px;border-radius:8px;margin-bottom:12px;font-size:.9rem}
 .status-ap{background:#fef3c7;color:#92400e}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.grid2 label{margin-top:0}
+.relay-row{display:flex;gap:8px;align-items:center;margin-bottom:6px}
+.relay-row span{font-size:.85rem;min-width:140px;color:#374151}
+.relay-row input{width:70px;flex:0 0 auto}
+.check-row{display:flex;align-items:center;gap:8px;margin-top:10px}
+.check-row input[type=checkbox]{width:auto}
+.check-row label{margin:0;font-size:.9rem;color:#374151}
 </style>
 </head>
 <body>
@@ -75,12 +91,49 @@ input:focus,select:focus{outline:none;border-color:#3b82f6;box-shadow:0 0 0 3px 
   <p class="info">Unique name for this ESP32 device</p>
   <label for="interval">Read interval (sec)</label>
   <input type="number" name="interval" id="interval" value="{{INTERVAL}}" min="5" max="300">
+  <label for="timezone">Timezone</label>
+  <input type="text" name="timezone" id="timezone" value="{{TIMEZONE}}" placeholder="MSK-3">
+  <p class="info">POSIX TZ format, e.g. MSK-3, CET-1CEST,M3.5.0,M10.5.0/3</p>
 </div>
 
 <div class="card">
   <h2>Sensors</h2>
   <p class="info" style="margin-bottom:12px">Assign a logical name to each discovered sensor. Leave empty to skip.</p>
   {{SENSORS}}
+</div>
+
+<div class="card">
+  <h2>Relay Pins</h2>
+  <p class="info" style="margin-bottom:12px">GPIO pin number for each relay channel.</p>
+  {{RELAY_PINS}}
+  <div class="check-row">
+    <input type="checkbox" name="relay_invert" id="relay_invert" value="1" {{RELAY_INVERT}}>
+    <label for="relay_invert">Invert logic (LOW = ON, for opto-isolated modules)</label>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Pressure Sensors</h2>
+  <p class="info" style="margin-bottom:12px">ADC GPIO pins and MQTT sensor names for pressure transducers.</p>
+  <div class="grid2">
+    <div>
+      <label>Heating GPIO</label>
+      <input type="number" name="prs_heat_pin" value="{{PRS_HEAT_PIN}}" min="32" max="39">
+    </div>
+    <div>
+      <label>Heating name</label>
+      <input type="text" name="prs_heat_name" value="{{PRS_HEAT_NAME}}" placeholder="prs_heating">
+    </div>
+    <div>
+      <label>Water GPIO</label>
+      <input type="number" name="prs_water_pin" value="{{PRS_WATER_PIN}}" min="32" max="39">
+    </div>
+    <div>
+      <label>Water name</label>
+      <input type="text" name="prs_water_name" value="{{PRS_WATER_NAME}}" placeholder="prs_water">
+    </div>
+  </div>
+  <p class="info">Use ADC1 pins only (32–39). ADC2 conflicts with WiFi.</p>
 </div>
 
 <button type="submit" class="btn btn-primary">Save & Restart</button>

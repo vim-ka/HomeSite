@@ -14,6 +14,7 @@ class EventLogResponse(BaseModel):
     message: str | None = None
     payload: str | None = None
     user_id: int | None = None
+    username: str | None = None
 
     model_config = {"from_attributes": True}
 

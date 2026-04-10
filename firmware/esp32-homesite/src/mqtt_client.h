@@ -24,6 +24,9 @@ public:
     // Publish raw JSON string to arbitrary topic
     void publishRaw(const String& topic, const String& payload);
 
+    // Reconnect with new settings (host/port/credentials changed at runtime)
+    void reconnect(ConfigManager& config);
+
     // Must be called in loop()
     void loop();
 

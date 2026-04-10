@@ -14,10 +14,11 @@ import { useTranslation } from "react-i18next";
 import axios from "axios";
 import { useAuthStore } from "../src/stores/authStore";
 import { setBaseURL } from "../src/api/client";
-import { colors } from "../src/theme/colors";
+import { useTheme } from "../src/hooks/useTheme";
 
 export default function LoginScreen() {
   const { t } = useTranslation();
+  const { colors, isDark } = useTheme();
   const { setTokens, setUser, serverUrl, setServerUrl } = useAuthStore();
 
   const [url, setUrl] = useState(serverUrl);
@@ -56,52 +57,57 @@ export default function LoginScreen() {
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === "ios" ? "padding" : "height"}
-      style={styles.container}
+      style={[styles.container, { backgroundColor: isDark ? colors.gray[100] : "#1e40af" }]}
     >
       <View style={styles.header}>
-        <Text style={styles.logo}>HomeSite</Text>
-        <Text style={styles.subtitle}>{t("auth.login")}</Text>
+        <Text style={[styles.logo, { color: isDark ? colors.primary[600] : "#ffffff" }]}>HomeSite</Text>
+        <Text style={[styles.subtitle, { color: isDark ? colors.gray[500] : "#bfdbfe" }]}>
+          {t("auth.login")}
+        </Text>
       </View>
 
-      <View style={styles.form}>
-        <Text style={styles.label}>{t("auth.serverUrl")}</Text>
+      <View style={[styles.form, { backgroundColor: colors.white, borderColor: colors.gray[200] }]}>
+        <Text style={[styles.label, { color: colors.gray[500] }]}>{t("auth.serverUrl")}</Text>
         <TextInput
-          style={styles.input}
+          style={[styles.input, { borderColor: colors.gray[200], backgroundColor: colors.gray[50], color: colors.gray[800] }]}
           value={url}
           onChangeText={setUrl}
           placeholder="http://192.168.1.100:8000"
+          placeholderTextColor={colors.gray[400]}
           autoCapitalize="none"
           keyboardType="url"
         />
 
-        <Text style={styles.label}>{t("auth.username")}</Text>
+        <Text style={[styles.label, { color: colors.gray[500] }]}>{t("auth.username")}</Text>
         <TextInput
-          style={styles.input}
+          style={[styles.input, { borderColor: colors.gray[200], backgroundColor: colors.gray[50], color: colors.gray[800] }]}
           value={username}
           onChangeText={setUsername}
           placeholder={t("auth.username")}
+          placeholderTextColor={colors.gray[400]}
           autoCapitalize="none"
         />
 
-        <Text style={styles.label}>{t("auth.password")}</Text>
+        <Text style={[styles.label, { color: colors.gray[500] }]}>{t("auth.password")}</Text>
         <TextInput
-          style={styles.input}
+          style={[styles.input, { borderColor: colors.gray[200], backgroundColor: colors.gray[50], color: colors.gray[800] }]}
           value={password}
           onChangeText={setPassword}
           placeholder={t("auth.password")}
+          placeholderTextColor={colors.gray[400]}
           secureTextEntry
         />
 
-        {error ? <Text style={styles.error}>{error}</Text> : null}
+        {error ? <Text style={[styles.error, { color: colors.red[600] }]}>{error}</Text> : null}
 
         <TouchableOpacity
-          style={[styles.button, loading && styles.buttonDisabled]}
+          style={[styles.button, { backgroundColor: colors.primary[600] }, loading && styles.buttonDisabled]}
           onPress={handleLogin}
           disabled={loading || !username || !password}
           activeOpacity={0.8}
         >
           {loading ? (
-            <ActivityIndicator color={colors.white} />
+            <ActivityIndicator color="#ffffff" />
           ) : (
             <Text style={styles.buttonText}>{t("auth.loginButton")}</Text>
           )}
@@ -114,7 +120,6 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.primary[800],
     justifyContent: "center",
     padding: 24,
   },
@@ -125,19 +130,17 @@ const styles = StyleSheet.create({
   logo: {
     fontSize: 36,
     fontWeight: "800",
-    color: colors.white,
     letterSpacing: 1,
   },
   subtitle: {
     fontSize: 16,
-    color: colors.primary[200],
     marginTop: 8,
   },
   form: {
-    backgroundColor: colors.white,
     borderRadius: 20,
     padding: 24,
-    shadowColor: colors.black,
+    borderWidth: 1,
+    shadowColor: "#000000",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.15,
     shadowRadius: 12,
@@ -145,26 +148,21 @@ const styles = StyleSheet.create({
   },
   label: {
     fontSize: 13,
-    color: colors.gray[500],
     marginBottom: 4,
     marginTop: 12,
   },
   input: {
     borderWidth: 1,
-    borderColor: colors.gray[200],
     borderRadius: 12,
     padding: 14,
     fontSize: 16,
-    backgroundColor: colors.gray[50],
   },
   error: {
-    color: colors.red[600],
     fontSize: 13,
     textAlign: "center",
     marginTop: 12,
   },
   button: {
-    backgroundColor: colors.primary[600],
     borderRadius: 12,
     padding: 16,
     alignItems: "center",
@@ -174,7 +172,7 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
   buttonText: {
-    color: colors.white,
+    color: "#ffffff",
     fontSize: 16,
     fontWeight: "700",
   },

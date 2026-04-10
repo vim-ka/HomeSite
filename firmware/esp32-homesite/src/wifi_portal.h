@@ -23,4 +23,5 @@ private:
     void _handleReset();
     String _scanNetworks();
     String _buildSensorRows();
+    String _buildRelayRows();
 };

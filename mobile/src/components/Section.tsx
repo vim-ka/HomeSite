@@ -1,5 +1,5 @@
-import { View, Text, StyleSheet, type ViewProps } from "react-native";
-import { colors } from "../theme/colors";
+import { View, Text, type ViewProps } from "react-native";
+import { useTheme } from "../hooks/useTheme";
 
 interface SectionProps extends ViewProps {
   title: string;
@@ -7,22 +7,13 @@ interface SectionProps extends ViewProps {
 }
 
 export default function Section({ title, children, style, ...props }: SectionProps) {
+  const { colors } = useTheme();
   return (
-    <View style={[styles.container, style]} {...props}>
-      <Text style={styles.title}>{title}</Text>
+    <View style={[{ marginBottom: 20 }, style]} {...props}>
+      <Text style={{ fontSize: 18, fontWeight: "700", color: colors.gray[800], marginBottom: 12 }}>
+        {title}
+      </Text>
       {children}
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    marginBottom: 20,
-  },
-  title: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: colors.gray[800],
-    marginBottom: 12,
-  },
-});

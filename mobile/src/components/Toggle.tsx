@@ -1,5 +1,5 @@
 import { Switch, View, Text, StyleSheet } from "react-native";
-import { colors } from "../theme/colors";
+import { useTheme } from "../hooks/useTheme";
 
 interface ToggleProps {
   label: string;
@@ -10,11 +10,14 @@ interface ToggleProps {
 }
 
 export default function Toggle({ label, value, onValueChange, disabled, hint }: ToggleProps) {
+  const { colors } = useTheme();
   return (
     <View style={styles.container}>
       <View style={styles.labelContainer}>
-        <Text style={[styles.label, disabled && styles.disabled]} numberOfLines={2}>{label}</Text>
-        {hint && <Text style={styles.hint} numberOfLines={1}>{hint}</Text>}
+        <Text style={[{ fontSize: 13, color: colors.gray[800] }, disabled && { color: colors.gray[400] }]} numberOfLines={2}>
+          {label}
+        </Text>
+        {hint && <Text style={{ fontSize: 11, color: colors.gray[400], marginTop: 2 }} numberOfLines={1}>{hint}</Text>}
       </View>
       <Switch
         value={value}
@@ -38,18 +41,6 @@ const styles = StyleSheet.create({
   labelContainer: {
     flex: 1,
     marginRight: 8,
-  },
-  label: {
-    fontSize: 13,
-    color: colors.gray[800],
-  },
-  disabled: {
-    color: colors.gray[400],
-  },
-  hint: {
-    fontSize: 11,
-    color: colors.gray[400],
-    marginTop: 2,
   },
   switch: {
     transform: [{ scaleX: 0.85 }, { scaleY: 0.85 }],

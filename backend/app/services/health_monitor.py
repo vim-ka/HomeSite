@@ -238,12 +238,13 @@ class HealthMonitor:
                             pending_commands = data.get("pending_commands", 0)
                             unsynced_commands = data.get("unsynced_commands", 0)
                             heartbeats = data.get("heartbeats", {})
-                            for _device, ts_str in heartbeats.items():
+                            for _device, hb_info in heartbeats.items():
                                 try:
+                                    ts_str = hb_info["timestamp"] if isinstance(hb_info, dict) else hb_info
                                     ts = datetime.fromisoformat(ts_str)
                                     if (now - ts).total_seconds() < hb_timeout:
                                         device_online += 1
-                                except (ValueError, TypeError):
+                                except (ValueError, TypeError, KeyError):
                                     pass
                 except Exception:
                     pass

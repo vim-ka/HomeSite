@@ -7,7 +7,7 @@ import Section from "../../src/components/Section";
 import Toggle from "../../src/components/Toggle";
 import TempSlider from "../../src/components/TempSlider";
 import StatusBadge from "../../src/components/StatusBadge";
-import { colors } from "../../src/theme/colors";
+import { useTheme } from "../../src/hooks/useTheme";
 
 const DAYS = [1, 2, 3, 4, 5, 6, 7];
 
@@ -17,6 +17,7 @@ function fmt(v: number | null): string {
 
 export default function WaterScreen() {
   const { t } = useTranslation();
+  const { colors } = useTheme();
   const { data: settings, isLoading, refetch } = useSettings();
   const { data: dashboard } = useDashboard();
   const update = useSettingUpdate();
@@ -37,14 +38,14 @@ export default function WaterScreen() {
   if (isLoading) {
     return (
       <View style={styles.center}>
-        <Text style={styles.loadingText}>{t("common.loading")}</Text>
+        <Text style={{ color: colors.gray[500] }}>{t("common.loading")}</Text>
       </View>
     );
   }
 
   return (
     <ScrollView
-      style={styles.container}
+      style={[styles.container, { backgroundColor: colors.gray[100] }]}
       contentContainerStyle={styles.content}
       refreshControl={<RefreshControl refreshing={isLoading} onRefresh={refetch} />}
     >
@@ -53,7 +54,7 @@ export default function WaterScreen() {
         <ScrollView horizontal showsHorizontalScrollIndicator={false}>
           {dashboard?.water_supply.map((w) => (
             <Card key={w.type} style={styles.readingCard}>
-              <Text style={styles.readingTitle}>{w.type}</Text>
+              <Text style={[styles.readingTitle, { color: colors.gray[700] }]}>{w.type}</Text>
               <Text style={[styles.readingValue, { color: colors.sky[500] }]}>
                 {w.temp_fact != null ? `${fmt(w.temp_fact)}°` : "—"}
               </Text>
@@ -68,7 +69,7 @@ export default function WaterScreen() {
       {/* IHB + Pumps */}
       <View style={styles.row}>
         <Card style={styles.flex1}>
-          <Text style={styles.sectionTitle}>{t("waterSupply.ihb")}</Text>
+          <Text style={[styles.sectionTitle, { color: colors.gray[800] }]}>{t("waterSupply.ihb")}</Text>
           <Toggle
             label={t("waterSupply.ihbAutoMode")}
             value={ihbAuto}
@@ -91,7 +92,7 @@ export default function WaterScreen() {
         </Card>
 
         <Card style={[styles.flex1, { marginLeft: 8 }]}>
-          <Text style={styles.sectionTitle}>{t("waterSupply.pumps")}</Text>
+          <Text style={[styles.sectionTitle, { color: colors.gray[800] }]}>{t("waterSupply.pumps")}</Text>
           <Toggle
             label={t("waterSupply.coldPump")}
             value={s.watersupply_pump === "1"}
@@ -108,7 +109,7 @@ export default function WaterScreen() {
       {/* TEN + Anti-Legionella */}
       <View style={styles.row}>
         <Card style={styles.flex1}>
-          <Text style={styles.sectionTitle}>{t("waterSupply.ten")}</Text>
+          <Text style={[styles.sectionTitle, { color: colors.gray[800] }]}>{t("waterSupply.ten")}</Text>
           <Toggle
             label={t("waterSupply.tenAutoMode")}
             value={tenAuto}
@@ -133,7 +134,7 @@ export default function WaterScreen() {
         </Card>
 
         <Card style={[styles.flex1, { marginLeft: 8 }]}>
-          <Text style={styles.sectionTitle}>{t("waterSupply.antiLegionella")}</Text>
+          <Text style={[styles.sectionTitle, { color: colors.gray[800] }]}>{t("waterSupply.antiLegionella")}</Text>
           <Toggle
             label={t("waterSupply.almEnabled")}
             value={almEnabled}
@@ -147,19 +148,22 @@ export default function WaterScreen() {
             onValueChange={(v) => update("watersupply_alm_temp", String(v))}
             disabled={!almEnabled}
           />
-          {/* Day buttons */}
-          <Text style={styles.smallLabel}>{t("waterSupply.almDays")}</Text>
+          <Text style={[styles.smallLabel, { color: colors.gray[600] }]}>{t("waterSupply.almDays")}</Text>
           <View style={styles.daysRow}>
             {DAYS.map((d) => {
               const active = almDays.includes(String(d));
               return (
                 <TouchableOpacity
                   key={d}
-                  style={[styles.dayBtn, active && styles.dayBtnActive]}
+                  style={[
+                    styles.dayBtn,
+                    { backgroundColor: colors.gray[100], borderColor: colors.gray[200] },
+                    active && { backgroundColor: colors.primary[600], borderColor: colors.primary[600] },
+                  ]}
                   onPress={() => toggleDay(d)}
                   disabled={!almEnabled}
                 >
-                  <Text style={[styles.dayText, active && styles.dayTextActive]}>
+                  <Text style={[{ fontSize: 12, color: colors.gray[600] }, active && { color: "#ffffff", fontWeight: "600" }]}>
                     {t(`days.${d}`)}
                   </Text>
                 </TouchableOpacity>
@@ -183,30 +187,21 @@ export default function WaterScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.gray[100] },
+  container: { flex: 1 },
   content: { padding: 16, paddingBottom: 32 },
   center: { flex: 1, justifyContent: "center", alignItems: "center" },
-  loadingText: { color: colors.gray[500] },
   row: { flexDirection: "row", marginBottom: 12 },
   flex1: { flex: 1 },
-  sectionTitle: { fontSize: 14, fontWeight: "700", color: colors.gray[800], marginBottom: 6 },
+  sectionTitle: { fontSize: 14, fontWeight: "700", marginBottom: 6 },
   readingCard: { width: 130, marginRight: 10, alignItems: "center", paddingVertical: 12 },
-  readingTitle: { fontSize: 13, fontWeight: "600", color: colors.gray[700], marginBottom: 4 },
+  readingTitle: { fontSize: 13, fontWeight: "600", marginBottom: 4 },
   readingValue: { fontSize: 24, fontWeight: "800" },
-  smallLabel: { fontSize: 13, color: colors.gray[600], marginTop: 8, marginBottom: 6 },
+  smallLabel: { fontSize: 13, marginTop: 8, marginBottom: 6 },
   daysRow: { flexDirection: "row", flexWrap: "wrap", gap: 4 },
   dayBtn: {
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 8,
-    backgroundColor: colors.gray[100],
     borderWidth: 1,
-    borderColor: colors.gray[200],
   },
-  dayBtnActive: {
-    backgroundColor: colors.primary[600],
-    borderColor: colors.primary[600],
-  },
-  dayText: { fontSize: 12, color: colors.gray[600] },
-  dayTextActive: { color: colors.white, fontWeight: "600" },
 });

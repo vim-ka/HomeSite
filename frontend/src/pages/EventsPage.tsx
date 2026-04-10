@@ -14,6 +14,7 @@ interface EventLog {
   path: string;
   message: string | null;
   payload: string | null;
+  username: string | null;
 }
 
 interface PaginatedEvents {
@@ -107,7 +108,7 @@ export default function EventsPage() {
                 <tr>
                   <th className="px-3 py-2 text-left">{t("events.timestamp")}</th>
                   <th className="px-3 py-2 text-center">{t("events.level")}</th>
-                  <th className="px-3 py-2 text-left">{t("events.source")}</th>
+                  <th className="px-3 py-2 text-left">{t("events.user")}</th>
                   <th className="px-3 py-2 text-left">{t("events.message")}</th>
                 </tr>
               </thead>
@@ -126,8 +127,8 @@ export default function EventsPage() {
                         {ev.level}
                       </span>
                     </td>
-                    <td className="px-3 py-2 text-xs">
-                      {ev.method} {ev.path}
+                    <td className="px-3 py-2 text-xs text-gray-600 whitespace-nowrap">
+                      {ev.username ?? "—"}
                     </td>
                     <td className="px-3 py-2 text-xs text-gray-600 max-w-md truncate">
                       {ev.message || ev.payload || "—"}

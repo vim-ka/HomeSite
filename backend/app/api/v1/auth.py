@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user, require_role
 from app.core.rate_limit import limiter
 from app.db.session import get_db
+from app.models.event import EventLog
 from app.models.user import User, UserRole
 from app.repositories.user_repository import UserRepository
 from app.schemas.auth import (
@@ -62,10 +63,17 @@ async def create_user(
     payload: CreateUserRequest,
     user: User = Depends(require_role([UserRole.ADMIN])),
     service: AuthService = Depends(get_auth_service),
+    db: AsyncSession = Depends(get_db),
 ):
-    return await service.create_user(
+    new_user = await service.create_user(
         payload.username, payload.email, payload.password, payload.role
     )
+    db.add(EventLog(
+        level="INFO", source="auth", method="POST", path="/api/v1/auth/users",
+        message=f"Создан пользователь: {payload.username} (роль: {payload.role})",
+        user_id=user.id,
+    ))
+    return new_user
 
 
 @router.delete("/users/{user_id}", status_code=204)
@@ -73,8 +81,17 @@ async def delete_user(
     user_id: int,
     user: User = Depends(require_role([UserRole.ADMIN])),
     service: AuthService = Depends(get_auth_service),
+    db: AsyncSession = Depends(get_db),
 ):
+    repo = UserRepository(db)
+    target = await repo.get_by_id(user_id)
+    target_username = target.username if target else f"id={user_id}"
     await service.delete_user(user_id)
+    db.add(EventLog(
+        level="INFO", source="auth", method="DELETE", path=f"/api/v1/auth/users/{user_id}",
+        message=f"Удалён пользователь: {target_username}",
+        user_id=user.id,
+    ))
 
 
 @router.put("/users/{user_id}/password", status_code=200)
@@ -83,6 +100,15 @@ async def change_password(
     payload: ChangePasswordRequest,
     user: User = Depends(require_role([UserRole.ADMIN])),
     service: AuthService = Depends(get_auth_service),
+    db: AsyncSession = Depends(get_db),
 ):
+    repo = UserRepository(db)
+    target = await repo.get_by_id(user_id)
+    target_username = target.username if target else f"id={user_id}"
     await service.change_password(user_id, payload.new_password)
+    db.add(EventLog(
+        level="INFO", source="auth", method="PUT", path=f"/api/v1/auth/users/{user_id}/password",
+        message=f"Изменён пароль пользователя: {target_username}",
+        user_id=user.id,
+    ))
     return {"detail": "Пароль изменён"}

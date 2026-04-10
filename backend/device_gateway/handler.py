@@ -35,8 +35,8 @@ class MQTTHandler:
         self._reconnect_requested = False
         self._active_client: aiomqtt.Client | None = None
         self._dispatcher = dispatcher
-        # Heartbeat tracking: device_name → last heartbeat time
-        self.heartbeats: dict[str, datetime] = {}
+        # Heartbeat tracking: device_name → {timestamp, data}
+        self.heartbeats: dict[str, dict] = {}
 
     @property
     def is_connected(self) -> bool:
@@ -135,9 +135,20 @@ class MQTTHandler:
                 pass
             return
 
-        # Handle heartbeat: home/devices/{name}/heartbeat → track device alive
+        # Handle heartbeat: home/devices/{name}/heartbeat → track device alive + payload
         if subtopic == "heartbeat":
-            self.heartbeats[device_name] = datetime.now(UTC)
+            hb_payload = message.payload
+            if isinstance(hb_payload, (bytes, bytearray)):
+                hb_payload = hb_payload.decode()
+            hb_data = {}
+            try:
+                hb_data = json.loads(hb_payload)
+            except (json.JSONDecodeError, TypeError):
+                pass
+            self.heartbeats[device_name] = {
+                "timestamp": datetime.now(UTC),
+                "data": hb_data,
+            }
             return
 
         payload = message.payload

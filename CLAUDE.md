@@ -130,7 +130,7 @@ CI/CD planned via GitHub Actions self-hosted runner.
 ## TODO (Remaining Work)
 
 ### High Priority
-- [ ] **Deploy to VM**: Install script for Ubuntu (Python, Node, Mosquitto, Nginx, systemd units)
+- [x] **Deploy to VM**: Install script for Ubuntu (Python, Node, Mosquitto, Nginx, systemd units)
 - [ ] **CI/CD**: GitHub Actions self-hosted runner on the VM
 - [x] **ESP32 firmware**: Add `/ack` response and `/heartbeat` publishing to firmware
 - [x] **Range monitoring**: Pressure outside min/max → ERROR, boiler overheating → ERROR

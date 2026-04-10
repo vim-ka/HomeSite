@@ -1,6 +1,6 @@
 import { View, Text, StyleSheet } from "react-native";
 import Slider from "@react-native-community/slider";
-import { colors } from "../theme/colors";
+import { useTheme } from "../hooks/useTheme";
 
 interface TempSliderProps {
   label: string;
@@ -23,11 +23,14 @@ export default function TempSlider({
   onValueChange,
   disabled,
 }: TempSliderProps) {
+  const { colors } = useTheme();
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={[styles.label, disabled && styles.disabled]} numberOfLines={1}>{label}</Text>
-        <Text style={[styles.value, disabled && styles.disabled]}>
+        <Text style={[{ fontSize: 13, color: colors.gray[800], flex: 1, marginRight: 8 }, disabled && { color: colors.gray[400] }]} numberOfLines={1}>
+          {label}
+        </Text>
+        <Text style={[{ fontSize: 16, fontWeight: "700", color: colors.orange[500] }, disabled && { color: colors.gray[400] }]}>
           {value}{unit}
         </Text>
       </View>
@@ -44,47 +47,21 @@ export default function TempSlider({
         style={styles.slider}
       />
       <View style={styles.bounds}>
-        <Text style={styles.boundText}>{min}{unit}</Text>
-        <Text style={styles.boundText}>{max}{unit}</Text>
+        <Text style={{ fontSize: 10, color: colors.gray[400] }}>{min}{unit}</Text>
+        <Text style={{ fontSize: 10, color: colors.gray[400] }}>{max}{unit}</Text>
       </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    paddingVertical: 6,
-  },
+  container: { paddingVertical: 6 },
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     marginBottom: 2,
   },
-  label: {
-    fontSize: 13,
-    color: colors.gray[800],
-    flex: 1,
-    marginRight: 8,
-  },
-  value: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: colors.orange[500],
-  },
-  disabled: {
-    color: colors.gray[400],
-  },
-  slider: {
-    width: "100%",
-    height: 36,
-  },
-  bounds: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-  },
-  boundText: {
-    fontSize: 10,
-    color: colors.gray[400],
-  },
+  slider: { width: "100%", height: 36 },
+  bounds: { flexDirection: "row", justifyContent: "space-between" },
 });

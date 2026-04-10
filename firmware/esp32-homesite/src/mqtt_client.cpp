@@ -88,6 +88,16 @@ void MqttClient::publishRaw(const String& topic, const String& payload) {
     _mqttClient.publish(topic.c_str(), payload.c_str());
 }
 
+void MqttClient::reconnect(ConfigManager& config) {
+    Serial.println("MQTT: reconnecting with new settings...");
+    _mqttClient.disconnect();
+    _config = &config;
+    _nodeName = config.nodeName();
+    _mqttClient.setServer(config.mqttHost().c_str(), config.mqttPort());
+    _lastReconnectAttempt = 0;  // allow immediate reconnect
+    ensureConnected();
+}
+
 void MqttClient::loop() {
     _mqttClient.loop();
 }

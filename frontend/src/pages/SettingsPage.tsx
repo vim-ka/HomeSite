@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, type ReactNode } from "react";
 import { useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Radio, Users, Database, Download, X, MapPin, Cpu, Waypoints, Radar, Wrench, CircuitBoard } from "lucide-react";
+import { Radio, Users, Database, Download, X, MapPin, Cpu, Waypoints, Radar, Wrench, CircuitBoard, SlidersHorizontal } from "lucide-react";
 import api from "@/api/client";
 import { useAuthStore } from "@/stores/authStore";
 import { useThemeStore } from "@/stores/themeStore";
@@ -124,6 +124,24 @@ interface ActuatorInfo {
   name: string;
   mqtt_device_name: string;
   description: string | null;
+}
+
+interface DeviceInfo {
+  id: number;
+  name: string;
+  mqtt_device_name: string;
+  description: string | null;
+  online: boolean;
+  last_heartbeat: string | null;
+  heartbeat_data: Record<string, unknown>;
+}
+
+interface DevicesResponse {
+  devices: DeviceInfo[];
+  total: number;
+  online: number;
+  pending_commands: number;
+  unsynced_commands: number;
 }
 
 // ---- Modal backdrop ----
@@ -1594,6 +1612,73 @@ export default function SettingsPage() {
   const location = useLocation();
   const hash = location.hash.replace("#", "");
 
+  const [activeTab, setActiveTab] = useState<"equipment" | "system" | "infra" | "devices">("equipment");
+
+  useEffect(() => {
+    if (!hash) return;
+    const equipmentHashes = ["pending-sensors", "sensors", "sensor-types", "mount-points", "rooms", "heating-circuits", "actuators"];
+    const infraHashes = ["mqtt", "gateway", "database"];
+    if (equipmentHashes.includes(hash)) setActiveTab("equipment");
+    else if (hash === "system" || hash === "users") setActiveTab("system");
+    else if (infraHashes.includes(hash)) setActiveTab("infra");
+    else if (hash === "devices") setActiveTab("devices");
+  }, [hash]);
+
+  // ---- Devices (ESP32) ----
+
+  const { data: devicesData, refetch: refetchDevices } = useQuery<DevicesResponse>({
+    queryKey: ["health-devices"],
+    queryFn: async () => {
+      const { data } = await api.get("/health/devices");
+      return data;
+    },
+    enabled: isAdmin && activeTab === "devices",
+    refetchInterval: 30000,
+  });
+
+  const [deviceSettings, setDeviceSettings] = useState<Record<string, Record<string, string>>>({});
+
+  const getDeviceSetting = (mqttName: string, key: string, fallback: string) => {
+    return deviceSettings[mqttName]?.[key] ?? fallback;
+  };
+
+  const setDeviceSetting = (mqttName: string, key: string, value: string) => {
+    setDeviceSettings((prev) => ({
+      ...prev,
+      [mqttName]: { ...prev[mqttName], [key]: value },
+    }));
+  };
+
+  const deviceSettingsMutation = useMutation({
+    mutationFn: async (payload: Record<string, string>) => {
+      await api.put("/settings", { settings: payload });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["health-devices"] });
+    },
+  });
+
+  const formatUptime = (seconds: number): string => {
+    const d = Math.floor(seconds / 86400);
+    const h = Math.floor((seconds % 86400) / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    if (d > 0) return `${d}д ${h}ч ${m}м`;
+    if (h > 0) return `${h}ч ${m}м`;
+    return `${m}м`;
+  };
+
+  const formatBytes = (bytes: number): string => {
+    if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+    return `${(bytes / 1024).toFixed(1)} KB`;
+  };
+
+  const RELAY_NAMES = [
+    "Котёл", "Насос рад.", "Насос ТП", "Насос БКН",
+    "Насос ХВС", "Насос ГВС", "ТЭН", "Автоподп.",
+    "Кл.рад.откр", "Кл.рад.закр", "Кл.ТП откр", "Кл.ТП закр",
+    "Лампа WARN", "Лампа CRIT", "Резерв 1", "Резерв 2",
+  ];
+
   const inputCls =
     "w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:outline-none";
   const labelCls = "block text-sm text-gray-600 mb-1";
@@ -1606,9 +1691,33 @@ export default function SettingsPage() {
         <p className="text-sm text-gray-500">{t("settings.adminOnly")}</p>
       )}
 
-      {/* ======== 1. EQUIPMENT ======== */}
+      {isAdmin && (
+        <div className="flex border-b border-gray-200">
+          {([
+            { id: "equipment", label: t("settings.tabEquipment"), icon: Cpu },
+            { id: "devices", label: t("settings.tabDevices"), icon: CircuitBoard },
+            { id: "system", label: t("settings.tabSystem"), icon: SlidersHorizontal },
+            { id: "infra", label: t("settings.tabInfra"), icon: Database },
+          ] as const).map(({ id, label, icon: Icon }) => (
+            <button
+              key={id}
+              onClick={() => setActiveTab(id)}
+              className={`flex items-center gap-1.5 px-5 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${
+                activeTab === id
+                  ? "border-primary-600 text-primary-700"
+                  : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+              }`}
+            >
+              <Icon className="h-4 w-4" />
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* ======== TAB: EQUIPMENT ======== */}
       {/* Pending Sensors — standalone, only shown when there are new devices */}
-      {isAdmin && pendingSensors && pendingSensors.length > 0 && (
+      {isAdmin && activeTab === "equipment" && pendingSensors && pendingSensors.length > 0 && (
             <CollapsibleSection
               title={`${t("settings.pendingSensors")} (${pendingSensors.length})`}
               icon={Radar}
@@ -1661,7 +1770,7 @@ export default function SettingsPage() {
       )}
 
       {/* Sensors + Sensor Types side by side */}
-      {isAdmin && (
+      {isAdmin && activeTab === "equipment" && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Sensors */}
           <CollapsibleSection title={`${t("settings.sensors")} (${activeSensorCount}/${totalSensorCount})`} icon={Cpu} id="sensors" forceOpen={hash === "sensors"}>
@@ -1820,8 +1929,7 @@ export default function SettingsPage() {
         </div>
       )}
 
-      {/* ======== 4. TOPOLOGY: Rooms + Heating Circuits / Mount Points ======== */}
-      {isAdmin && (
+      {isAdmin && activeTab === "equipment" && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Rooms */}
           <CollapsibleSection title={t("settings.rooms")} icon={MapPin} id="rooms" forceOpen={hash === "rooms"}>
@@ -1952,7 +2060,7 @@ export default function SettingsPage() {
       )}
 
       {/* Actuators */}
-      {isAdmin && (
+      {isAdmin && activeTab === "equipment" && (
         <CollapsibleSection title={t("settings.actuators")} icon={CircuitBoard} id="actuators" forceOpen={hash === "actuators"}>
           <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
             {actuators && actuators.length > 0 ? (
@@ -2017,7 +2125,7 @@ export default function SettingsPage() {
       )}
 
       {/* Mount Points (full width — wide table) */}
-      {isAdmin && (
+      {isAdmin && activeTab === "equipment" && (
         <CollapsibleSection title={t("settings.mountPoints")} icon={Waypoints} id="mount-points" forceOpen={hash === "mount-points"}>
           <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
             {mountPoints && mountPoints.length > 0 ? (
@@ -2091,8 +2199,8 @@ export default function SettingsPage() {
         </CollapsibleSection>
       )}
 
-      {/* ======== 5. SYSTEM: Users + System Tuning ======== */}
-      {isAdmin && (
+      {/* ======== TAB: SYSTEM ======== */}
+      {isAdmin && activeTab === "system" && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Users */}
           <CollapsibleSection title={t("settings.users")} icon={Users} id="users" forceOpen={hash === "users"}>
@@ -2248,8 +2356,242 @@ export default function SettingsPage() {
         </div>
       )}
 
-      {/* ======== 6. DATABASE + BACKUP ======== */}
-      {isAdmin && (
+      {/* ======== TAB: DEVICES ======== */}
+      {isAdmin && activeTab === "devices" && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-gray-700">
+              {t("settings.tabDevices")} ({devicesData?.total ?? 0})
+            </h3>
+            <button
+              onClick={() => refetchDevices()}
+              className="p-1.5 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 transition-colors"
+              title={t("common.retry")}
+            >
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+            </button>
+          </div>
+
+          {devicesData && devicesData.devices.length === 0 && (
+            <p className="text-sm text-gray-500">{t("settings.noDevices")}</p>
+          )}
+
+          {devicesData?.devices.map((device) => {
+            const hb = device.heartbeat_data;
+            const uptime = typeof hb.uptime === "number" ? hb.uptime : null;
+            const freeHeap = typeof hb.free_heap === "number" ? hb.free_heap : null;
+            const relayState = typeof hb.relays === "number" ? hb.relays : null;
+            const prsHeat = typeof hb.prs_heat === "number" ? hb.prs_heat : null;
+            const prsWater = typeof hb.prs_water === "number" ? hb.prs_water : null;
+            const boilerAuto = typeof hb.boiler_auto === "boolean" ? hb.boiler_auto : null;
+            const radWbm = typeof hb.rad_wbm === "boolean" ? hb.rad_wbm : null;
+            const floorWbm = typeof hb.floor_wbm === "boolean" ? hb.floor_wbm : null;
+            const outdoor = typeof hb.outdoor === "number" ? hb.outdoor : null;
+
+            const editNodeName = getDeviceSetting(device.mqtt_device_name, "node_name", "");
+            const editInterval = getDeviceSetting(device.mqtt_device_name, "interval", "");
+            const editTimezone = getDeviceSetting(device.mqtt_device_name, "timezone", "");
+
+            return (
+              <div
+                key={device.id}
+                className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm"
+              >
+                {/* Header */}
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold text-gray-800">{device.name}</span>
+                      <code className="text-xs text-gray-400 bg-gray-50 px-1.5 py-0.5 rounded">{device.mqtt_device_name}</code>
+                    </div>
+                    {device.description && (
+                      <p className="text-xs text-gray-500 mt-0.5">{device.description}</p>
+                    )}
+                  </div>
+                  <span
+                    className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${
+                      device.online
+                        ? "bg-emerald-50 text-emerald-700"
+                        : "bg-red-50 text-red-700"
+                    }`}
+                  >
+                    <span className={`h-2 w-2 rounded-full ${device.online ? "bg-emerald-500" : "bg-red-500"}`} />
+                    {device.online ? t("settings.deviceOnline") : t("settings.deviceOffline")}
+                  </span>
+                </div>
+
+                {/* Status info from heartbeat */}
+                {device.online && (
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+                    {uptime !== null && (
+                      <div className="text-center p-2 rounded-lg bg-gray-50">
+                        <div className="text-[10px] text-gray-500 uppercase">{t("settings.deviceUptime")}</div>
+                        <div className="text-sm font-medium text-gray-800">{formatUptime(uptime)}</div>
+                      </div>
+                    )}
+                    {freeHeap !== null && (
+                      <div className="text-center p-2 rounded-lg bg-gray-50">
+                        <div className="text-[10px] text-gray-500 uppercase">{t("settings.deviceHeap")}</div>
+                        <div className="text-sm font-medium text-gray-800">{formatBytes(freeHeap)}</div>
+                      </div>
+                    )}
+                    {prsHeat !== null && (
+                      <div className="text-center p-2 rounded-lg bg-gray-50">
+                        <div className="text-[10px] text-gray-500 uppercase">{t("settings.devicePrsHeat")}</div>
+                        <div className="text-sm font-medium text-gray-800">{prsHeat.toFixed(2)} {t("heating.bar")}</div>
+                      </div>
+                    )}
+                    {prsWater !== null && (
+                      <div className="text-center p-2 rounded-lg bg-gray-50">
+                        <div className="text-[10px] text-gray-500 uppercase">{t("settings.devicePrsWater")}</div>
+                        <div className="text-sm font-medium text-gray-800">{prsWater.toFixed(2)} {t("heating.bar")}</div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* PZA & boiler status */}
+                {device.online && (boilerAuto !== null || radWbm !== null || floorWbm !== null || outdoor !== null) && (
+                  <div className="flex flex-wrap gap-2 mb-4">
+                    {boilerAuto !== null && (
+                      <span className={`text-xs px-2 py-0.5 rounded-full ${boilerAuto ? "bg-emerald-50 text-emerald-700" : "bg-gray-100 text-gray-500"}`}>
+                        {t("heating.autoRegulation")}: {boilerAuto ? t("dashboard.on") : t("dashboard.off")}
+                      </span>
+                    )}
+                    {radWbm !== null && (
+                      <span className={`text-xs px-2 py-0.5 rounded-full ${radWbm ? "bg-blue-50 text-blue-700" : "bg-gray-100 text-gray-500"}`}>
+                        {t("heating.pzaMode")} {t("heating.radiators").toLowerCase()}: {radWbm ? t("dashboard.on") : t("dashboard.off")}
+                      </span>
+                    )}
+                    {floorWbm !== null && (
+                      <span className={`text-xs px-2 py-0.5 rounded-full ${floorWbm ? "bg-blue-50 text-blue-700" : "bg-gray-100 text-gray-500"}`}>
+                        {t("heating.pzaMode")} {t("heating.floorHeating").toLowerCase()}: {floorWbm ? t("dashboard.on") : t("dashboard.off")}
+                      </span>
+                    )}
+                    {outdoor !== null && (
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-sky-50 text-sky-700">
+                        {t("heating.outdoorTemp")}: {outdoor.toFixed(1)}°C
+                      </span>
+                    )}
+                  </div>
+                )}
+
+                {/* Relay states */}
+                {device.online && relayState !== null && (
+                  <div className="mb-4">
+                    <div className="text-xs text-gray-500 mb-1.5">{t("settings.deviceRelays")}</div>
+                    <div className="flex flex-wrap gap-1">
+                      {RELAY_NAMES.map((name, i) => {
+                        const on = (relayState >> i) & 1;
+                        return (
+                          <span
+                            key={i}
+                            className={`text-[10px] px-1.5 py-0.5 rounded ${
+                              on ? "bg-emerald-100 text-emerald-800" : "bg-gray-100 text-gray-400"
+                            }`}
+                            title={`${name}: ${on ? "ON" : "OFF"}`}
+                          >
+                            {name}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Last heartbeat timestamp */}
+                {device.last_heartbeat && (
+                  <div className="text-xs text-gray-400 mb-4">
+                    {t("settings.deviceLastSeen")}: {new Date(device.last_heartbeat.endsWith("Z") ? device.last_heartbeat : device.last_heartbeat + "Z").toLocaleString()}
+                  </div>
+                )}
+
+                {/* Editable settings */}
+                <div className="border-t border-gray-100 pt-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                      <label className={labelCls}>{t("settings.deviceNodeName")}</label>
+                      <input
+                        type="text"
+                        placeholder={device.mqtt_device_name}
+                        value={editNodeName}
+                        onChange={(e) => setDeviceSetting(device.mqtt_device_name, "node_name", e.target.value)}
+                        className={inputCls}
+                      />
+                    </div>
+                    <div>
+                      <label className={labelCls}>{t("settings.deviceInterval")} ({t("settings.deviceIntervalUnit")})</label>
+                      <input
+                        type="number"
+                        placeholder="10"
+                        value={editInterval}
+                        onChange={(e) => setDeviceSetting(device.mqtt_device_name, "interval", e.target.value)}
+                        className={inputCls}
+                      />
+                    </div>
+                    <div>
+                      <label className={labelCls}>{t("settings.deviceTimezone")}</label>
+                      <input
+                        type="text"
+                        placeholder="MSK-3"
+                        value={editTimezone}
+                        onChange={(e) => setDeviceSetting(device.mqtt_device_name, "timezone", e.target.value)}
+                        className={inputCls}
+                      />
+                    </div>
+                  </div>
+                  <div className="mt-3 flex items-center gap-2">
+                    <button
+                      onClick={() => {
+                        const settings: Record<string, string> = {};
+                        if (editNodeName) settings["node_name"] = editNodeName;
+                        if (editInterval) settings["interval"] = editInterval;
+                        if (editTimezone) settings["timezone"] = editTimezone;
+                        if (Object.keys(settings).length > 0) {
+                          deviceSettingsMutation.mutate(settings);
+                        }
+                      }}
+                      disabled={deviceSettingsMutation.isPending}
+                      className="px-3 py-1.5 bg-primary-600 text-white text-sm rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors"
+                    >
+                      {deviceSettingsMutation.isSuccess ? t("settings.saved") : t("settings.deviceSaveSettings")}
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (confirm(t("settings.deviceRestartConfirm"))) {
+                          deviceSettingsMutation.mutate({ restart: "1" });
+                        }
+                      }}
+                      disabled={deviceSettingsMutation.isPending}
+                      className="px-3 py-1.5 bg-red-50 text-red-700 text-sm rounded-lg hover:bg-red-100 disabled:opacity-50 transition-colors"
+                    >
+                      {t("settings.deviceRestart")}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+
+          {/* Summary bar */}
+          {devicesData && devicesData.total > 0 && (
+            <div className="flex items-center gap-4 text-xs text-gray-500 px-1">
+              <span>{t("settings.deviceOnline")}: {devicesData.online}/{devicesData.total}</span>
+              {devicesData.pending_commands > 0 && (
+                <span className="text-amber-600">{t("settings.devicePendingCmds")}: {devicesData.pending_commands}</span>
+              )}
+              {devicesData.unsynced_commands > 0 && (
+                <span className="text-red-600">{t("settings.deviceUnsyncedCmds")}: {devicesData.unsynced_commands}</span>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ======== TAB: INFRA ======== */}
+      {isAdmin && activeTab === "infra" && (
         <CollapsibleSection title={t("settings.database")} icon={Database} id="database" forceOpen={hash === "database"}>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             {/* Connection card */}
@@ -2451,8 +2793,7 @@ export default function SettingsPage() {
         </CollapsibleSection>
       )}
 
-      {/* ======== CONNECTIONS: MQTT + Gateway ======== */}
-      {isAdmin && (
+      {isAdmin && activeTab === "infra" && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* MQTT Broker */}
           <CollapsibleSection title={t("settings.mqtt")} icon={Radio} id="mqtt" forceOpen={hash === "mqtt"}>

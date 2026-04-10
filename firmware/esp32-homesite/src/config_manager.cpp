@@ -2,9 +2,11 @@
 #include <ArduinoJson.h>
 
 static const char* NVS_NAMESPACE = "homesite";
+static const char* NVS_SETTINGS = "hs_settings";
 
 void ConfigManager::begin() {
     _prefs.begin(NVS_NAMESPACE, false);
+    _settings.begin(NVS_SETTINGS, false);
 }
 
 bool ConfigManager::isConfigured() {
@@ -13,6 +15,7 @@ bool ConfigManager::isConfigured() {
 
 void ConfigManager::clear() {
     _prefs.clear();
+    _settings.clear();
 }
 
 // -- WiFi --
@@ -83,4 +86,89 @@ void ConfigManager::setSensors(const std::vector<SensorMapping>& mappings) {
     String json;
     serializeJson(doc, json);
     _prefs.putString("sensors", json);
+}
+
+// -- Relay pins --
+
+void ConfigManager::relayPins(uint8_t out[16]) {
+    uint8_t defaults[] = DEFAULT_RELAY_PINS;
+    String json = _prefs.getString("relay_pins", "");
+    if (json.length() == 0) {
+        memcpy(out, defaults, 16);
+        return;
+    }
+    JsonDocument doc;
+    if (deserializeJson(doc, json)) {
+        memcpy(out, defaults, 16);
+        return;
+    }
+    // Start with defaults, then override from saved
+    memcpy(out, defaults, 16);
+    JsonArray arr = doc.as<JsonArray>();
+    for (int i = 0; i < 16 && i < (int)arr.size(); i++) {
+        out[i] = arr[i].as<uint8_t>();
+    }
+}
+
+void ConfigManager::setRelayPins(const uint8_t pins[16]) {
+    JsonDocument doc;
+    JsonArray arr = doc.to<JsonArray>();
+    for (int i = 0; i < 16; i++) arr.add(pins[i]);
+    String json;
+    serializeJson(doc, json);
+    _prefs.putString("relay_pins", json);
+}
+
+bool ConfigManager::relayInvert() {
+    return _prefs.getBool("relay_inv", true);
+}
+
+void ConfigManager::setRelayInvert(bool invert) {
+    _prefs.putBool("relay_inv", invert);
+}
+
+// -- Pressure sensors --
+
+PressureConfig ConfigManager::pressureHeating() {
+    PressureConfig c;
+    c.pin = _prefs.getUChar("prs_h_pin", DEFAULT_PRESSURE_HEATING_PIN);
+    c.name = _prefs.getString("prs_h_name", "prs_heating");
+    return c;
+}
+
+PressureConfig ConfigManager::pressureWater() {
+    PressureConfig c;
+    c.pin = _prefs.getUChar("prs_w_pin", DEFAULT_PRESSURE_WATER_PIN);
+    c.name = _prefs.getString("prs_w_name", "prs_water");
+    return c;
+}
+
+void ConfigManager::setPressureHeating(uint8_t pin, const String& name) {
+    _prefs.putUChar("prs_h_pin", pin);
+    _prefs.putString("prs_h_name", name);
+}
+
+void ConfigManager::setPressureWater(uint8_t pin, const String& name) {
+    _prefs.putUChar("prs_w_pin", pin);
+    _prefs.putString("prs_w_name", name);
+}
+
+// -- Timezone --
+
+String ConfigManager::timezone() {
+    return _prefs.getString("timezone", "MSK-3");
+}
+
+void ConfigManager::setTimezone(const String& tz) {
+    _prefs.putString("timezone", tz);
+}
+
+// -- Boiler settings (separate NVS namespace, persist across reboots) --
+
+String ConfigManager::getSetting(const String& key, const String& defaultVal) {
+    return _settings.getString(key.c_str(), defaultVal);
+}
+
+void ConfigManager::setSetting(const String& key, const String& value) {
+    _settings.putString(key.c_str(), value);
 }
