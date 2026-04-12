@@ -77,6 +77,8 @@ void WifiPortal::_handleRoot() {
     page.replace("{{NODE_NAME}}", _config->nodeName());
     page.replace("{{MQTT_HOST}}", _config->mqttHost());
     page.replace("{{MQTT_PORT}}", String(_config->mqttPort()));
+    page.replace("{{MQTT_USER}}", _config->mqttUser());
+    page.replace("{{MQTT_PASS}}", _config->mqttPass());
     page.replace("{{INTERVAL}}", String(_config->readIntervalMs() / 1000));
     page.replace("{{TIMEZONE}}", _config->timezone());
 

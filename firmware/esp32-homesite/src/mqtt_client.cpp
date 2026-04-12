@@ -9,9 +9,9 @@ void MqttClient::begin(ConfigManager& config) {
     _nodeName = config.nodeName();
 
     _mqttClient.setClient(_wifiClient);
-    _mqttClient.setServer(config.mqttHost().c_str(), config.mqttPort());
+    _applyServer(config.mqttHost(), config.mqttPort());
     _mqttClient.setCallback(_staticCallback);
-    _mqttClient.setBufferSize(512);
+    _mqttClient.setBufferSize(1024);
 }
 
 void MqttClient::setCommandCallback(CommandCallback cb) {
@@ -44,9 +44,13 @@ bool MqttClient::ensureConnected() {
 
     if (ok) {
         Serial.println("MQTT connected");
-        // Subscribe to command topic for this node
+        // Subscribe to command topic for this node (QoS 1 to match publisher)
         String cmdTopic = "home/devices/" + _nodeName + "/cmd";
-        _mqttClient.subscribe(cmdTopic.c_str());
+        bool subOk = _mqttClient.subscribe(cmdTopic.c_str(), 1);
+        Serial.print("MQTT subscribe [");
+        Serial.print(cmdTopic);
+        Serial.print("]: ");
+        Serial.println(subOk ? "OK" : "FAILED");
     } else {
         Serial.print("MQTT connect failed, rc=");
         Serial.println(_mqttClient.state());
@@ -93,7 +97,7 @@ void MqttClient::reconnect(ConfigManager& config) {
     _mqttClient.disconnect();
     _config = &config;
     _nodeName = config.nodeName();
-    _mqttClient.setServer(config.mqttHost().c_str(), config.mqttPort());
+    _applyServer(config.mqttHost(), config.mqttPort());
     _lastReconnectAttempt = 0;  // allow immediate reconnect
     ensureConnected();
 }
@@ -105,6 +109,18 @@ void MqttClient::loop() {
 void MqttClient::_staticCallback(char* topic, byte* payload, unsigned int length) {
     if (_instance) {
         _instance->_handleMessage(topic, payload, length);
+    }
+}
+
+void MqttClient::_applyServer(const String& host, uint16_t port) {
+    IPAddress ip;
+    if (ip.fromString(host)) {
+        // Pure IP address — pass by value, no dangling pointer risk
+        _mqttClient.setServer(ip, port);
+    } else {
+        // Hostname — keep a persistent copy so the pointer stays valid
+        _mqttHostStr = host;
+        _mqttClient.setServer(_mqttHostStr.c_str(), port);
     }
 }
 

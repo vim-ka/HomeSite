@@ -79,9 +79,9 @@ input:focus,select:focus{outline:none;border-color:#3b82f6;box-shadow:0 0 0 3px 
   <label for="mqtt_port">Port</label>
   <input type="number" name="mqtt_port" id="mqtt_port" value="{{MQTT_PORT}}" placeholder="1883">
   <label for="mqtt_user">Login (optional)</label>
-  <input type="text" name="mqtt_user" id="mqtt_user">
+  <input type="text" name="mqtt_user" id="mqtt_user" value="{{MQTT_USER}}">
   <label for="mqtt_pass">Password (optional)</label>
-  <input type="password" name="mqtt_pass" id="mqtt_pass">
+  <input type="password" name="mqtt_pass" id="mqtt_pass" value="{{MQTT_PASS}}">
 </div>
 
 <div class="card">

@@ -257,9 +257,11 @@ void sendHeartbeat() {
         if (floorTarget >= 0) doc["floor_target"] = round(floorTarget * 10) / 10.0;
     }
 
-    // Pressure
-    doc["prs_heat"] = round(pressure.readHeatingPressure() * 100) / 100.0;
-    doc["prs_water"] = round(pressure.readWaterPressure() * 100) / 100.0;
+    // Pressure (only if configured)
+    if (pressureHeatingName.length() > 0)
+        doc["prs_heat"] = round(pressure.readHeatingPressure() * 100) / 100.0;
+    if (pressureWaterName.length() > 0)
+        doc["prs_water"] = round(pressure.readWaterPressure() * 100) / 100.0;
 
     // Boiler logic status (relays, automode, schedules, etc.)
     boilerLogic.fillHeartbeat(doc);
@@ -315,12 +317,14 @@ void setup() {
     config.relayPins(relayPins);
     relays.begin(relayPins, config.relayInvert());
 
-    // Initialize pressure sensors
+    // Initialize pressure sensors (only if configured via portal)
     PressureConfig prsHeat = config.pressureHeating();
     PressureConfig prsWater = config.pressureWater();
-    pressure.begin(prsHeat.pin, prsWater.pin);
     pressureHeatingName = prsHeat.name;
     pressureWaterName = prsWater.name;
+    if (pressureHeatingName.length() > 0 || pressureWaterName.length() > 0) {
+        pressure.begin(prsHeat.pin, prsWater.pin);
+    }
 
     // Initialize NTP
     ntpTime.begin(config.timezone());
@@ -384,9 +388,9 @@ void loop() {
             }
         }
 
-        // Read pressure sensors
-        float heatPrs = pressure.readHeatingPressure();
-        float waterPrs = pressure.readWaterPressure();
+        // Read pressure sensors (only if configured)
+        float heatPrs = pressureHeatingName.length() > 0 ? pressure.readHeatingPressure() : 0.0;
+        float waterPrs = pressureWaterName.length() > 0 ? pressure.readWaterPressure() : 0.0;
 
         // Run control logic
         boilerLogic.update(tempMap, heatPrs, waterPrs);

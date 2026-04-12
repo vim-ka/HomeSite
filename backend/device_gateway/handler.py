@@ -1,5 +1,6 @@
 """MQTT message handler — subscribes to sensor topics, persists data, notifies backend."""
 
+import asyncio
 import json
 from datetime import UTC, datetime
 
@@ -37,6 +38,9 @@ class MQTTHandler:
         self._dispatcher = dispatcher
         # Heartbeat tracking: device_name → {timestamp, data}
         self.heartbeats: dict[str, dict] = {}
+        # Scan results: device_name → sensor list (set by /sensors topic)
+        self._scan_results: dict[str, list[dict]] = {}
+        self._scan_events: dict[str, asyncio.Event] = {}
 
     @property
     def is_connected(self) -> bool:
@@ -131,6 +135,23 @@ class MQTTHandler:
                 ack_data = json.loads(payload_raw)
                 if isinstance(ack_data, dict) and self._dispatcher:
                     await self._dispatcher.handle_ack(device_name, ack_data)
+            except Exception:
+                pass
+            return
+
+        # Handle scan result: home/devices/{name}/sensors → OneWire scan response
+        if subtopic == "sensors":
+            payload_raw = message.payload
+            if isinstance(payload_raw, (bytes, bytearray)):
+                payload_raw = payload_raw.decode()
+            try:
+                sensors_data = json.loads(payload_raw)
+                if isinstance(sensors_data, list):
+                    self._scan_results[device_name] = sensors_data
+                    event = self._scan_events.get(device_name)
+                    if event:
+                        event.set()
+                    logger.info("scan_result_received", device=device_name, count=len(sensors_data))
             except Exception:
                 pass
             return
@@ -296,3 +317,16 @@ class MQTTHandler:
             pass  # Backend may not be running — this is non-critical
         except Exception as e:
             logger.warning("backend_notify_error", error=str(e))
+
+    async def wait_for_scan(self, device_name: str, timeout: float = 10.0) -> list[dict] | None:
+        """Wait for scan result from device. Returns sensor list or None on timeout."""
+        event = asyncio.Event()
+        self._scan_events[device_name] = event
+        self._scan_results.pop(device_name, None)
+        try:
+            await asyncio.wait_for(event.wait(), timeout=timeout)
+            return self._scan_results.get(device_name)
+        except asyncio.TimeoutError:
+            return None
+        finally:
+            self._scan_events.pop(device_name, None)

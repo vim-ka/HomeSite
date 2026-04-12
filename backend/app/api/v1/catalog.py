@@ -293,6 +293,86 @@ async def accept_pending_sensor(
     return next(s for s in sensors if s["id"] == sensor.id)
 
 
+# ---- Device Sensor Scanning (OneWire via MQTT) ----
+
+
+class SensorAssignRequest(BaseModel):
+    address: str
+    name: str
+
+
+class SensorRemoveRequest(BaseModel):
+    address: str
+
+
+@router.post("/devices/{mqtt_device_name}/scan-sensors")
+async def scan_device_sensors(
+    mqtt_device_name: str,
+    user: User = Depends(admin_only),
+    db: AsyncSession = Depends(get_db),
+):
+    """Trigger OneWire scan on ESP32 device, wait for result."""
+    from app.services.gateway_client import GatewayClient
+
+    result = await GatewayClient().scan_sensors(mqtt_device_name)
+    if result is None:
+        raise HTTPException(status_code=504, detail="Device did not respond")
+
+    db.add(EventLog(
+        level="INFO", source="catalog", method="POST",
+        path=f"/api/v1/catalog/devices/{mqtt_device_name}/scan-sensors",
+        message=f"Сканирование датчиков на {mqtt_device_name}: найдено {len(result)}",
+        user_id=user.id,
+    ))
+    return {"device": mqtt_device_name, "sensors": result}
+
+
+@router.post("/devices/{mqtt_device_name}/sensor-assign")
+async def assign_device_sensor(
+    mqtt_device_name: str,
+    payload: SensorAssignRequest,
+    user: User = Depends(admin_only),
+    db: AsyncSession = Depends(get_db),
+):
+    """Assign a logical name to a sensor on ESP32 device."""
+    from app.services.gateway_client import GatewayClient
+
+    ok = await GatewayClient().sensor_assign(mqtt_device_name, payload.address, payload.name)
+    if not ok:
+        raise HTTPException(status_code=502, detail="Gateway error")
+
+    db.add(EventLog(
+        level="INFO", source="catalog", method="POST",
+        path=f"/api/v1/catalog/devices/{mqtt_device_name}/sensor-assign",
+        message=f"Назначен датчик {payload.address} → {payload.name} на {mqtt_device_name}",
+        user_id=user.id,
+    ))
+    return {"status": "ok"}
+
+
+@router.post("/devices/{mqtt_device_name}/sensor-remove")
+async def remove_device_sensor(
+    mqtt_device_name: str,
+    payload: SensorRemoveRequest,
+    user: User = Depends(admin_only),
+    db: AsyncSession = Depends(get_db),
+):
+    """Remove sensor mapping from ESP32 device."""
+    from app.services.gateway_client import GatewayClient
+
+    ok = await GatewayClient().sensor_remove(mqtt_device_name, payload.address)
+    if not ok:
+        raise HTTPException(status_code=502, detail="Gateway error")
+
+    db.add(EventLog(
+        level="INFO", source="catalog", method="POST",
+        path=f"/api/v1/catalog/devices/{mqtt_device_name}/sensor-remove",
+        message=f"Удалён датчик {payload.address} с {mqtt_device_name}",
+        user_id=user.id,
+    ))
+    return {"status": "ok"}
+
+
 @router.delete("/pending-sensors/{ps_id}", status_code=204)
 async def dismiss_pending_sensor(
     ps_id: int,

@@ -132,14 +132,14 @@ void ConfigManager::setRelayInvert(bool invert) {
 PressureConfig ConfigManager::pressureHeating() {
     PressureConfig c;
     c.pin = _prefs.getUChar("prs_h_pin", DEFAULT_PRESSURE_HEATING_PIN);
-    c.name = _prefs.getString("prs_h_name", "prs_heating");
+    c.name = _prefs.getString("prs_h_name", "");  // empty = disabled
     return c;
 }
 
 PressureConfig ConfigManager::pressureWater() {
     PressureConfig c;
     c.pin = _prefs.getUChar("prs_w_pin", DEFAULT_PRESSURE_WATER_PIN);
-    c.name = _prefs.getString("prs_w_name", "prs_water");
+    c.name = _prefs.getString("prs_w_name", "");  // empty = disabled
     return c;
 }
 

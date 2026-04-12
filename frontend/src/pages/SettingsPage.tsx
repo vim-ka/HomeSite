@@ -144,6 +144,13 @@ interface DevicesResponse {
   unsynced_commands: number;
 }
 
+interface ScannedSensor {
+  addr: string;
+  type: string;
+  temp?: number;
+  name?: string;
+}
+
 // ---- Modal backdrop ----
 
 function Modal({
@@ -1658,6 +1665,41 @@ export default function SettingsPage() {
     },
   });
 
+  // ---- Sensor scanning ----
+  const [scanDevice, setScanDevice] = useState<string | null>(null);
+  const [scanResults, setScanResults] = useState<ScannedSensor[]>([]);
+  const [scanLoading, setScanLoading] = useState(false);
+  const [scanError, setScanError] = useState<string | null>(null);
+  const [assignNames, setAssignNames] = useState<Record<string, string>>({});
+
+  const doScan = async (mqttDeviceName: string) => {
+    setScanDevice(mqttDeviceName);
+    setScanLoading(true);
+    setScanError(null);
+    setScanResults([]);
+    setAssignNames({});
+    try {
+      const { data } = await api.post(`/catalog/devices/${mqttDeviceName}/scan-sensors`);
+      setScanResults(data.sensors ?? []);
+    } catch {
+      setScanError(t("settings.deviceScanTimeout"));
+    } finally {
+      setScanLoading(false);
+    }
+  };
+
+  const doAssign = async (addr: string, name: string) => {
+    if (!scanDevice || !name.trim()) return;
+    await api.post(`/catalog/devices/${scanDevice}/sensor-assign`, { address: addr, name: name.trim() });
+    doScan(scanDevice);
+  };
+
+  const doRemoveMapping = async (addr: string) => {
+    if (!scanDevice) return;
+    await api.post(`/catalog/devices/${scanDevice}/sensor-remove`, { address: addr });
+    doScan(scanDevice);
+  };
+
   const formatUptime = (seconds: number): string => {
     const d = Math.floor(seconds / 86400);
     const h = Math.floor((seconds % 86400) / 3600);
@@ -2569,8 +2611,75 @@ export default function SettingsPage() {
                     >
                       {t("settings.deviceRestart")}
                     </button>
+                    {device.online && (
+                      <button
+                        onClick={() => doScan(device.mqtt_device_name)}
+                        disabled={scanLoading && scanDevice === device.mqtt_device_name}
+                        className="px-3 py-1.5 bg-blue-50 text-blue-700 text-sm rounded-lg hover:bg-blue-100 disabled:opacity-50 transition-colors"
+                      >
+                        {scanLoading && scanDevice === device.mqtt_device_name ? t("settings.deviceScanLoading") : t("settings.deviceScanSensors")}
+                      </button>
+                    )}
                   </div>
                 </div>
+
+                {/* Scan results panel */}
+                {scanDevice === device.mqtt_device_name && !scanLoading && (scanResults.length > 0 || scanError) && (
+                  <div className="border-t border-gray-100 pt-4 mt-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <h4 className="text-sm font-semibold text-gray-700">{t("settings.deviceScanTitle")}</h4>
+                      <button onClick={() => setScanDevice(null)} className="text-xs text-gray-400 hover:text-gray-600">&times;</button>
+                    </div>
+                    {scanError && (
+                      <p className="text-sm text-red-600">{scanError}</p>
+                    )}
+                    {scanResults.length === 0 && !scanError && (
+                      <p className="text-sm text-gray-500">{t("settings.deviceScanEmpty")}</p>
+                    )}
+                    {scanResults.length > 0 && (
+                      <div className="space-y-2">
+                        {scanResults.map((s) => (
+                          <div key={s.addr} className="flex items-center gap-2 p-2 rounded-lg bg-gray-50">
+                            <code className="text-xs text-gray-500 font-mono min-w-[130px]">{s.addr.substring(0, 4)}-{s.addr.substring(4, 8)}-...</code>
+                            <span className="text-xs px-1.5 py-0.5 rounded bg-blue-100 text-blue-700">{s.type}</span>
+                            {s.temp != null && s.temp > -55 && (
+                              <span className="text-sm font-medium text-emerald-700 min-w-[55px]">{s.temp.toFixed(1)}°C</span>
+                            )}
+                            {s.name ? (
+                              <div className="flex items-center gap-1.5 ml-auto">
+                                <span className="text-xs text-emerald-700 font-medium">{s.name}</span>
+                                <button
+                                  onClick={() => doRemoveMapping(s.addr)}
+                                  className="text-xs text-red-500 hover:text-red-700"
+                                  title={t("settings.deviceScanRemove")}
+                                >
+                                  &times;
+                                </button>
+                              </div>
+                            ) : (
+                              <div className="flex items-center gap-1.5 ml-auto">
+                                <input
+                                  type="text"
+                                  placeholder={t("settings.deviceScanName")}
+                                  value={assignNames[s.addr] ?? ""}
+                                  onChange={(e) => setAssignNames((p) => ({ ...p, [s.addr]: e.target.value }))}
+                                  className="text-xs border border-gray-300 rounded px-2 py-1 w-32"
+                                />
+                                <button
+                                  onClick={() => doAssign(s.addr, assignNames[s.addr] ?? "")}
+                                  disabled={!(assignNames[s.addr] ?? "").trim()}
+                                  className="text-xs px-2 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+                                >
+                                  {t("settings.deviceScanAssign")}
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             );
           })}

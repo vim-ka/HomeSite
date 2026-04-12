@@ -36,7 +36,10 @@ private:
     ConfigManager* _config = nullptr;
     CommandCallback _cmdCallback = nullptr;
     String _nodeName;
+    String _mqttHostStr;  // persistent copy — PubSubClient stores const char* without copying
     unsigned long _lastReconnectAttempt = 0;
+
+    void _applyServer(const String& host, uint16_t port);
 
     static void _staticCallback(char* topic, byte* payload, unsigned int length);
     void _handleMessage(char* topic, byte* payload, unsigned int length);

@@ -131,6 +131,60 @@ def create_gateway_api(
         logger.info("retry_unsynced", retried=retried)
         return {"retried": retried}
 
+    @app.post("/scan-sensors")
+    async def scan_sensors(
+        payload: CommandRequest,
+        _: None = Depends(verify_secret),
+    ) -> dict:
+        """Send scan_sensors command and wait for MQTT response."""
+        if handler is None:
+            raise HTTPException(status_code=503, detail="handler not available")
+
+        device_id = payload.device_id
+
+        # Send scan command directly (bypass debounce)
+        if publisher is None:
+            raise HTTPException(status_code=503, detail="publisher not available")
+        await publisher.publish_grouped(device_id, {"scan_sensors": "1"})
+
+        # Wait for response on home/devices/{device_id}/sensors
+        result = await handler.wait_for_scan(device_id, timeout=10.0)
+        if result is None:
+            raise HTTPException(status_code=504, detail="Device did not respond")
+
+        return {"device_id": device_id, "sensors": result}
+
+    @app.post("/sensor-assign")
+    async def sensor_assign(
+        payload: CommandRequest,
+        _: None = Depends(verify_secret),
+    ) -> dict:
+        """Send sensor_assign command: params must have 'address' and 'name'."""
+        address = payload.params.get("address", "")
+        name = payload.params.get("name", "")
+        if not address or not name:
+            raise HTTPException(status_code=400, detail="address and name required")
+
+        if publisher is None:
+            raise HTTPException(status_code=503, detail="publisher not available")
+        await publisher.publish_grouped(payload.device_id, {"sensor_assign": f"{address}:{name}"})
+        return {"status": "ok"}
+
+    @app.post("/sensor-remove")
+    async def sensor_remove(
+        payload: CommandRequest,
+        _: None = Depends(verify_secret),
+    ) -> dict:
+        """Send sensor_remove command: params must have 'address'."""
+        address = payload.params.get("address", "")
+        if not address:
+            raise HTTPException(status_code=400, detail="address required")
+
+        if publisher is None:
+            raise HTTPException(status_code=503, detail="publisher not available")
+        await publisher.publish_grouped(payload.device_id, {"sensor_remove": address})
+        return {"status": "ok"}
+
     @app.post("/reload-mqtt")
     async def reload_mqtt(
         _: None = Depends(verify_secret),

@@ -83,6 +83,50 @@ class GatewayClient:
         except Exception:
             return 0
 
+    async def scan_sensors(self, device_id: str) -> list[dict] | None:
+        """Send scan_sensors command and wait for result. Returns sensor list or None."""
+        try:
+            async with httpx.AsyncClient(base_url=self.base_url, timeout=15.0) as client:
+                response = await client.post(
+                    "/scan-sensors",
+                    json={"device_id": device_id, "params": {}},
+                    headers={"X-Internal-Secret": settings.internal_api_secret},
+                )
+                if response.status_code == 200:
+                    return response.json().get("sensors")
+                return None
+        except Exception as e:
+            logger.warning("gateway_scan_error", error=str(e))
+            return None
+
+    async def sensor_assign(self, device_id: str, address: str, name: str) -> bool:
+        """Send sensor_assign command to device."""
+        try:
+            async with httpx.AsyncClient(base_url=self.base_url, timeout=self.timeout) as client:
+                response = await client.post(
+                    "/sensor-assign",
+                    json={"device_id": device_id, "params": {"address": address, "name": name}},
+                    headers={"X-Internal-Secret": settings.internal_api_secret},
+                )
+                return response.status_code == 200
+        except Exception as e:
+            logger.warning("gateway_assign_error", error=str(e))
+            return False
+
+    async def sensor_remove(self, device_id: str, address: str) -> bool:
+        """Send sensor_remove command to device."""
+        try:
+            async with httpx.AsyncClient(base_url=self.base_url, timeout=self.timeout) as client:
+                response = await client.post(
+                    "/sensor-remove",
+                    json={"device_id": device_id, "params": {"address": address}},
+                    headers={"X-Internal-Secret": settings.internal_api_secret},
+                )
+                return response.status_code == 200
+        except Exception as e:
+            logger.warning("gateway_remove_error", error=str(e))
+            return False
+
     async def health_check(self) -> bool:
         try:
             async with httpx.AsyncClient(base_url=self.base_url, timeout=self.timeout) as client:
