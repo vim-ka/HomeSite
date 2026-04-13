@@ -292,6 +292,17 @@ async def seed(session: AsyncSession) -> None:
             "show_on_dashboard": False,
             "display_order": 5,
         },
+        {
+            "id": 6,
+            "circuit_name": "Общее отопление",
+            "delta_threshold": 5.0,
+            "config_temp_key": None,
+            "config_pump_key": None,
+            "config_prefix": "heating",
+            "mqtt_device_name": "boiler_unit",
+            "show_on_dashboard": False,
+            "display_order": 6,
+        },
     ]
 
     # --- Insert all data (order matters for FK constraints) ---

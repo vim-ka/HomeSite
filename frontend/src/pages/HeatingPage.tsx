@@ -523,6 +523,14 @@ export default function HeatingPage() {
                   disabled={boilerAuto}
                 />
               </SettingRow>
+              <SettingRow label={t("heating.boilerMaxTemp")} hint={t("heating.hints.boilerMaxTemp")}>
+                <TempSlider
+                  value={num("heating_boiler_max_temp", "85")}
+                  min={60}
+                  max={95}
+                  onChange={(v) => set("heating_boiler_max_temp", v)}
+                />
+              </SettingRow>
             </div>
             {boilerAuto && (
               <p className="mt-2 text-xs text-amber-600">
@@ -764,35 +772,35 @@ export default function HeatingPage() {
             <div className="divide-y divide-gray-100">
               <SettingRow label={t("heating.autofillEnabled")} hint={t("heating.hints.autofillEnabled")}>
                 <Toggle
-                  value={bool("heating_boiler_autofill_enabled")}
-                  onChange={() => toggle("heating_boiler_autofill_enabled")}
+                  value={bool("heating_autofill_enabled")}
+                  onChange={() => toggle("heating_autofill_enabled")}
                 />
               </SettingRow>
               <SettingRow label={t("heating.pressureMin")} hint={t("heating.hints.pressureMin")}>
                 <TempSlider
-                  value={num("heating_boiler_pressure_min", "1.0") * 10}
+                  value={num("heating_pressure_min", "1.0") * 10}
                   min={1}
                   max={30}
                   unit=" бар"
                   onChange={(v) => {
-                    if (v / 10 >= num("heating_boiler_pressure_max", "1.8")) return;
-                    set("heating_boiler_pressure_min", (v / 10).toFixed(1));
+                    if (v / 10 >= num("heating_pressure_max", "1.8")) return;
+                    set("heating_pressure_min", (v / 10).toFixed(1));
                   }}
-                  disabled={!bool("heating_boiler_autofill_enabled")}
+                  disabled={!bool("heating_autofill_enabled")}
                   formatValue={(v) => (v / 10).toFixed(1)}
                 />
               </SettingRow>
               <SettingRow label={t("heating.pressureMax")} hint={t("heating.hints.pressureMax")}>
                 <TempSlider
-                  value={num("heating_boiler_pressure_max", "1.8") * 10}
+                  value={num("heating_pressure_max", "1.8") * 10}
                   min={1}
                   max={30}
                   unit=" бар"
                   onChange={(v) => {
-                    if (v / 10 <= num("heating_boiler_pressure_min", "1.0")) return;
-                    set("heating_boiler_pressure_max", (v / 10).toFixed(1));
+                    if (v / 10 <= num("heating_pressure_min", "1.0")) return;
+                    set("heating_pressure_max", (v / 10).toFixed(1));
                   }}
-                  disabled={!bool("heating_boiler_autofill_enabled")}
+                  disabled={!bool("heating_autofill_enabled")}
                   formatValue={(v) => (v / 10).toFixed(1)}
                 />
               </SettingRow>

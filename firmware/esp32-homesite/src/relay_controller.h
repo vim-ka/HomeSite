@@ -11,15 +11,15 @@ enum RelayChannel {
     RELAY_WATER_PUMP        = 4,
     RELAY_WATER_HOT_PUMP    = 5,
     RELAY_TEH               = 6,
-    RELAY_AUTOFILL_VALVE    = 7,
-    RELAY_RAD_VALVE_OPEN    = 8,   // Three-way valve radiators — open
-    RELAY_RAD_VALVE_CLOSE   = 9,   // Three-way valve radiators — close
-    RELAY_FLOOR_VALVE_OPEN  = 10,  // Three-way valve floor — open
-    RELAY_FLOOR_VALVE_CLOSE = 11,  // Three-way valve floor — close
-    RELAY_LAMP_WARNING      = 12,  // Warning lamp
-    RELAY_LAMP_CRITICAL     = 13,  // Critical lamp + buzzer
-    RELAY_SPARE_1           = 14,
-    RELAY_SPARE_2           = 15,
+    RELAY_AUTOFILL_OPEN     = 7,   // Autofill motorized valve — open
+    RELAY_AUTOFILL_CLOSE    = 8,   // Autofill motorized valve — close
+    RELAY_RAD_VALVE_OPEN    = 9,   // Three-way valve radiators — open
+    RELAY_RAD_VALVE_CLOSE   = 10,  // Three-way valve radiators — close
+    RELAY_FLOOR_VALVE_OPEN  = 11,  // Three-way valve floor — open
+    RELAY_FLOOR_VALVE_CLOSE = 12,  // Three-way valve floor — close
+    RELAY_LAMP_WARNING      = 13,  // Warning lamp
+    RELAY_LAMP_CRITICAL     = 14,  // Critical lamp + buzzer
+    RELAY_SPARE             = 15,
 };
 
 class RelayController {

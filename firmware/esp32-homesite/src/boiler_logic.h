@@ -49,13 +49,15 @@ private:
     float _boilerMaxTemp = 85.0;
     static constexpr float BOILER_HYSTERESIS = 2.0;
 
-    // Radiator pump
+    // Radiator
     bool _radPumpCmd = true;
     bool _radOffIhb = true;
+    float _radTempSet = 45.0;     // manual target when PZA off
 
-    // Floor pump
+    // Floor
     bool _floorPumpCmd = true;
     bool _floorOffIhb = false;
+    float _floorTempSet = 30.0;   // manual target when PZA off
 
     // IHB (DHW)
     bool _ihbAutomode = true;
@@ -73,14 +75,17 @@ private:
     bool _waterPumpCmd = true;
     bool _waterHotPumpCmd = true;
 
-    // Autofill
+    // Autofill (motorized ball valve — OPEN/CLOSE relays)
     bool _autofillEnabled = true;
     float _pressureMin = 1.0;
     float _pressureMax = 1.8;
     unsigned long _autofillStart = 0;
     bool _autofillActive = false;
-    static constexpr unsigned long AUTOFILL_MAX_MS = 120000;  // 2 min safety
-    static constexpr float AUTOFILL_HYSTERESIS = 0.1;         // bar
+    bool _autofillClosing = false;
+    unsigned long _autofillCloseStart = 0;
+    static constexpr unsigned long AUTOFILL_MAX_MS = 120000;     // 2 min safety max open
+    static constexpr unsigned long AUTOFILL_VALVE_TRAVEL_MS = 15000; // 15s full travel
+    static constexpr float AUTOFILL_HYSTERESIS = 0.1;           // bar
 
     // Schedules
     bool _radScheduleEnabled = true;
@@ -103,18 +108,24 @@ private:
     int _almDuration = 30;
     bool _almActive = false;
 
-    // Three-way valve control
-    // Pulse-based: energize OPEN or CLOSE relay for N seconds, then release.
-    // Valve travel time configurable (default 120s for full stroke).
-    int _radValvePos = 50;          // 0=closed, 100=open (current target %)
-    int _floorValvePos = 50;
-    static constexpr int VALVE_FULL_TRAVEL_MS = 120000;  // 120s full stroke
-    unsigned long _radValveStart = 0;
-    unsigned long _floorValveStart = 0;
-    int _radValveDriveMs = 0;       // remaining drive time
-    int _floorValveDriveMs = 0;
-    bool _radValveOpening = false;  // direction
-    bool _floorValveOpening = false;
+    // Three-way valve control (proportional pulse-based)
+    // PZA computes target supply temp; controller adjusts valve to match.
+    static constexpr unsigned long VALVE_FULL_TRAVEL_MS = 90000;  // 90s full stroke
+    static constexpr unsigned long VALVE_ADJUST_INTERVAL_MS = 30000; // check every 30s
+    static constexpr float VALVE_DEADBAND = 1.0;     // °C — no action within ±1°C
+    static constexpr float VALVE_MAX_ERROR = 10.0;   // °C — full stroke impulse
+    static constexpr unsigned long VALVE_MIN_PULSE_MS = 1000;  // min pulse 1s
+    static constexpr unsigned long VALVE_MAX_PULSE_MS = 15000; // max pulse 15s
+
+    struct ValveState {
+        unsigned long driveStart = 0;
+        unsigned long driveMs = 0;       // current pulse duration (0 = idle)
+        unsigned long lastAdjust = 0;    // last time we evaluated
+        bool opening = false;            // direction of current pulse
+    };
+
+    ValveState _radValve;
+    ValveState _floorValve;
 
     // Alarm lamps
     bool _warningActive = false;
@@ -125,8 +136,16 @@ private:
     bool _scheduleRadActive = false;
     bool _scheduleFloorActive = false;
 
+    // NVS write debounce
+    std::map<String, String> _pendingNvs;
+    unsigned long _lastNvsFlush = 0;
+    static constexpr unsigned long NVS_FLUSH_INTERVAL_MS = 5000;
+    void flushPendingNvs();
+
     // --- Private methods ---
     void loadSettingsFromNVS();
+    void driveValve(ValveState& vs, RelayChannel openRelay, RelayChannel closeRelay,
+                    const char* label, float target, float actual);
     void updateBoiler(const TempMap& temps);
     void updatePumps(const TempMap& temps);
     void updateAutofill(float heatingPressure);

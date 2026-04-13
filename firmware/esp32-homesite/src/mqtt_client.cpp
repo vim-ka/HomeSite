@@ -87,9 +87,17 @@ void MqttClient::publishGrouped(const String& sensorName, const std::vector<std:
     _mqttClient.publish(topic.c_str(), payload.c_str());
 }
 
-void MqttClient::publishRaw(const String& topic, const String& payload) {
+void MqttClient::publishRaw(const String& topic, const String& payload, bool retained) {
     if (!_mqttClient.connected()) return;
-    _mqttClient.publish(topic.c_str(), payload.c_str());
+    _mqttClient.publish(topic.c_str(), payload.c_str(), retained);
+}
+
+void MqttClient::publishReliable(const String& topic, const String& payload) {
+    if (!_mqttClient.connected()) return;
+    // QoS 1 via beginPublish/endPublish for ack and scan results
+    _mqttClient.beginPublish(topic.c_str(), payload.length(), false);
+    _mqttClient.print(payload);
+    _mqttClient.endPublish();
 }
 
 void MqttClient::reconnect(ConfigManager& config) {
@@ -144,6 +152,6 @@ void MqttClient::_handleMessage(char* topic, byte* payload, unsigned int length)
     if (err) return;
 
     for (JsonPair kv : doc.as<JsonObject>()) {
-        _cmdCallback(String(kv.key().c_str()), String(kv.value().as<const char*>()));
+        _cmdCallback(String(kv.key().c_str()), kv.value().as<String>());
     }
 }

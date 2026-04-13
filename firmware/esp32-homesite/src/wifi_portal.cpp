@@ -12,15 +12,15 @@ static const char* RELAY_LABELS[] = {
     "Water pump",
     "Hot water pump",
     "TEH",
-    "Autofill valve",
+    "Autofill OPEN",
+    "Autofill CLOSE",
     "Rad valve OPEN",
     "Rad valve CLOSE",
     "Floor valve OPEN",
     "Floor valve CLOSE",
     "Lamp WARNING",
     "Lamp CRITICAL",
-    "Spare 1",
-    "Spare 2",
+    "Spare",
 };
 
 void WifiPortal::start(ConfigManager& config, SensorReader& sensors) {
@@ -35,11 +35,12 @@ void WifiPortal::start(ConfigManager& config, SensorReader& sensors) {
     String apName = String(AP_PREFIX) + suffix;
 
     WiFi.mode(WIFI_AP);
-    WiFi.softAP(apName.c_str());
+    WiFi.softAP(apName.c_str(), "homesite1");
     delay(100);
 
     Serial.print("AP started: ");
-    Serial.println(apName);
+    Serial.print(apName);
+    Serial.println(" (pass: homesite1)");
     Serial.print("IP: ");
     Serial.println(WiFi.softAPIP());
 

@@ -21,8 +21,11 @@ public:
     // Publish grouped readings: home/devices/{sensorName} -> {"tmp": 22.5, "hmt": 48.3}
     void publishGrouped(const String& sensorName, const std::vector<std::pair<String, float>>& params);
 
-    // Publish raw JSON string to arbitrary topic
-    void publishRaw(const String& topic, const String& payload);
+    // Publish raw JSON string to arbitrary topic (QoS 0)
+    void publishRaw(const String& topic, const String& payload, bool retained = false);
+
+    // Publish with QoS 1 (for ack, scan results — must not be lost)
+    void publishReliable(const String& topic, const String& payload);
 
     // Reconnect with new settings (host/port/credentials changed at runtime)
     void reconnect(ConfigManager& config);

@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #include <ArduinoJson.h>
+#include <esp_task_wdt.h>
 #include "config_manager.h"
 #include "wifi_portal.h"
 #include "mqtt_client.h"
@@ -33,6 +34,7 @@ NtpTime ntpTime;
 
 unsigned long lastReadTime = 0;
 unsigned long lastHeartbeat = 0;
+unsigned long lastWifiReconnect = 0;
 unsigned long resetBtnStart = 0;
 bool resetBtnActive = false;
 
@@ -51,7 +53,7 @@ void sendAck() {
     String topic = "home/devices/" + config.nodeName() + "/ack";
     String payload;
     serializeJson(ackDoc, payload);
-    mqtt.publishRaw(topic, payload);
+    mqtt.publishReliable(topic, payload);
     Serial.print("ACK: ");
     Serial.println(payload);
     ackDoc.clear();
@@ -70,9 +72,11 @@ void onCommand(const String& key, const String& value) {
     if (key == "reset_config") {
         config.clear();
         ESP.restart();
+        return;
     }
     if (key == "restart") {
         ESP.restart();
+        return;
     }
     if (key == "interval") {
         uint32_t ms = value.toInt() * 1000;
@@ -117,8 +121,10 @@ void onCommand(const String& key, const String& value) {
     // --- Sensor management commands ---
 
     if (key == "scan_sensors") {
+        ackDoc.remove(key);  // scan has its own response, no ack needed
         // Scan OneWire bus and publish discovered sensors with temperatures
         auto discovered = sensors.scanOneWire();
+        auto existing = config.sensors();
         JsonDocument scanDoc;
         JsonArray arr = scanDoc.to<JsonArray>();
         for (auto& ds : discovered) {
@@ -129,7 +135,6 @@ void onCommand(const String& key, const String& value) {
                 obj["temp"] = round(ds.temp * 10) / 10.0;
             }
             // Check if already assigned
-            auto existing = config.sensors();
             for (auto& m : existing) {
                 if (m.addr == ds.addr) {
                     obj["name"] = m.name;
@@ -140,17 +145,18 @@ void onCommand(const String& key, const String& value) {
         String topic = "home/devices/" + config.nodeName() + "/sensors";
         String payload;
         serializeJson(scanDoc, payload);
-        mqtt.publishRaw(topic, payload);
+        mqtt.publishReliable(topic, payload);
         Serial.print("Scan result: ");
         Serial.println(payload);
         return;
     }
 
     if (key == "sensor_assign") {
+        ackDoc.remove(key);  // assign has its own semantics, no generic ack
         // Assign name to sensor address. Value format: "28FFA32C64140000:tsboiler_s"
         int sep = value.indexOf(':');
         if (sep < 0) {
-            ackDoc[key] = "error:format";
+            Serial.println("sensor_assign: bad format");
             return;
         }
         String addr = value.substring(0, sep);
@@ -184,6 +190,7 @@ void onCommand(const String& key, const String& value) {
     }
 
     if (key == "sensor_remove") {
+        ackDoc.remove(key);  // remove has its own semantics, no generic ack
         // Remove sensor mapping by address. Value = address string.
         String addr = value;
         addr.trim();
@@ -336,10 +343,16 @@ void setup() {
     mqtt.begin(config);
     mqtt.setCommandCallback(onCommand);
 
+    // Enable watchdog timer (30s timeout — reboot if loop hangs)
+    esp_task_wdt_init(30, true);
+    esp_task_wdt_add(NULL);
+
     digitalWrite(LED_PIN, HIGH);  // LED on = working mode
 }
 
 void loop() {
+    esp_task_wdt_reset();
+
     // AP mode — serve web portal
     if (portal.isActive()) {
         portal.handleClient();
@@ -349,12 +362,15 @@ void loop() {
     // Check reset button
     checkResetButton();
 
-    // Reconnect WiFi if lost
+    // Reconnect WiFi if lost (non-blocking)
     if (WiFi.status() != WL_CONNECTED) {
         digitalWrite(LED_PIN, LOW);
-        Serial.println("WiFi lost, reconnecting...");
-        WiFi.reconnect();
-        delay(5000);
+        unsigned long now2 = millis();
+        if (now2 - lastWifiReconnect >= 5000) {
+            lastWifiReconnect = now2;
+            Serial.println("WiFi lost, reconnecting...");
+            WiFi.reconnect();
+        }
         return;
     }
 
