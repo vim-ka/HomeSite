@@ -4,6 +4,8 @@ void SensorReader::begin(uint8_t oneWirePin, uint8_t dhtPin) {
     _oneWire = new OneWire(oneWirePin);
     _dallas = new DallasTemperature(_oneWire);
     _dallas->begin();
+    _dallas->setResolution(12);
+    _dallas->setWaitForConversion(true);
 
     _dhtPin = dhtPin;
     _dht = new DHT(dhtPin, DHT22);
@@ -18,7 +20,9 @@ std::vector<DiscoveredSensor> SensorReader::scanOneWire() {
     std::vector<DiscoveredSensor> result;
     DeviceAddress addr;
 
-    // Request temperatures from all sensors first
+    // Re-discover devices on the bus (picks up newly connected sensors)
+    _dallas->begin();
+    _dallas->setResolution(12);
     _dallas->requestTemperatures();
 
     _oneWire->reset_search();
@@ -40,7 +44,9 @@ bool SensorReader::hasDHT() {
 std::vector<SensorReading> SensorReader::readAll() {
     std::vector<SensorReading> readings;
 
-    // Request temperatures from all DS18B20
+    // Re-discover and request temperatures from all DS18B20
+    _dallas->begin();
+    _dallas->setResolution(12);
     _dallas->requestTemperatures();
 
     for (auto& m : _mappings) {
