@@ -320,7 +320,7 @@ async def seed(session: AsyncSession) -> None:
     await session.flush()
 
     # Sensor ↔ DataType links (skip existing)
-    from sqlalchemy import select
+    from sqlalchemy import select, update
     existing_links = set(
         (r[0], r[1]) for r in
         (await session.execute(select(sensor_datatype_link))).all()
@@ -329,6 +329,33 @@ async def seed(session: AsyncSession) -> None:
         key = (link["sensor_id"], link["datatype_id"])
         if key not in existing_links:
             await session.execute(sensor_datatype_link.insert().values(**link))
+    await session.flush()
+
+    # Bind sensors to mount points (explicit temperature/humidity sensor_id)
+    # MP 1-10: DS18B20 → temperature only; MP 11-17: ff4 → temperature + humidity
+    sensor_bindings = {
+        1: {"temperature_sensor_id": 1},
+        2: {"temperature_sensor_id": 2},
+        3: {"temperature_sensor_id": 3},
+        4: {"temperature_sensor_id": 4},
+        5: {"temperature_sensor_id": 5},
+        6: {"temperature_sensor_id": 6},
+        7: {"temperature_sensor_id": 7},
+        8: {"temperature_sensor_id": 8},
+        9: {"temperature_sensor_id": 9},
+        10: {"temperature_sensor_id": 10},
+        11: {"temperature_sensor_id": 11, "humidity_sensor_id": 11},
+        12: {"temperature_sensor_id": 12, "humidity_sensor_id": 12},
+        13: {"temperature_sensor_id": 13, "humidity_sensor_id": 13},
+        14: {"temperature_sensor_id": 14, "humidity_sensor_id": 14},
+        15: {"temperature_sensor_id": 15, "humidity_sensor_id": 15},
+        16: {"temperature_sensor_id": 16, "humidity_sensor_id": 16},
+        17: {"temperature_sensor_id": 17, "humidity_sensor_id": 17},
+    }
+    for mp_id, bindings in sensor_bindings.items():
+        await session.execute(
+            update(MountPoint).where(MountPoint.id == mp_id).values(**bindings)
+        )
     await session.flush()
 
     # --- Actuators (physical devices that receive MQTT commands) ---

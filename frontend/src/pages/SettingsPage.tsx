@@ -2547,7 +2547,7 @@ export default function SettingsPage() {
                 {/* Last heartbeat timestamp */}
                 {device.last_heartbeat && (
                   <div className="text-xs text-gray-400 mb-4">
-                    {t("settings.deviceLastSeen")}: {new Date(device.last_heartbeat.endsWith("Z") ? device.last_heartbeat : device.last_heartbeat + "Z").toLocaleString()}
+                    {t("settings.deviceLastSeen")}: {new Date(device.last_heartbeat).toLocaleString()}
                   </div>
                 )}
 

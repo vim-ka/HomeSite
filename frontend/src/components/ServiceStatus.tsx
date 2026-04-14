@@ -55,20 +55,6 @@ export default function ServiceStatus() {
           {label}
         </button>
       ))}
-      {sensors && (
-        <button
-          onClick={() => navigate("/settings#sensors")}
-          className="flex items-center gap-1 rounded px-1.5 py-0.5 hover:bg-gray-100 transition-colors"
-        >
-          <Dot color={sensorDotColor(sensors)} />
-          <span>
-            {sensors.active}/{sensors.total} Sensors
-            {sensors.pending > 0 && (
-              <span className="ml-1 text-amber-500">+{sensors.pending} new</span>
-            )}
-          </span>
-        </button>
-      )}
       {devices && devices.total > 0 && (
         <button
           onClick={() => navigate("/settings#actuators")}
@@ -95,6 +81,20 @@ export default function ServiceStatus() {
                   <RefreshCw className="h-3 w-3" />
                 </button>
               </span>
+            )}
+          </span>
+        </button>
+      )}
+      {sensors && (
+        <button
+          onClick={() => navigate("/settings#sensors")}
+          className="flex items-center gap-1 rounded px-1.5 py-0.5 hover:bg-gray-100 transition-colors"
+        >
+          <Dot color={sensorDotColor(sensors)} />
+          <span>
+            {sensors.active}/{sensors.total} Sensors
+            {sensors.pending > 0 && (
+              <span className="ml-1 text-amber-500">+{sensors.pending} new</span>
             )}
           </span>
         </button>

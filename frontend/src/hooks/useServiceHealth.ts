@@ -62,6 +62,8 @@ export function useServiceHealth() {
     } catch (e) {
       if (e instanceof DOMException && e.name === "AbortError") return;
       setHealth({ backend: false, database: false, gateway: false, mqtt: false });
+      setSensors(null);
+      setDevices(null);
     }
   }, []);
 
