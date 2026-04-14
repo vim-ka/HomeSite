@@ -477,9 +477,12 @@ export default function HeatingPage() {
             {dashboard.heating.map((c) => {
               const keys = circuitKeys[c.circuit];
               const pumpOn = keys ? bool(keys.pump) : !!c.pump;
-              // If PZA mode is on, use backend-calculated temp_set (from curve)
-              // Otherwise use config_kv value (manual setpoint)
-              const tempSet = c.pza_mode ? c.temp_set : (keys ? num(keys.temp, String(c.temp_set ?? 0)) : c.temp_set);
+              // Boiler in automode → use computed auto target
+              // PZA mode → use backend-calculated temp_set (from curve)
+              // Otherwise → config_kv value (manual setpoint)
+              const tempSet = (c.circuit === "Котёл" && boilerAuto && boilerAutoTarget != null)
+                ? boilerAutoTarget
+                : c.pza_mode ? c.temp_set : (keys ? num(keys.temp, String(c.temp_set ?? 0)) : c.temp_set);
               return (
                 <div
                   key={c.circuit}
@@ -501,7 +504,11 @@ export default function HeatingPage() {
                     <div className="flex justify-between items-center">
                       <span className="flex items-center gap-1">
                         {t("dashboard.tempSet")}
-                        {c.pza_mode ? (
+                        {c.circuit === "Котёл" && boilerAuto ? (
+                          <span className="text-[9px] px-1 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300">
+                            Авто
+                          </span>
+                        ) : c.pza_mode ? (
                           <span className="text-[9px] px-1 py-0.5 rounded bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300">
                             ПЗА кр.{c.pza_curve}
                           </span>
@@ -568,7 +575,7 @@ export default function HeatingPage() {
                   <TempSlider
                     value={num("heating_boiler_temp", "50")}
                     min={30}
-                    max={90}
+                    max={num("heating_boiler_max_temp", "85")}
                     onChange={(v) => set("heating_boiler_temp", v)}
                   />
                 )}
@@ -576,7 +583,7 @@ export default function HeatingPage() {
               <SettingRow label={t("heating.boilerMaxTemp")} hint={t("heating.hints.boilerMaxTemp")}>
                 <TempSlider
                   value={num("heating_boiler_max_temp", "85")}
-                  min={60}
+                  min={boilerAuto ? 60 : Math.max(60, num("heating_boiler_temp", "50"))}
                   max={95}
                   onChange={(v) => set("heating_boiler_max_temp", v)}
                 />
