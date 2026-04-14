@@ -1636,8 +1636,9 @@ export default function SettingsPage() {
   const { data: devicesData, refetch: refetchDevices } = useQuery<DevicesResponse>({
     queryKey: ["health-devices"],
     queryFn: async () => {
-      const { data } = await api.get("/health/devices");
-      return data;
+      const res = await fetch("/health/devices");
+      if (!res.ok) throw new Error("Failed to fetch devices");
+      return res.json();
     },
     enabled: isAdmin && activeTab === "devices",
     refetchInterval: 30000,
