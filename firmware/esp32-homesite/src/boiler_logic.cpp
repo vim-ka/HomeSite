@@ -185,8 +185,40 @@ void BoilerLogic::updateBoiler(const TempMap& temps) {
             return;
         }
 
+        // Auto target = max setpoint across active circuits
+        float target = 0;
+
+        // Radiator circuit
+        if (_radPumpCmd) {
+            float t = _pza->isRadiatorWBM() ? _pza->getRadiatorTarget() : _radTempSet;
+            if (t < 0) t = _radTempSet;  // PZA fallback (no outdoor data)
+            if (_scheduleRadActive) t += _radScheduleDelta;
+            if (t > target) target = t;
+        }
+
+        // Floor circuit
+        if (_floorPumpCmd) {
+            float t = _pza->isFloorWBM() ? _pza->getFloorTarget() : _floorTempSet;
+            if (t < 0) t = _floorTempSet;  // PZA fallback
+            if (_scheduleFloorActive) t += _floorScheduleDelta;
+            if (t > target) target = t;
+        }
+
+        // IHB (DHW) circuit
+        if (_ihbPumpCmd) {
+            float t = _ihbTempSet;
+            if (_almActive && _almTemp > t) t = _almTemp;
+            if (t > target) target = t;
+        }
+
+        // Fallback if no circuits are active
+        if (target <= 0) target = _boilerTempSet;
+
+        // Safety cap
+        if (target > _boilerMaxTemp) target = _boilerMaxTemp;
+
+        _boilerAutoTarget = target;
         bool isOn = _relays->get(RELAY_BOILER_POWER);
-        float target = _boilerTempSet;
 
         if (!isOn && boilerTemp < target) {
             _relays->set(RELAY_BOILER_POWER, true);
@@ -499,6 +531,7 @@ void BoilerLogic::updateAlarms(const TempMap& temps, float heatingPressure) {
 void BoilerLogic::fillHeartbeat(JsonDocument& doc) {
     doc["relays"] = _relays->getAllStates();
     doc["boiler_auto"] = _boilerAutomode;
+    doc["boiler_auto_target"] = _boilerAutoTarget;
     doc["teh_auto"] = _tehAutomode;
     doc["alm_active"] = _almActive;
     doc["autofill_active"] = _autofillActive;

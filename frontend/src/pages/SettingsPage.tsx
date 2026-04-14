@@ -1717,9 +1717,9 @@ export default function SettingsPage() {
 
   const RELAY_NAMES = [
     "Котёл", "Насос рад.", "Насос ТП", "Насос БКН",
-    "Насос ХВС", "Насос ГВС", "ТЭН", "Автоподп.",
+    "Насос ХВС", "Насос ГВС", "ТЭН", "Автоподп.откр", "Автоподп.закр",
     "Кл.рад.откр", "Кл.рад.закр", "Кл.ТП откр", "Кл.ТП закр",
-    "Лампа WARN", "Лампа CRIT", "Резерв 1", "Резерв 2",
+    "Лампа WARN", "Лампа CRIT", "Резерв",
   ];
 
   const inputCls =
@@ -2429,6 +2429,7 @@ export default function SettingsPage() {
             const prsHeat = typeof hb.prs_heat === "number" ? hb.prs_heat : null;
             const prsWater = typeof hb.prs_water === "number" ? hb.prs_water : null;
             const boilerAuto = typeof hb.boiler_auto === "boolean" ? hb.boiler_auto : null;
+            const boilerAutoTarget = typeof hb.boiler_auto_target === "number" ? hb.boiler_auto_target : null;
             const radWbm = typeof hb.rad_wbm === "boolean" ? hb.rad_wbm : null;
             const floorWbm = typeof hb.floor_wbm === "boolean" ? hb.floor_wbm : null;
             const outdoor = typeof hb.outdoor === "number" ? hb.outdoor : null;
@@ -2501,6 +2502,7 @@ export default function SettingsPage() {
                     {boilerAuto !== null && (
                       <span className={`text-xs px-2 py-0.5 rounded-full ${boilerAuto ? "bg-emerald-50 text-emerald-700" : "bg-gray-100 text-gray-500"}`}>
                         {t("heating.autoRegulation")}: {boilerAuto ? t("dashboard.on") : t("dashboard.off")}
+                        {boilerAuto && boilerAutoTarget !== null && ` → ${boilerAutoTarget.toFixed(1)}°C`}
                       </span>
                     )}
                     {radWbm !== null && (

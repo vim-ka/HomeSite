@@ -135,6 +135,7 @@ private:
     bool _ihbHeating = false;      // БКН is actively heating
     bool _scheduleRadActive = false;
     bool _scheduleFloorActive = false;
+    float _boilerAutoTarget = 0;   // computed auto target (for heartbeat reporting)
 
     // NVS write debounce
     std::map<String, String> _pendingNvs;

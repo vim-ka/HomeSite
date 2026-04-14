@@ -407,6 +407,51 @@ export default function HeatingPage() {
 
   const boilerAuto = bool("heating_boiler_automode");
 
+  // Compute boiler auto target — same logic as firmware updateBoiler()
+  const boilerAutoTarget = (() => {
+    if (!boilerAuto) return null;
+    let target = 0;
+
+    // Radiator circuit
+    if (bool("heating_radiator_pump")) {
+      const radWBM = bool("heating_radiator_wbm");
+      let t = radWBM && outdoorTemp != null
+        ? interpolatePZA(
+            RADIATOR_CURVES[Math.min(Math.max(radCurveIdx, 0), 4)]!,
+            outdoorTemp,
+          )
+        : num("heating_radiator_temp", "45");
+      if (t > target) target = t;
+    }
+
+    // Floor circuit
+    if (bool("heating_floorheating_pump")) {
+      const floorWBM = bool("heating_floorheating_wbm");
+      let t = floorWBM && outdoorTemp != null
+        ? interpolatePZA(
+            FLOOR_CURVES[Math.min(Math.max(floorCurveIdx, 0), 4)]!,
+            outdoorTemp,
+          )
+        : num("heating_floorheating_temp", "30");
+      if (t > target) target = t;
+    }
+
+    // IHB (DHW) circuit
+    if (bool("watersupply_ihb_pump")) {
+      const t = num("watersupply_ihb_temp", "45");
+      if (t > target) target = t;
+    }
+
+    // Fallback if no circuits active
+    if (target <= 0) target = num("heating_boiler_temp", "50");
+
+    // Safety cap
+    const maxTemp = num("heating_boiler_max_temp", "85");
+    if (target > maxTemp) target = maxTemp;
+
+    return Math.round(target * 10) / 10;
+  })();
+
   // Map circuit names to config keys for optimistic pump/temp display
   const circuitKeys: Record<string, { pump: string; temp: string }> = {
     "Котёл": { pump: "heating_boiler_power", temp: "heating_boiler_temp" },
@@ -515,13 +560,18 @@ export default function HeatingPage() {
                 />
               </SettingRow>
               <SettingRow label={t("heating.boilerTemp")} hint={t("heating.hints.boilerTemp")}>
-                <TempSlider
-                  value={num("heating_boiler_temp", "50")}
-                  min={30}
-                  max={90}
-                  onChange={(v) => set("heating_boiler_temp", v)}
-                  disabled={boilerAuto}
-                />
+                {boilerAuto ? (
+                  <span className="text-lg font-bold text-amber-600">
+                    {boilerAutoTarget != null ? `${boilerAutoTarget}°C` : "—"}
+                  </span>
+                ) : (
+                  <TempSlider
+                    value={num("heating_boiler_temp", "50")}
+                    min={30}
+                    max={90}
+                    onChange={(v) => set("heating_boiler_temp", v)}
+                  />
+                )}
               </SettingRow>
               <SettingRow label={t("heating.boilerMaxTemp")} hint={t("heating.hints.boilerMaxTemp")}>
                 <TempSlider
@@ -535,6 +585,7 @@ export default function HeatingPage() {
             {boilerAuto && (
               <p className="mt-2 text-xs text-amber-600">
                 {t("heating.autoRegulationHint")}
+                {boilerAutoTarget != null && ` → ${boilerAutoTarget}°C`}
               </p>
             )}
           </CollapsibleSection>

@@ -150,3 +150,4 @@ CI/CD planned via GitHub Actions self-hosted runner.
 - [x] **Statistics page rework**: Fixed — chart sections are collapsed + lazy by default, data loads only when section is expanded
 - [ ] **Settings page UX**: Improve layout, navigation, and usability of the Settings page
 - [ ] **About page UX**: Improve layout and content of the About page
+- [ ] **OpenTherm integration**: Подключить ESP32 к котлу по OpenTherm (проект [OTGateway](https://github.com/Laxilef/OTGateway), библиотека ihormelnyk/opentherm_library). Нужен OT-адаптер (~$15, Tindie/DIYLESS/DIY). Даёт: уставки CH/DHW, вкл/выкл, сброс ошибок, PID, погодозависимые кривые; мониторинг — коды ошибок, пламя, модуляция %, давление, температуры подачи/обратки, ГВС. Интеграция через MQTT. Совместимость Beretta: MyNute X, MySmart подтверждены; Ciao — только Green/X (конденсационные), обычная Ciao не поддерживает OT. Для Vaillant — протокол eBUS (не OT), нужен eBUS-адаптер + ebusd.
