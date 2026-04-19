@@ -16,6 +16,7 @@ import { useAuthStore } from "@/stores/authStore";
 import { useWebSocket } from "@/hooks/useWebSocket";
 import AlertBell from "@/components/AlertBell";
 import ThemeToggle from "@/components/ThemeToggle";
+import LanguageToggle from "@/components/LanguageToggle";
 import ServiceStatus from "@/components/ServiceStatus";
 import { cn } from "@/lib/utils";
 
@@ -30,7 +31,7 @@ const NAV_ITEMS = [
 ] as const;
 
 export default function Layout() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const location = useLocation();
   const navigate = useNavigate();
   const user = useAuthStore((s) => s.user);
@@ -45,9 +46,10 @@ export default function Layout() {
     return () => clearInterval(id);
   }, []);
 
-  const weekday = now.toLocaleDateString("ru-RU", { weekday: "long" });
-  const date = now.toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" });
-  const time = now.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  const locale = i18n.language?.startsWith("en") ? "en-US" : "ru-RU";
+  const weekday = now.toLocaleDateString(locale, { weekday: "long" });
+  const date = now.toLocaleDateString(locale, { day: "numeric", month: "long", year: "numeric" });
+  const time = now.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit", second: "2-digit" });
   const formattedDate = `${weekday} ${date} ${time}`;
 
   const handleLogout = () => {
@@ -137,6 +139,7 @@ export default function Layout() {
           <span className="text-sm text-gray-500">{formattedDate}</span>
           <ServiceStatus />
           <div className="flex items-center gap-4">
+            <LanguageToggle />
             <ThemeToggle />
             <AlertBell />
             {user && (

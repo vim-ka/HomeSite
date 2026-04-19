@@ -4,15 +4,20 @@
 #define PRESSURE_SAMPLES 10
 
 /**
- * Reads analog pressure transducers (0.5–4.5V output, typical 0–12 bar).
+ * Reads analog pressure transducers.
  *
- * ESP32 ADC is 12-bit (0–4095) at 0–3.3V.
- * With a voltage divider (e.g. 4.7k+3.3k ≈ ×0.41) the 0.5–4.5V sensor range
- * maps to ~0.21–1.85V, well within ESP32 ADC range.
+ * Default calibration is for YD WZYDDZ YD4060 ceramic sensor:
+ *   power 5V, output 0–3.3V (linear), range 0–0.5 MPa = 0–5 bar.
+ * The 0–3.3V signal goes directly into the ESP32 ADC pin — NO voltage divider.
  *
- * Calibration: pressure = (adcVolts - zeroOffset) * scale
- * Default: zeroOffset=0.5V (sensor at 0 bar), scale = maxBar / (4.5V - 0.5V)
- * After voltage divider these are adjusted proportionally.
+ * ESP32 ADC: 12-bit (0–4095) at 0–3.3V (ADC_11db attenuation).
+ * Note: ADC is non-linear near the rails (<0.15V and >2.5V); use two-point
+ * calibration against a reference manometer for best accuracy.
+ *
+ * Formula: pressure = (voltage - zeroV) / (maxV - zeroV) * maxBar
+ *
+ * For other sensor types (e.g. industrial 0.5–4.5V via divider) call
+ * calibrateHeating / calibrateWater at startup with the matching values.
  */
 class PressureReader {
 public:
@@ -22,6 +27,10 @@ public:
     void calibrateHeating(float zeroV, float maxBar, float maxV);
     /// Set calibration for water sensor
     void calibrateWater(float zeroV, float maxBar, float maxV);
+
+    /// Post-calibration user offset added to every reading (bar)
+    void setHeatingOffset(float bar) { _heatOffset = bar; }
+    void setWaterOffset(float bar) { _waterOffset = bar; }
 
     /// Read heating system pressure in bar (averaged over PRESSURE_SAMPLES)
     float readHeatingPressure();
@@ -33,13 +42,16 @@ private:
     uint8_t _waterPin = 0;
 
     // Calibration: pressure = (voltage - zeroV) / (maxV - zeroV) * maxBar
-    float _heatZeroV = 0.205;   // 0.5V * divider ratio ~0.41
-    float _heatMaxBar = 4.0;    // sensor max pressure
-    float _heatMaxV = 1.845;    // 4.5V * divider ratio ~0.41
+    // Defaults: YD4060 0–0.5 MPa, output 0–3.3V, no divider
+    float _heatZeroV = 0.0;
+    float _heatMaxBar = 5.0;
+    float _heatMaxV = 3.3;
+    float _heatOffset = 0.0;
 
-    float _waterZeroV = 0.205;
-    float _waterMaxBar = 6.0;
-    float _waterMaxV = 1.845;
+    float _waterZeroV = 0.0;
+    float _waterMaxBar = 5.0;
+    float _waterMaxV = 3.3;
+    float _waterOffset = 0.0;
 
     float readPin(uint8_t pin, float zeroV, float maxBar, float maxV);
 };

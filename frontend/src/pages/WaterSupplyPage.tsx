@@ -312,7 +312,7 @@ export default function WaterSupplyPage() {
               </SettingRow>
             </div>
             {bool("watersupply_ihb_teh_automode") && (
-              <p className="mt-2 text-xs text-gray-500">
+              <p className="mt-2 text-xs text-amber-600">
                 {t("waterSupply.tenAutoHint")}
               </p>
             )}

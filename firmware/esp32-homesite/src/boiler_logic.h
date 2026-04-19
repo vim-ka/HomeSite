@@ -63,6 +63,7 @@ private:
     bool _ihbAutomode = true;
     bool _ihbPumpCmd = true;
     float _ihbTempSet = 45.0;
+    static constexpr float IHB_HYSTERESIS = 2.0;
 
     // TEH
     bool _tehAutomode = true;

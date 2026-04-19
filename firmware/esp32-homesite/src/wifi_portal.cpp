@@ -35,12 +35,11 @@ void WifiPortal::start(ConfigManager& config, SensorReader& sensors) {
     String apName = String(AP_PREFIX) + suffix;
 
     WiFi.mode(WIFI_AP);
-    WiFi.softAP(apName.c_str(), "homesite1");
+    WiFi.softAP(apName.c_str());
     delay(100);
 
-    Serial.print("AP started: ");
-    Serial.print(apName);
-    Serial.println(" (pass: homesite1)");
+    Serial.print("AP started (open): ");
+    Serial.println(apName);
     Serial.print("IP: ");
     Serial.println(WiFi.softAPIP());
 

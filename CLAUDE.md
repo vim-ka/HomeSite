@@ -142,12 +142,12 @@ CI/CD planned via GitHub Actions self-hosted runner.
 - [x] **Log rotation**: RotatingFileHandler via LOG_FILE env var
 
 ### Low Priority
-- [ ] **Mobile app**: Update React Native app for new endpoints
+- [x] **Mobile app**: Паритет с десктопом — WS `/ws/sensors`, Events-фильтр по level, линейные графики Stats (react-native-svg), админ-раздел из 13 экранов в `mobile/app/admin/`, EN локализация + language picker
 - [ ] **Notifications**: Push/Telegram on critical alerts
 - [ ] **Real-time charts**: WebSocket for live chart updates (currently polling)
-- [ ] **Action audit**: Expand EventLog with who-changed-what details
-- [ ] **Section tooltips**: Port contextual help/hints from v1 for Heating and Water Supply pages (what each setting does, recommended values, dependencies between controls)
+- [x] **Action audit**: EventLog джойнится с User — username отображается во всех мутирующих эндпоинтах
+- [x] **Section tooltips**: TipLabel с иконкой "?" добавлен на Heating и Water Supply
 - [x] **Statistics page rework**: Fixed — chart sections are collapsed + lazy by default, data loads only when section is expanded
-- [ ] **Settings page UX**: Improve layout, navigation, and usability of the Settings page
-- [ ] **About page UX**: Improve layout and content of the About page
+- [x] **Settings page UX**: 4 вкладки (Оборудование / Устройства / Параметры системы / Инфраструктура)
+- [x] **About page UX**: Архитектурная SVG-схема с тёмной темой и реальными портами из API
 - [ ] **OpenTherm integration**: Подключить ESP32 к котлу по OpenTherm (проект [OTGateway](https://github.com/Laxilef/OTGateway), библиотека ihormelnyk/opentherm_library). Нужен OT-адаптер (~$15, Tindie/DIYLESS/DIY). Даёт: уставки CH/DHW, вкл/выкл, сброс ошибок, PID, погодозависимые кривые; мониторинг — коды ошибок, пламя, модуляция %, давление, температуры подачи/обратки, ГВС. Интеграция через MQTT. Совместимость Beretta: MyNute X, MySmart подтверждены; Ciao — только Green/X (конденсационные), обычная Ciao не поддерживает OT. Для Vaillant — протокол eBUS (не OT), нужен eBUS-адаптер + ebusd.

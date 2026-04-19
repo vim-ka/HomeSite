@@ -13,16 +13,31 @@ class CatalogService:
         return await self.repo.get_system_types()
 
     async def get_sensor_types(self):
-        return await self.repo.get_sensor_types()
+        return await self.repo.get_sensor_types_with_datatypes()
 
-    async def create_sensor_type(self, name: str):
-        return await self.repo.create_sensor_type(name)
+    async def create_sensor_type(self, name: str, datatype_ids: list[int] | None = None):
+        st = await self.repo.create_sensor_type(name)
+        if datatype_ids:
+            await self.repo.set_sensor_type_datatypes(st.id, datatype_ids)
+        return {
+            "id": st.id,
+            "name": st.name,
+            "datatype_ids": await self.repo.get_datatype_ids_for_sensor_type(st.id),
+        }
 
-    async def update_sensor_type(self, st_id: int, name: str):
+    async def update_sensor_type(
+        self, st_id: int, name: str, datatype_ids: list[int] | None = None
+    ):
         st = await self.repo.update_sensor_type(st_id, name)
         if st is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Тип датчика не найден")
-        return st
+        if datatype_ids is not None:
+            await self.repo.set_sensor_type_datatypes(st_id, datatype_ids)
+        return {
+            "id": st.id,
+            "name": st.name,
+            "datatype_ids": await self.repo.get_datatype_ids_for_sensor_type(st.id),
+        }
 
     async def delete_sensor_type(self, st_id: int):
         if await self.repo.sensor_type_has_sensors(st_id):
@@ -119,12 +134,15 @@ class CatalogService:
         return await self.repo.get_all_sensors_detail()
 
     async def create_sensor(
-        self, name: str, sensor_type_id: int, mount_point_id: int, datatype_ids: list[int] | None = None
+        self,
+        name: str,
+        sensor_type_id: int,
+        mount_point_id: int,
+        actuator_id: int | None = None,
     ):
-        sensor = await self.repo.create_sensor(name, sensor_type_id, mount_point_id)
-        if datatype_ids:
-            await self.repo.set_sensor_datatypes(sensor.id, datatype_ids)
-        return sensor
+        return await self.repo.create_sensor(
+            name, sensor_type_id, mount_point_id, actuator_id
+        )
 
     async def update_sensor(
         self,
@@ -132,16 +150,16 @@ class CatalogService:
         name: str,
         sensor_type_id: int,
         mount_point_id: int,
-        datatype_ids: list[int] | None = None,
+        actuator_id: int | None = None,
     ):
-        sensor = await self.repo.update_sensor(sensor_id, name, sensor_type_id, mount_point_id)
+        sensor = await self.repo.update_sensor(
+            sensor_id, name, sensor_type_id, mount_point_id, actuator_id
+        )
         if sensor is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Датчик не найден",
             )
-        if datatype_ids is not None:
-            await self.repo.set_sensor_datatypes(sensor_id, datatype_ids)
         return sensor
 
     async def delete_sensor(self, sensor_id: int):
@@ -158,6 +176,69 @@ class CatalogService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Датчик не найден",
             )
+
+    # ---- Sensor Offsets ----
+
+    async def get_sensor_offsets(self, sensor_id: int):
+        sensor = await self.repo.get_sensor_by_id(sensor_id)
+        if sensor is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Датчик не найден",
+            )
+        return await self.repo.get_sensor_offsets(sensor_id)
+
+    async def update_sensor_offset(
+        self, sensor_id: int, datatype_id: int, value: float
+    ) -> tuple[dict, dict | None]:
+        """Save offset; return (offset_dict, publish_info_or_none).
+
+        publish_info is {mqtt_device_name, sensor_name, datatype_code, value}
+        when the sensor is bound to an actuator — lets the caller trigger
+        the gateway push without re-querying.
+        """
+        sensor = await self.repo.get_sensor_by_id(sensor_id)
+        if sensor is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Датчик не найден",
+            )
+        dt = await self.repo.get_data_type_by_id(datatype_id)
+        if dt is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Тип данных не найден",
+            )
+
+        await self.repo.upsert_sensor_offset(sensor_id, datatype_id, value)
+
+        publish = None
+        if sensor.actuator_id is not None:
+            # Inline lookup — we need mqtt_device_name for the gateway call.
+            from app.models.config import Actuator
+            from sqlalchemy import select
+            result = await self.repo.db.execute(
+                select(Actuator.mqtt_device_name).where(Actuator.id == sensor.actuator_id)
+            )
+            mqtt_name = result.scalar_one_or_none()
+            if mqtt_name:
+                publish = {
+                    "mqtt_device_name": mqtt_name,
+                    "sensor_name": sensor.name,
+                    "datatype_code": dt.code,
+                    "value": value,
+                }
+
+        return (
+            {
+                "sensor_id": sensor_id,
+                "datatype_id": datatype_id,
+                "datatype_code": dt.code,
+                "datatype_name": dt.name,
+                "value": value,
+            },
+            publish,
+        )
 
     # ---- Heating Circuits CRUD ----
 
@@ -190,11 +271,11 @@ class CatalogService:
         return await self.repo.get_pending_sensors()
 
     async def accept_pending_sensor(
-        self, ps_id: int, sensor_type_id: int, mount_point_id: int, datatype_ids: list[int]
+        self, ps_id: int, sensor_type_id: int, mount_point_id: int
     ):
         try:
             return await self.repo.accept_pending_sensor(
-                ps_id, sensor_type_id, mount_point_id, datatype_ids
+                ps_id, sensor_type_id, mount_point_id
             )
         except ValueError:
             raise HTTPException(

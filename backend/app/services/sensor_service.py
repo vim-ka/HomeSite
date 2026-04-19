@@ -29,6 +29,7 @@ class SensorService:
         heating = [
             HeatingCircuitStatus(
                 circuit=h["circuit"],
+                config_prefix=h.get("config_prefix"),
                 temp_set=h.get("TempSet"),
                 temp_supply=h.get("TempSup"),
                 temp_return=h.get("TempRet"),

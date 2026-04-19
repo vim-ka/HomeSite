@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { Platform } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useTheme } from "../../src/hooks/useTheme";
+import { useWebSocket } from "../../src/hooks/useWebSocket";
 
 type IconName = React.ComponentProps<typeof Ionicons>["name"];
 
@@ -17,6 +18,8 @@ const TAB_ICONS: Record<string, { focused: IconName; default: IconName }> = {
 export default function TabLayout() {
   const { t } = useTranslation();
   const { colors, isDark } = useTheme();
+  // Real-time updates: backend pushes sensor/settings changes over WS.
+  useWebSocket();
 
   return (
     <Tabs

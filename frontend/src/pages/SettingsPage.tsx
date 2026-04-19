@@ -9,6 +9,8 @@ import { useThemeStore } from "@/stores/themeStore";
 import CollapsibleSection from "@/components/CollapsibleSection";
 import TimeInput from "@/components/TimeInput";
 import TipLabel from "@/components/TipLabel";
+import { useToast } from "@/components/Toast";
+import RfDebugPanel from "@/components/RfDebugPanel";
 
 // ---- Types ----
 
@@ -49,6 +51,11 @@ interface PlaceInfo {
   name: string;
 }
 
+interface SensorOffsetBadge {
+  datatype_code: string;
+  value: number;
+}
+
 interface SensorDetail {
   id: number;
   name: string;
@@ -58,8 +65,20 @@ interface SensorDetail {
   mount_point_name: string;
   place_name: string;
   system_name: string;
+  actuator_id: number | null;
+  actuator_name: string | null;
+  actuator_mqtt_device_name: string | null;
   datatype_ids: number[];
+  offsets: SensorOffsetBadge[];
   last_reading: string | null;
+}
+
+interface SensorOffsetInfo {
+  sensor_id: number;
+  datatype_id: number;
+  datatype_code: string;
+  datatype_name: string;
+  value: number;
 }
 
 interface SensorDataTypeInfo {
@@ -71,6 +90,7 @@ interface SensorDataTypeInfo {
 interface SensorTypeInfo {
   id: number;
   name: string;
+  datatype_ids: number[];
 }
 
 interface MountPointInfo {
@@ -145,10 +165,28 @@ interface DevicesResponse {
 }
 
 interface ScannedSensor {
-  addr: string;
-  type: string;
+  // OneWire shape
+  addr?: string;
+  type?: string;
   temp?: number;
+  // RF shape (presence of `protocol` discriminates)
+  protocol?: string;
+  id?: string;
+  channel?: number;
+  rssi?: number;
+  age_s?: number;
+  bat_low?: number;
+  tmp?: number;
+  hmt?: number;
+  // Common: assigned logical name (if any)
   name?: string;
+}
+
+// Build the unique address string used by sensor_assign / sensor_remove commands.
+// OneWire devices use the hardware address as-is; RF devices encode "protocol:id:channel".
+function scannedAddress(s: ScannedSensor): string {
+  if (s.protocol) return `${s.protocol}:${s.id ?? ""}:${s.channel ?? 0}`;
+  return s.addr ?? "";
 }
 
 // ---- Modal backdrop ----
@@ -191,6 +229,17 @@ function Modal({
       </div>
     </div>
   );
+}
+
+const OFFSET_UNITS: Record<string, string> = {
+  tmp: "°C",
+  prs: "бар",
+  hmt: "%",
+};
+
+function formatOffset(o: SensorOffsetBadge): string {
+  const sign = o.value > 0 ? "+" : "";
+  return `${sign}${o.value}${OFFSET_UNITS[o.datatype_code] ?? ""}`;
 }
 
 // ---- AddUserModal ----
@@ -412,6 +461,114 @@ function PlaceModal({
   );
 }
 
+// ---- SensorTypeModal (add/edit) ----
+
+function SensorTypeModal({
+  open,
+  onClose,
+  onSaved,
+  editSensorType,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onSaved: () => void;
+  editSensorType: SensorTypeInfo | null;
+}) {
+  const { t } = useTranslation();
+  const [name, setName] = useState("");
+  const [datatypeIds, setDatatypeIds] = useState<number[]>([]);
+
+  const { data: dataTypes } = useQuery<SensorDataTypeInfo[]>({
+    queryKey: ["catalog-data-types"],
+    queryFn: async () => {
+      const { data } = await api.get("/catalog/data-types");
+      return data;
+    },
+    enabled: open,
+  });
+
+  useEffect(() => {
+    if (open) {
+      setName(editSensorType?.name ?? "");
+      setDatatypeIds(editSensorType?.datatype_ids ?? []);
+    }
+  }, [open, editSensorType]);
+
+  const toggleDatatype = (id: number) => {
+    setDatatypeIds((prev) =>
+      prev.includes(id) ? prev.filter((d) => d !== id) : [...prev, id]
+    );
+  };
+
+  const mutation = useMutation({
+    mutationFn: async () => {
+      const payload = { name: name.trim(), datatype_ids: datatypeIds };
+      if (editSensorType) {
+        await api.put(`/catalog/sensor-types/${editSensorType.id}`, payload);
+      } else {
+        await api.post("/catalog/sensor-types", payload);
+      }
+    },
+    onSuccess: () => {
+      onSaved();
+      onClose();
+    },
+  });
+
+  return (
+    <Modal open={open} onClose={onClose}>
+      <h3 className="mb-4 text-lg font-semibold text-gray-800">
+        {editSensorType ? t("settings.editSensorTypeTitle") : t("settings.addSensorTypeTitle")}
+      </h3>
+      <div className="space-y-3">
+        <div>
+          <label className="block text-sm text-gray-600 mb-1">{t("settings.sensorTypeName")}</label>
+          <input
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:outline-none"
+          />
+        </div>
+        <div>
+          <label className="block text-sm text-gray-600 mb-1">{t("settings.dataTypes")}</label>
+          <div className="flex flex-wrap gap-3 mt-1">
+            {dataTypes?.map((dt) => (
+              <label key={dt.id} className="flex items-center gap-1.5 text-sm text-gray-700 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={datatypeIds.includes(dt.id)}
+                  onChange={() => toggleDatatype(dt.id)}
+                  className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                />
+                {dt.name}
+              </label>
+            ))}
+          </div>
+        </div>
+      </div>
+      {mutation.isError && (
+        <p className="mt-2 text-xs text-red-600">{t("common.error")}</p>
+      )}
+      <div className="mt-5 flex justify-end gap-3">
+        <button
+          onClick={() => mutation.mutate()}
+          disabled={mutation.isPending || !name.trim()}
+          className="px-4 py-2 bg-primary-600 text-white text-sm rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors"
+        >
+          {t("common.save")}
+        </button>
+        <button
+          onClick={onClose}
+          className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800"
+        >
+          {t("common.cancel")}
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
 // ---- SensorModal (add/edit) ----
 
 function SensorModal({
@@ -426,7 +583,21 @@ function SensorModal({
   editSensor: SensorDetail | null;
 }) {
   const { t } = useTranslation();
-  const [form, setForm] = useState({ name: "", sensor_type_id: 0, mount_point_id: 0, datatype_ids: [] as number[] });
+  const [form, setForm] = useState({
+    name: "",
+    sensor_type_id: 0,
+    mount_point_id: 0,
+    actuator_id: null as number | null,
+  });
+
+  const { data: actuatorList } = useQuery<ActuatorInfo[]>({
+    queryKey: ["catalog-actuators"],
+    queryFn: async () => {
+      const { data } = await api.get("/catalog/actuators");
+      return data;
+    },
+    enabled: open,
+  });
 
   const { data: sensorTypes } = useQuery<SensorTypeInfo[]>({
     queryKey: ["catalog-sensor-types"],
@@ -446,34 +617,16 @@ function SensorModal({
     enabled: open,
   });
 
-  const { data: dataTypes } = useQuery<SensorDataTypeInfo[]>({
-    queryKey: ["catalog-data-types"],
-    queryFn: async () => {
-      const { data } = await api.get("/catalog/data-types");
-      return data;
-    },
-    enabled: open,
-  });
-
   useEffect(() => {
     if (open) {
       setForm({
         name: editSensor?.name ?? "",
         sensor_type_id: editSensor?.sensor_type_id ?? 0,
         mount_point_id: editSensor?.mount_point_id ?? 0,
-        datatype_ids: editSensor?.datatype_ids ?? [],
+        actuator_id: editSensor?.actuator_id ?? null,
       });
     }
   }, [open, editSensor]);
-
-  const toggleDatatype = (id: number) => {
-    setForm((prev) => ({
-      ...prev,
-      datatype_ids: prev.datatype_ids.includes(id)
-        ? prev.datatype_ids.filter((d) => d !== id)
-        : [...prev.datatype_ids, id],
-    }));
-  };
 
   const mutation = useMutation({
     mutationFn: async () => {
@@ -536,20 +689,19 @@ function SensorModal({
           </select>
         </div>
         <div>
-          <label className="block text-sm text-gray-600 mb-1">{t("settings.dataTypes")}</label>
-          <div className="flex flex-wrap gap-3 mt-1">
-            {dataTypes?.map((dt) => (
-              <label key={dt.id} className="flex items-center gap-1.5 text-sm text-gray-700 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={form.datatype_ids.includes(dt.id)}
-                  onChange={() => toggleDatatype(dt.id)}
-                  className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
-                />
-                {dt.name}
-              </label>
+          <label className="block text-sm text-gray-600 mb-1">{t("settings.sensorActuator")}</label>
+          <select
+            value={form.actuator_id ?? ""}
+            onChange={(e) => setForm({ ...form, actuator_id: e.target.value === "" ? null : Number(e.target.value) })}
+            className={inputCls}
+          >
+            <option value="">{t("settings.sensorActuatorNone")}</option>
+            {actuatorList?.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.name} ({a.mqtt_device_name})
+              </option>
             ))}
-          </div>
+          </select>
         </div>
       </div>
       {mutation.isError && (
@@ -559,6 +711,124 @@ function SensorModal({
         <button
           onClick={() => mutation.mutate()}
           disabled={mutation.isPending || !form.name.trim() || !form.sensor_type_id || !form.mount_point_id}
+          className="px-4 py-2 bg-primary-600 text-white text-sm rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors"
+        >
+          {t("common.save")}
+        </button>
+        <button
+          onClick={onClose}
+          className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800"
+        >
+          {t("common.cancel")}
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
+// ---- SensorOffsetsModal ----
+
+function SensorOffsetsModal({
+  open,
+  onClose,
+  sensor,
+}: {
+  open: boolean;
+  onClose: () => void;
+  sensor: SensorDetail | null;
+}) {
+  const { t } = useTranslation();
+  const queryClient = useQueryClient();
+  const toast = useToast();
+  const [values, setValues] = useState<Record<number, string>>({});
+
+  const { data: offsets, isLoading } = useQuery<SensorOffsetInfo[]>({
+    queryKey: ["catalog-sensor-offsets", sensor?.id],
+    queryFn: async () => {
+      const { data } = await api.get(`/catalog/sensors/${sensor!.id}/offsets`);
+      return data;
+    },
+    enabled: open && !!sensor,
+  });
+
+  useEffect(() => {
+    if (offsets) {
+      const map: Record<number, string> = {};
+      for (const o of offsets) map[o.datatype_id] = String(o.value);
+      setValues(map);
+    }
+  }, [offsets]);
+
+  const mutation = useMutation({
+    mutationFn: async (entry: { datatype_id: number; value: number }) => {
+      await api.put(`/catalog/sensors/${sensor!.id}/offsets/${entry.datatype_id}`, { value: entry.value });
+    },
+  });
+
+  const handleSave = async () => {
+    if (!offsets || !sensor) return;
+    try {
+      let changed = 0;
+      for (const o of offsets) {
+        const raw = values[o.datatype_id] ?? "0";
+        const num = Number(raw);
+        if (!Number.isFinite(num)) continue;
+        if (num !== o.value) {
+          await mutation.mutateAsync({ datatype_id: o.datatype_id, value: num });
+          changed++;
+        }
+      }
+      queryClient.invalidateQueries({ queryKey: ["catalog-sensor-offsets", sensor.id] });
+      queryClient.invalidateQueries({ queryKey: ["catalog-sensors"] });
+      toast.success(changed > 0 ? t("settings.saved") : t("settings.noChanges"));
+      onClose();
+    } catch (e: any) {
+      const detail = e?.response?.data?.detail ?? e?.message ?? t("common.error");
+      toast.error(detail);
+    }
+  };
+
+  const inputCls =
+    "w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:outline-none";
+
+  return (
+    <Modal open={open} onClose={onClose}>
+      <h3 className="mb-2 text-lg font-semibold text-gray-800">
+        {t("settings.sensorOffsetsTitle")}
+      </h3>
+      <p className="mb-4 text-xs text-gray-500">
+        {sensor?.name}
+        {sensor?.actuator_mqtt_device_name
+          ? ` → ${sensor.actuator_mqtt_device_name}`
+          : ` — ${t("settings.sensorOffsetsNoActuator")}`}
+      </p>
+      <p className="mb-4 text-xs text-gray-400">{t("settings.sensorOffsetsHint")}</p>
+      {isLoading ? (
+        <p className="text-sm text-gray-400">{t("common.loading")}</p>
+      ) : offsets && offsets.length > 0 ? (
+        <div className="space-y-3">
+          {offsets.map((o) => (
+            <div key={o.datatype_id}>
+              <label className="block text-sm text-gray-600 mb-1">
+                {o.datatype_name} <span className="text-gray-400">({o.datatype_code})</span>
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                value={values[o.datatype_id] ?? ""}
+                onChange={(e) => setValues({ ...values, [o.datatype_id]: e.target.value })}
+                className={inputCls}
+              />
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="text-sm text-gray-400">{t("settings.sensorOffsetsEmpty")}</p>
+      )}
+      <div className="mt-5 flex justify-end gap-3">
+        <button
+          onClick={handleSave}
+          disabled={mutation.isPending || !offsets || offsets.length === 0}
           className="px-4 py-2 bg-primary-600 text-white text-sm rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors"
         >
           {t("common.save")}
@@ -588,7 +858,7 @@ function AcceptPendingSensorModal({
   pending: PendingSensorInfo | null;
 }) {
   const { t } = useTranslation();
-  const [form, setForm] = useState({ sensor_type_id: 0, mount_point_id: 0, datatype_ids: [] as number[] });
+  const [form, setForm] = useState({ sensor_type_id: 0, mount_point_id: 0 });
 
   const { data: sensorTypes } = useQuery<SensorTypeInfo[]>({
     queryKey: ["catalog-sensor-types"],
@@ -602,36 +872,11 @@ function AcceptPendingSensorModal({
     enabled: open,
   });
 
-  const { data: dataTypes } = useQuery<SensorDataTypeInfo[]>({
-    queryKey: ["catalog-data-types"],
-    queryFn: async () => { const { data } = await api.get("/catalog/data-types"); return data; },
-    enabled: open,
-  });
-
   useEffect(() => {
     if (open) {
-      // Auto-detect datatypes from payload
-      const autoTypes: number[] = [];
-      if (pending) {
-        try {
-          const payload = JSON.parse(pending.last_payload);
-          if ("tmp" in payload) autoTypes.push(1);
-          if ("prs" in payload) autoTypes.push(2);
-          if ("hmt" in payload) autoTypes.push(3);
-        } catch { /* ignore */ }
-      }
-      setForm({ sensor_type_id: 0, mount_point_id: 0, datatype_ids: autoTypes });
+      setForm({ sensor_type_id: 0, mount_point_id: 0 });
     }
   }, [open, pending]);
-
-  const toggleDatatype = (id: number) => {
-    setForm((prev) => ({
-      ...prev,
-      datatype_ids: prev.datatype_ids.includes(id)
-        ? prev.datatype_ids.filter((d) => d !== id)
-        : [...prev.datatype_ids, id],
-    }));
-  };
 
   const mutation = useMutation({
     mutationFn: async () => {
@@ -685,22 +930,6 @@ function AcceptPendingSensorModal({
               </option>
             ))}
           </select>
-        </div>
-        <div>
-          <label className="block text-sm text-gray-600 mb-1">{t("settings.dataTypes")}</label>
-          <div className="flex flex-wrap gap-3 mt-1">
-            {dataTypes?.map((dt) => (
-              <label key={dt.id} className="flex items-center gap-1.5 text-sm text-gray-700 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={form.datatype_ids.includes(dt.id)}
-                  onChange={() => toggleDatatype(dt.id)}
-                  className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
-                />
-                {dt.name}
-              </label>
-            ))}
-          </div>
         </div>
       </div>
       {mutation.isError && (
@@ -1280,9 +1509,9 @@ export default function SettingsPage() {
     }
   }, [dbInfo]);
 
-  const dbMutation = useMutation({
+  const dbMutation = useMutation<{ success: boolean; restart_required: boolean; target_is_empty: boolean }>({
     mutationFn: async () => {
-      await api.put("/settings/database", {
+      const { data } = await api.put("/settings/database", {
         type: dbType,
         ...(dbType === "sqlite" ? { path: sqlitePath } : {
           host: pgForm.host,
@@ -1292,6 +1521,7 @@ export default function SettingsPage() {
           password: pgForm.password,
         }),
       });
+      return data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["database-info"] });
@@ -1396,6 +1626,7 @@ export default function SettingsPage() {
 
   const [sensorModalOpen, setSensorModalOpen] = useState(false);
   const [editSensor, setEditSensor] = useState<SensorDetail | null>(null);
+  const [offsetsSensor, setOffsetsSensor] = useState<SensorDetail | null>(null);
 
   // ---- Pending Sensors ----
 
@@ -1455,29 +1686,17 @@ export default function SettingsPage() {
     enabled: isAdmin,
   });
 
-  const [stName, setStName] = useState("");
+  const { data: dataTypes } = useQuery<SensorDataTypeInfo[]>({
+    queryKey: ["catalog-data-types"],
+    queryFn: async () => {
+      const { data } = await api.get("/catalog/data-types");
+      return data;
+    },
+    enabled: isAdmin,
+  });
+
+  const [stModalOpen, setStModalOpen] = useState(false);
   const [editSt, setEditSt] = useState<SensorTypeInfo | null>(null);
-
-  const createStMutation = useMutation({
-    mutationFn: async (name: string) => {
-      await api.post("/catalog/sensor-types", { name });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["catalog-sensor-types"] });
-      setStName("");
-    },
-  });
-
-  const updateStMutation = useMutation({
-    mutationFn: async ({ id, name }: { id: number; name: string }) => {
-      await api.put(`/catalog/sensor-types/${id}`, { name });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["catalog-sensor-types"] });
-      setEditSt(null);
-      setStName("");
-    },
-  });
 
   const deleteStMutation = useMutation({
     mutationFn: async (id: number) => {
@@ -1658,8 +1877,8 @@ export default function SettingsPage() {
   };
 
   const deviceSettingsMutation = useMutation({
-    mutationFn: async (payload: Record<string, string>) => {
-      await api.put("/settings", { settings: payload });
+    mutationFn: async ({ device, params }: { device: string; params: Record<string, string> }) => {
+      await api.post(`/catalog/devices/${encodeURIComponent(device)}/command`, { params });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["health-devices"] });
@@ -1833,9 +2052,18 @@ export default function SettingsPage() {
                       {sensors.map((s) => (
                         <tr key={s.id} className="hover:bg-gray-50">
                           <td className="px-3 py-2 font-medium">
-                            <span className="flex items-center gap-2">
+                            <span className="flex items-center gap-2 flex-wrap">
                               <span className={`inline-block h-2 w-2 rounded-full ${isSensorActive(s) ? "bg-emerald-500" : "bg-red-500"}`} />
                               {s.name}
+                              {s.offsets.map((o) => (
+                                <span
+                                  key={o.datatype_code}
+                                  className="text-[9px] px-1 py-0.5 rounded bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300"
+                                  title={t("settings.sensorOffsetsTitle")}
+                                >
+                                  {formatOffset(o)}
+                                </span>
+                              ))}
                             </span>
                           </td>
                           <td className="px-3 py-2 text-gray-600">{s.sensor_type_name}</td>
@@ -1846,6 +2074,12 @@ export default function SettingsPage() {
                               className="text-primary-600 hover:text-primary-800 text-xs"
                             >
                               {t("settings.editSensor")}
+                            </button>
+                            <button
+                              onClick={() => setOffsetsSensor(s)}
+                              className="text-primary-600 hover:text-primary-800 text-xs"
+                            >
+                              {t("settings.sensorOffsets")}
                             </button>
                             <button
                               onClick={() => {
@@ -1885,6 +2119,12 @@ export default function SettingsPage() {
               onSaved={() => queryClient.invalidateQueries({ queryKey: ["catalog-sensors"] })}
               editSensor={editSensor}
             />
+
+            <SensorOffsetsModal
+              open={!!offsetsSensor}
+              onClose={() => setOffsetsSensor(null)}
+              sensor={offsetsSensor}
+            />
           </CollapsibleSection>
 
           {/* Sensor Types */}
@@ -1897,6 +2137,7 @@ export default function SettingsPage() {
                       <tr>
                         <th className="px-3 py-2 text-left">ID</th>
                         <th className="px-3 py-2 text-left">{t("settings.sensorTypeName")}</th>
+                        <th className="px-3 py-2 text-left">{t("settings.dataTypes")}</th>
                         <th className="px-3 py-2 text-center">{t("settings.actions")}</th>
                       </tr>
                     </thead>
@@ -1905,9 +2146,15 @@ export default function SettingsPage() {
                         <tr key={st.id} className="hover:bg-gray-50">
                           <td className="px-3 py-2 text-gray-500">{st.id}</td>
                           <td className="px-3 py-2 font-medium">{st.name}</td>
+                          <td className="px-3 py-2 text-gray-600 text-xs">
+                            {st.datatype_ids
+                              .map((id) => dataTypes?.find((dt) => dt.id === id)?.name)
+                              .filter(Boolean)
+                              .join(", ") || "—"}
+                          </td>
                           <td className="px-3 py-2 text-center space-x-2">
                             <button
-                              onClick={() => { setEditSt(st); setStName(st.name); }}
+                              onClick={() => { setEditSt(st); setStModalOpen(true); }}
                               className="text-primary-600 hover:text-primary-800 text-xs"
                             >
                               {t("settings.editRoom")}
@@ -1936,38 +2183,19 @@ export default function SettingsPage() {
                 <p className="mb-2 text-xs text-red-600">{t("settings.conflictError")}</p>
               )}
 
-              <div className="flex items-center gap-3">
-                <input
-                  type="text"
-                  value={stName}
-                  onChange={(e) => setStName(e.target.value)}
-                  placeholder={t("settings.sensorTypeName")}
-                  className="flex-1 px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:outline-none"
-                />
-                <button
-                  onClick={() => {
-                    if (!stName.trim()) return;
-                    if (editSt) {
-                      updateStMutation.mutate({ id: editSt.id, name: stName.trim() });
-                    } else {
-                      createStMutation.mutate(stName.trim());
-                    }
-                  }}
-                  disabled={!stName.trim() || createStMutation.isPending || updateStMutation.isPending}
-                  className="px-4 py-2 bg-primary-600 text-white text-sm rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors whitespace-nowrap"
-                >
-                  {editSt ? t("common.save") : t("settings.addSensorType")}
-                </button>
-                {editSt && (
-                  <button
-                    onClick={() => { setEditSt(null); setStName(""); }}
-                    className="px-3 py-2 text-sm text-gray-600 hover:text-gray-800"
-                  >
-                    {t("common.cancel")}
-                  </button>
-                )}
-              </div>
+              <button
+                onClick={() => { setEditSt(null); setStModalOpen(true); }}
+                className="px-4 py-2 bg-primary-600 text-white text-sm rounded-lg hover:bg-primary-700 transition-colors"
+              >
+                {t("settings.addSensorType")}
+              </button>
             </div>
+            <SensorTypeModal
+              open={stModalOpen}
+              onClose={() => { setStModalOpen(false); setEditSt(null); }}
+              onSaved={() => queryClient.invalidateQueries({ queryKey: ["catalog-sensor-types"] })}
+              editSensorType={editSt}
+            />
           </CollapsibleSection>
         </div>
       )}
@@ -2437,6 +2665,7 @@ export default function SettingsPage() {
             const editNodeName = getDeviceSetting(device.mqtt_device_name, "node_name", "");
             const editInterval = getDeviceSetting(device.mqtt_device_name, "interval", "");
             const editTimezone = getDeviceSetting(device.mqtt_device_name, "timezone", "");
+            const editRawDebug = getDeviceSetting(device.mqtt_device_name, "raw_debug", "");
 
             return (
               <div
@@ -2587,6 +2816,16 @@ export default function SettingsPage() {
                       />
                     </div>
                   </div>
+                  <label className="mt-3 flex items-center gap-2 text-sm text-gray-600 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={editRawDebug === "1"}
+                      onChange={(e) => setDeviceSetting(device.mqtt_device_name, "raw_debug", e.target.checked ? "1" : "0")}
+                      className="rounded border-gray-300"
+                    />
+                    {t("settings.deviceRawDebug")}
+                    <span className="text-xs text-gray-400">{t("settings.deviceRawDebugHint")}</span>
+                  </label>
                   <div className="mt-3 flex items-center gap-2">
                     <button
                       onClick={() => {
@@ -2594,8 +2833,9 @@ export default function SettingsPage() {
                         if (editNodeName) settings["node_name"] = editNodeName;
                         if (editInterval) settings["interval"] = editInterval;
                         if (editTimezone) settings["timezone"] = editTimezone;
+                        if (editRawDebug) settings["raw_debug"] = editRawDebug;
                         if (Object.keys(settings).length > 0) {
-                          deviceSettingsMutation.mutate(settings);
+                          deviceSettingsMutation.mutate({ device: device.mqtt_device_name, params: settings });
                         }
                       }}
                       disabled={deviceSettingsMutation.isPending}
@@ -2606,7 +2846,7 @@ export default function SettingsPage() {
                     <button
                       onClick={() => {
                         if (confirm(t("settings.deviceRestartConfirm"))) {
-                          deviceSettingsMutation.mutate({ restart: "1" });
+                          deviceSettingsMutation.mutate({ device: device.mqtt_device_name, params: { restart: "1" } });
                         }
                       }}
                       disabled={deviceSettingsMutation.isPending}
@@ -2626,6 +2866,11 @@ export default function SettingsPage() {
                   </div>
                 </div>
 
+                {/* RF debug live frames — visible while raw_debug is on */}
+                {editRawDebug === "1" && device.online && (
+                  <RfDebugPanel deviceName={device.mqtt_device_name} />
+                )}
+
                 {/* Scan results panel */}
                 {scanDevice === device.mqtt_device_name && !scanLoading && (scanResults.length > 0 || scanError) && (
                   <div className="border-t border-gray-100 pt-4 mt-4">
@@ -2641,44 +2886,69 @@ export default function SettingsPage() {
                     )}
                     {scanResults.length > 0 && (
                       <div className="space-y-2">
-                        {scanResults.map((s) => (
-                          <div key={s.addr} className="flex items-center gap-2 p-2 rounded-lg bg-gray-50">
-                            <code className="text-xs text-gray-500 font-mono min-w-[130px]">{s.addr.substring(0, 4)}-{s.addr.substring(4, 8)}-...</code>
-                            <span className="text-xs px-1.5 py-0.5 rounded bg-blue-100 text-blue-700">{s.type}</span>
-                            {s.temp != null && s.temp > -55 && (
-                              <span className="text-sm font-medium text-emerald-700 min-w-[55px]">{s.temp.toFixed(1)}°C</span>
-                            )}
-                            {s.name ? (
-                              <div className="flex items-center gap-1.5 ml-auto">
-                                <span className="text-xs text-emerald-700 font-medium">{s.name}</span>
-                                <button
-                                  onClick={() => doRemoveMapping(s.addr)}
-                                  className="text-xs text-red-500 hover:text-red-700"
-                                  title={t("settings.deviceScanRemove")}
-                                >
-                                  &times;
-                                </button>
-                              </div>
-                            ) : (
-                              <div className="flex items-center gap-1.5 ml-auto">
-                                <input
-                                  type="text"
-                                  placeholder={t("settings.deviceScanName")}
-                                  value={assignNames[s.addr] ?? ""}
-                                  onChange={(e) => setAssignNames((p) => ({ ...p, [s.addr]: e.target.value }))}
-                                  className="text-xs border border-gray-300 rounded px-2 py-1 w-32"
-                                />
-                                <button
-                                  onClick={() => doAssign(s.addr, assignNames[s.addr] ?? "")}
-                                  disabled={!(assignNames[s.addr] ?? "").trim()}
-                                  className="text-xs px-2 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
-                                >
-                                  {t("settings.deviceScanAssign")}
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                        ))}
+                        {scanResults.map((s) => {
+                          const addr = scannedAddress(s);
+                          const isRf = !!s.protocol;
+                          return (
+                            <div key={addr} className="flex items-center gap-2 p-2 rounded-lg bg-gray-50">
+                              {isRf ? (
+                                <>
+                                  <span className="text-xs px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 font-semibold uppercase">{s.protocol}</span>
+                                  <code className="text-xs text-gray-500 font-mono">id={s.id}{s.channel ? ` ch${s.channel}` : ""}</code>
+                                  {s.rssi != null && (
+                                    <span className="text-[10px] text-gray-500">{s.rssi} dBm</span>
+                                  )}
+                                  {s.tmp != null && (
+                                    <span className="text-sm font-medium text-emerald-700">{s.tmp.toFixed(1)}°C</span>
+                                  )}
+                                  {s.hmt != null && (
+                                    <span className="text-sm font-medium text-sky-700">{s.hmt.toFixed(0)}%</span>
+                                  )}
+                                  {s.bat_low === 1 && (
+                                    <span className="text-[10px] px-1 py-0.5 rounded bg-amber-100 text-amber-700">bat low</span>
+                                  )}
+                                </>
+                              ) : (
+                                <>
+                                  <code className="text-xs text-gray-500 font-mono min-w-[130px]">{(s.addr ?? "").substring(0, 4)}-{(s.addr ?? "").substring(4, 8)}-...</code>
+                                  <span className="text-xs px-1.5 py-0.5 rounded bg-blue-100 text-blue-700">{s.type}</span>
+                                  {s.temp != null && s.temp > -55 && (
+                                    <span className="text-sm font-medium text-emerald-700 min-w-[55px]">{s.temp.toFixed(1)}°C</span>
+                                  )}
+                                </>
+                              )}
+                              {s.name ? (
+                                <div className="flex items-center gap-1.5 ml-auto">
+                                  <span className="text-xs text-emerald-700 font-medium">{s.name}</span>
+                                  <button
+                                    onClick={() => doRemoveMapping(addr)}
+                                    className="text-xs text-red-500 hover:text-red-700"
+                                    title={t("settings.deviceScanRemove")}
+                                  >
+                                    &times;
+                                  </button>
+                                </div>
+                              ) : (
+                                <div className="flex items-center gap-1.5 ml-auto">
+                                  <input
+                                    type="text"
+                                    placeholder={t("settings.deviceScanName")}
+                                    value={assignNames[addr] ?? ""}
+                                    onChange={(e) => setAssignNames((p) => ({ ...p, [addr]: e.target.value }))}
+                                    className="text-xs border border-gray-300 rounded px-2 py-1 w-32"
+                                  />
+                                  <button
+                                    onClick={() => doAssign(addr, assignNames[addr] ?? "")}
+                                    disabled={!(assignNames[addr] ?? "").trim()}
+                                    className="text-xs px-2 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+                                  >
+                                    {t("settings.deviceScanAssign")}
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
                       </div>
                     )}
                   </div>
@@ -2791,13 +3061,20 @@ export default function SettingsPage() {
                 </div>
               )}
 
+              <p className="mt-4 text-xs text-amber-600">{t("settings.dbNoMigrationWarning")}</p>
+
               <button
                 onClick={() => dbMutation.mutate()}
                 disabled={dbMutation.isPending}
-                className="mt-4 px-4 py-2 bg-primary-600 text-white text-sm rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors"
+                className="mt-3 px-4 py-2 bg-primary-600 text-white text-sm rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors"
               >
                 {t("settings.apply")}
               </button>
+              {dbMutation.isSuccess && dbMutation.data?.target_is_empty && (
+                <div className="mt-2 rounded-md border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-700">
+                  {t("settings.dbTargetEmpty")}
+                </div>
+              )}
               {dbMutation.isSuccess && (
                 <p className="mt-2 text-xs text-amber-600">{t("settings.restartRequired")}</p>
               )}

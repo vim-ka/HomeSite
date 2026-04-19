@@ -156,6 +156,14 @@ class MQTTHandler:
                 pass
             return
 
+        # Handle raw RF debug: home/devices/{name}/rf_debug → forward to backend WS
+        if subtopic == "rf_debug":
+            payload_raw = message.payload
+            if isinstance(payload_raw, (bytes, bytearray)):
+                payload_raw = payload_raw.decode(errors="replace")
+            await self._notify_rf_debug(device_name, payload_raw)
+            return
+
         # Handle heartbeat: home/devices/{name}/heartbeat → track device alive + payload
         if subtopic == "heartbeat":
             hb_payload = message.payload
@@ -317,6 +325,20 @@ class MQTTHandler:
             pass  # Backend may not be running — this is non-critical
         except Exception as e:
             logger.warning("backend_notify_error", error=str(e))
+
+    async def _notify_rf_debug(self, device_name: str, payload: str) -> None:
+        """Forward raw RF frame from rtl_433_ESP to backend for WS fan-out."""
+        try:
+            async with httpx.AsyncClient(timeout=3.0) as client:
+                await client.post(
+                    f"{self.settings.backend_url}/internal/rf-debug",
+                    json={"device_name": device_name, "payload": payload},
+                    headers={"X-Internal-Secret": self.settings.internal_api_secret},
+                )
+        except httpx.ConnectError:
+            pass
+        except Exception as e:
+            logger.warning("backend_notify_rf_debug_error", error=str(e))
 
     async def wait_for_scan(self, device_name: str, timeout: float = 10.0) -> list[dict] | None:
         """Wait for scan result from device. Returns sensor list or None on timeout."""

@@ -30,11 +30,11 @@ void PressureReader::calibrateWater(float zeroV, float maxBar, float maxV) {
 }
 
 float PressureReader::readHeatingPressure() {
-    return readPin(_heatingPin, _heatZeroV, _heatMaxBar, _heatMaxV);
+    return readPin(_heatingPin, _heatZeroV, _heatMaxBar, _heatMaxV) + _heatOffset;
 }
 
 float PressureReader::readWaterPressure() {
-    return readPin(_waterPin, _waterZeroV, _waterMaxBar, _waterMaxV);
+    return readPin(_waterPin, _waterZeroV, _waterMaxBar, _waterMaxV) + _waterOffset;
 }
 
 float PressureReader::readPin(uint8_t pin, float zeroV, float maxBar, float maxV) {

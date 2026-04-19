@@ -29,8 +29,8 @@ public:
     // Read all configured sensors, return readings
     std::vector<SensorReading> readAll();
 
-    // Check if DHT is connected
-    bool hasDHT();
+    // True if a DHT data pin was configured (used by WiFi portal UI)
+    bool hasDHT() const { return _dhtPin != 0; }
 
 private:
     OneWire* _oneWire = nullptr;

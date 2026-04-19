@@ -16,16 +16,19 @@ class SystemTypeResponse(BaseModel):
 class SensorTypeResponse(BaseModel):
     id: int
     name: str
+    datatype_ids: list[int] = []
 
     model_config = {"from_attributes": True}
 
 
 class SensorTypeCreateRequest(BaseModel):
     name: str
+    datatype_ids: list[int] = []
 
 
 class SensorTypeUpdateRequest(BaseModel):
     name: str
+    datatype_ids: list[int] = []
 
 
 class MountPointResponse(BaseModel):
@@ -95,6 +98,11 @@ class SensorDataTypeResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class SensorOffsetBadge(BaseModel):
+    datatype_code: str
+    value: float
+
+
 class SensorDetailResponse(BaseModel):
     id: int
     name: str
@@ -104,7 +112,11 @@ class SensorDetailResponse(BaseModel):
     mount_point_name: str
     place_name: str
     system_name: str
+    actuator_id: int | None = None
+    actuator_name: str | None = None
+    actuator_mqtt_device_name: str | None = None
     datatype_ids: list[int] = []
+    offsets: list[SensorOffsetBadge] = []
     last_reading: datetime | None = None
 
     model_config = {"from_attributes": True}
@@ -114,14 +126,31 @@ class SensorCreateRequest(BaseModel):
     name: str
     sensor_type_id: int
     mount_point_id: int
-    datatype_ids: list[int] = []
+    actuator_id: int | None = None
 
 
 class SensorUpdateRequest(BaseModel):
     name: str
     sensor_type_id: int
     mount_point_id: int
-    datatype_ids: list[int] = []
+    actuator_id: int | None = None
+
+
+# ---- Sensor Offsets (per-datatype calibration correction) ----
+
+
+class SensorOffsetResponse(BaseModel):
+    sensor_id: int
+    datatype_id: int
+    datatype_code: str
+    datatype_name: str
+    value: float
+
+    model_config = {"from_attributes": True}
+
+
+class SensorOffsetUpdateRequest(BaseModel):
+    value: float
 
 
 # ---- Pending Sensors (auto-discovery) ----
@@ -142,7 +171,6 @@ class PendingSensorResponse(BaseModel):
 class AcceptPendingSensorRequest(BaseModel):
     sensor_type_id: int
     mount_point_id: int
-    datatype_ids: list[int] = []
 
 
 # ---- Heating Circuit CRUD ----

@@ -127,6 +127,33 @@ class GatewayClient:
             logger.warning("gateway_remove_error", error=str(e))
             return False
 
+    async def sensor_offset(
+        self, device_id: str, sensor_name: str, datatype_code: str, value: float
+    ) -> bool:
+        """Push a calibration offset for one (sensor, datatype) pair to the device.
+
+        Firmware stores it in NVS and adds it to every reading of that datatype
+        from that sensor before publishing.
+        """
+        try:
+            async with httpx.AsyncClient(base_url=self.base_url, timeout=self.timeout) as client:
+                response = await client.post(
+                    "/sensor-offset",
+                    json={
+                        "device_id": device_id,
+                        "params": {
+                            "sensor_name": sensor_name,
+                            "datatype_code": datatype_code,
+                            "value": value,
+                        },
+                    },
+                    headers={"X-Internal-Secret": settings.internal_api_secret},
+                )
+                return response.status_code == 200
+        except Exception as e:
+            logger.warning("gateway_offset_error", error=str(e))
+            return False
+
     async def health_check(self) -> bool:
         try:
             async with httpx.AsyncClient(base_url=self.base_url, timeout=self.timeout) as client:

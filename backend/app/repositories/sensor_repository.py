@@ -122,6 +122,8 @@ class SensorRepository:
 
         Only circuits with show_on_dashboard=True are included.
         If PZA (weather-dependent) mode is enabled, temp_set is calculated from curve.
+        If boiler automode is enabled, the boiler's temp_set is the max of active
+        circuits' targets — same formula as firmware updateBoiler().
         """
         from app.services.pza import get_pza_target
 
@@ -178,6 +180,7 @@ class SensorRepository:
 
             results.append({
                 "circuit": c.circuit_name,
+                "config_prefix": c.config_prefix,
                 "TempSet": temp_set,
                 "TempSup": temp_sup,
                 "TempRet": temp_ret,
@@ -188,7 +191,82 @@ class SensorRepository:
                 "pza_capable": pza_capable,
             })
 
+        # Boiler automode override — duplicates firmware updateBoiler() so the
+        # dashboard and heating page agree on what the boiler is actually targeting.
+        boiler_auto = await self._get_config_value("heating_boiler_automode") == "1"
+        if boiler_auto:
+            boiler_target = await self._compute_boiler_auto_target(outdoor_temp)
+            for r in results:
+                if r["config_prefix"] == "heating_boiler":
+                    r["TempSet"] = boiler_target
+                    break
+
         return results
+
+    async def _compute_boiler_auto_target(self, outdoor_temp: float | None) -> float:
+        """Max supply target across active circuits, capped by heating_boiler_max_temp.
+
+        Mirrors the firmware updateBoiler() and frontend HeatingPage logic.
+        """
+        from app.services.pza import get_pza_target
+
+        async def circuit_target(
+            pump_key: str,
+            wbm_key: str,
+            curve_key: str,
+            temp_key: str,
+            curve_type: str,
+            default_temp: float,
+        ) -> float | None:
+            if await self._get_config_value(pump_key) != "1":
+                return None
+            if await self._get_config_value(wbm_key) == "1" and outdoor_temp is not None:
+                curve_str = await self._get_config_value(curve_key)
+                curve_idx = int(curve_str) if curve_str else 3
+                pza = get_pza_target(curve_type, curve_idx, outdoor_temp)
+                if pza is not None:
+                    return pza
+            raw = await self._get_config_value(temp_key)
+            return float(raw) if raw else default_temp
+
+        target = 0.0
+
+        rad = await circuit_target(
+            "heating_radiator_pump", "heating_radiator_wbm",
+            "heating_radiator_curve", "heating_radiator_temp", "radiator", 45.0,
+        )
+        if rad is not None and rad > target:
+            target = rad
+
+        floor = await circuit_target(
+            "heating_floorheating_pump", "heating_floorheating_wbm",
+            "heating_floorheating_curve", "heating_floorheating_temp", "floor", 30.0,
+        )
+        if floor is not None and floor > target:
+            target = floor
+
+        # IHB (DHW) — include when automode OR manual pump is on.
+        ihb_active = (
+            await self._get_config_value("watersupply_ihb_automode") == "1"
+            or await self._get_config_value("watersupply_ihb_pump") == "1"
+        )
+        if ihb_active:
+            ihb_raw = await self._get_config_value("watersupply_ihb_temp")
+            ihb = float(ihb_raw) if ihb_raw else 45.0
+            if ihb > target:
+                target = ihb
+
+        # Fallback when no circuits active.
+        if target <= 0:
+            fallback_raw = await self._get_config_value("heating_boiler_temp")
+            target = float(fallback_raw) if fallback_raw else 50.0
+
+        max_raw = await self._get_config_value("heating_boiler_max_temp")
+        max_temp = float(max_raw) if max_raw else 85.0
+        if target > max_temp:
+            target = max_temp
+
+        return round(target * 10) / 10
 
     async def get_water_supply_status(self) -> list[dict]:
         """Get water supply status (system_id=2). Stale data excluded."""

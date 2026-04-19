@@ -14,6 +14,10 @@
     @apply bg-gray-900 text-gray-100;
   }
 
+  /* Tell browser to render native widgets (number spinners, scrollbars,
+     date pickers) in dark scheme so they don't appear washed-out white. */
+  html.dark { color-scheme: dark; }
+
   /* Card and surface backgrounds */
   html.dark .bg-white { background-color: #1f2937 !important; }
   html.dark .bg-gray-50 { background-color: #111827 !important; }

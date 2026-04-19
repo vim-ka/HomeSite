@@ -436,8 +436,8 @@ export default function HeatingPage() {
       if (t > target) target = t;
     }
 
-    // IHB (DHW) circuit
-    if (bool("watersupply_ihb_pump")) {
+    // IHB (DHW) circuit — include if automode (pump cycles automatically) or manual pump on
+    if (bool("watersupply_ihb_automode") || bool("watersupply_ihb_pump")) {
       const t = num("watersupply_ihb_temp", "45");
       if (t > target) target = t;
     }
@@ -452,12 +452,12 @@ export default function HeatingPage() {
     return Math.round(target * 10) / 10;
   })();
 
-  // Map circuit names to config keys for optimistic pump/temp display
+  // Map circuit config_prefix to config keys for optimistic pump/temp display
   const circuitKeys: Record<string, { pump: string; temp: string }> = {
-    "Котёл": { pump: "heating_boiler_power", temp: "heating_boiler_temp" },
-    "Радиаторы": { pump: "heating_radiator_pump", temp: "heating_radiator_temp" },
-    "Тёплый пол": { pump: "heating_floorheating_pump", temp: "heating_floorheating_temp" },
-    "БКН": { pump: "watersupply_ihb_pump", temp: "watersupply_ihb_temp" },
+    "heating_boiler": { pump: "heating_boiler_power", temp: "heating_boiler_temp" },
+    "heating_radiator": { pump: "heating_radiator_pump", temp: "heating_radiator_temp" },
+    "heating_floorheating": { pump: "heating_floorheating_pump", temp: "heating_floorheating_temp" },
+    "watersupply_ihb": { pump: "watersupply_ihb_pump", temp: "watersupply_ihb_temp" },
   };
 
   return (
@@ -475,14 +475,18 @@ export default function HeatingPage() {
           </h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             {dashboard.heating.map((c) => {
-              const keys = circuitKeys[c.circuit];
+              const keys = circuitKeys[c.config_prefix ?? ""];
               const pumpOn = keys ? bool(keys.pump) : !!c.pump;
-              // Boiler in automode → use computed auto target
-              // PZA mode → use backend-calculated temp_set (from curve)
-              // Otherwise → config_kv value (manual setpoint)
-              const tempSet = (c.circuit === "Котёл" && boilerAuto && boilerAutoTarget != null)
-                ? boilerAutoTarget
-                : c.pza_mode ? c.temp_set : (keys ? num(keys.temp, String(c.temp_set ?? 0)) : c.temp_set);
+              const isBoiler = c.config_prefix === "heating_boiler";
+              // Backend provides the authoritative temp_set:
+              //   • PZA mode → interpolated from curve
+              //   • Boiler automode → max of active circuits (same as firmware)
+              //   • Otherwise → manual setpoint from config_kv
+              // Non-PZA / non-auto circuits can still show optimistic local edits.
+              const useBackendSet = c.pza_mode || (isBoiler && boilerAuto);
+              const tempSet = useBackendSet
+                ? c.temp_set
+                : keys ? num(keys.temp, String(c.temp_set ?? 0)) : c.temp_set;
               return (
                 <div
                   key={c.circuit}
@@ -504,8 +508,8 @@ export default function HeatingPage() {
                     <div className="flex justify-between items-center">
                       <span className="flex items-center gap-1">
                         {t("dashboard.tempSet")}
-                        {c.circuit === "Котёл" && boilerAuto ? (
-                          <span className="text-[9px] px-1 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300">
+                        {isBoiler && boilerAuto ? (
+                          <span className="text-[9px] px-1 py-0.5 rounded bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300">
                             Авто
                           </span>
                         ) : c.pza_mode ? (

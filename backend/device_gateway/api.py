@@ -185,6 +185,33 @@ def create_gateway_api(
         await publisher.publish_grouped(payload.device_id, {"sensor_remove": address})
         return {"status": "ok"}
 
+    @app.post("/sensor-offset")
+    async def sensor_offset(
+        payload: CommandRequest,
+        _: None = Depends(verify_secret),
+    ) -> dict:
+        """Push a calibration offset to the device.
+
+        params: {sensor_name, datatype_code, value}
+        MQTT payload: {"sensor_offset": "sensor_name:datatype_code:value"}
+        """
+        sensor_name = payload.params.get("sensor_name", "")
+        datatype_code = payload.params.get("datatype_code", "")
+        value = payload.params.get("value")
+        if not sensor_name or not datatype_code or value is None:
+            raise HTTPException(
+                status_code=400,
+                detail="sensor_name, datatype_code, value required",
+            )
+
+        if publisher is None:
+            raise HTTPException(status_code=503, detail="publisher not available")
+        await publisher.publish_grouped(
+            payload.device_id,
+            {"sensor_offset": f"{sensor_name}:{datatype_code}:{value}"},
+        )
+        return {"status": "ok"}
+
     @app.post("/reload-mqtt")
     async def reload_mqtt(
         _: None = Depends(verify_secret),

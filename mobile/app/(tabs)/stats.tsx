@@ -1,10 +1,19 @@
-import { useState } from "react";
-import { ScrollView, View, Text, TouchableOpacity, StyleSheet, RefreshControl, Dimensions } from "react-native";
+import { useEffect, useState } from "react";
+import {
+  ScrollView,
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  RefreshControl,
+  Dimensions,
+} from "react-native";
 import { useTranslation } from "react-i18next";
 import { useQuery } from "@tanstack/react-query";
 import api from "../../src/api/client";
 import Card from "../../src/components/Card";
 import Section from "../../src/components/Section";
+import LineChart from "../../src/components/LineChart";
 import { useTheme } from "../../src/hooks/useTheme";
 
 type Period = "24h" | "7d" | "30d" | "90d";
@@ -16,44 +25,48 @@ const PERIODS: { key: Period; label: string }[] = [
   { key: "90d", label: "90д" },
 ];
 
+const SERIES_COLORS = [
+  "#2563eb", "#16a34a", "#d97706", "#dc2626",
+  "#7c3aed", "#0891b2", "#be185d", "#65a30d",
+];
+
 const screenWidth = Dimensions.get("window").width;
+const CHART_WIDTH = screenWidth - 32 - 24; // minus page padding (16+16) and card padding (12+12)
 
-function MiniChart({ data, color, height = 60 }: { data: number[]; color: string; height?: number }) {
-  if (data.length === 0) return null;
-  const max = Math.max(...data);
-  const min = Math.min(...data);
-  const range = max - min || 1;
-  const barWidth = Math.max(2, (screenWidth - 80) / data.length - 1);
-  const { colors } = useTheme();
-
-  return (
-    <View style={[styles.chartContainer, { height }]}>
-      <View style={styles.chartBars}>
-        {data.map((v, i) => (
-          <View
-            key={i}
-            style={{
-              width: barWidth,
-              height: Math.max(2, ((v - min) / range) * (height - 10)),
-              backgroundColor: color,
-              borderRadius: 1,
-              marginRight: 1,
-            }}
-          />
-        ))}
-      </View>
-      <View style={styles.chartLabels}>
-        <Text style={[styles.chartLabel, { color: colors.gray[400] }]}>{min.toFixed(1)}</Text>
-        <Text style={[styles.chartLabel, { color: colors.gray[400] }]}>{max.toFixed(1)}</Text>
-      </View>
-    </View>
-  );
+interface ChartResponse {
+  labels: string[];
+  datasets: { label: string; data: (number | null)[] }[];
 }
 
-export default function StatsScreen() {
+function formatLabel(raw: string, period: Period): string {
+  try {
+    const d = new Date(raw.endsWith("Z") ? raw : raw + "Z");
+    if (period === "24h") {
+      return d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+    }
+    if (period === "7d") {
+      return d.toLocaleDateString("ru-RU", { weekday: "short", day: "numeric" });
+    }
+    return d.toLocaleDateString("ru-RU", { day: "numeric", month: "short" });
+  } catch {
+    return raw;
+  }
+}
+
+function SensorChart({
+  chartType,
+  title,
+  unit,
+  period,
+}: {
+  chartType: string;
+  title: string;
+  unit: string;
+  period: Period;
+}) {
   const { t } = useTranslation();
   const { colors } = useTheme();
-  const [period, setPeriod] = useState<Period>("24h");
+  const [enabled, setEnabled] = useState<Record<string, boolean>>({});
 
   const periodToRange = (p: Period) => {
     const end = new Date();
@@ -64,46 +77,106 @@ export default function StatsScreen() {
     else start.setDate(end.getDate() - 90);
     return { start: start.toISOString(), end: end.toISOString() };
   };
-
   const { start, end } = periodToRange(period);
 
-  const { data: climateData, isLoading, refetch } = useQuery({
-    queryKey: ["charts", "ChartTemperature", period],
+  const { data, isLoading } = useQuery<ChartResponse>({
+    queryKey: ["charts", chartType, period],
     queryFn: async () => {
-      const { data } = await api.get(`/charts/ChartTemperature?start=${start}&end=${end}`);
+      const { data } = await api.get(`/charts/${chartType}?start=${start}&end=${end}`);
       return data;
     },
   });
 
-  const { data: heatingData } = useQuery({
-    queryKey: ["charts", "ChartHeating", period],
-    queryFn: async () => {
-      const { data } = await api.get(`/charts/ChartHeating?start=${start}&end=${end}`);
-      return data;
-    },
-  });
+  // Enable first dataset by default
+  useEffect(() => {
+    if (data?.datasets?.length && Object.keys(enabled).length === 0) {
+      setEnabled({ [data.datasets[0].label]: true });
+    }
+  }, [data]);
 
-  const { data: pressureAtmoData } = useQuery({
-    queryKey: ["charts", "ChartPressureAtmo", period],
-    queryFn: async () => {
-      const { data } = await api.get(`/charts/ChartPressureAtmo?start=${start}&end=${end}`);
-      return data;
-    },
-  });
+  if (isLoading) {
+    return (
+      <Card style={styles.chartCard}>
+        <Text style={[styles.chartTitle, { color: colors.gray[700] }]}>{title}</Text>
+        <Text style={[styles.noData, { color: colors.gray[400] }]}>{t("common.loading")}</Text>
+      </Card>
+    );
+  }
 
-  const { data: pressureSystemData } = useQuery({
-    queryKey: ["charts", "ChartPressureSystem", period],
-    queryFn: async () => {
-      const { data } = await api.get(`/charts/ChartPressureSystem?start=${start}&end=${end}`);
-      return data;
-    },
-  });
+  if (!data || data.labels.length === 0) {
+    return (
+      <Card style={styles.chartCard}>
+        <Text style={[styles.chartTitle, { color: colors.gray[700] }]}>{title}</Text>
+        <Text style={[styles.noData, { color: colors.gray[400] }]}>{t("statistics.noData")}</Text>
+      </Card>
+    );
+  }
+
+  const visibleDatasets = data.datasets
+    .map((ds, i) => ({
+      label: ds.label,
+      data: ds.data,
+      color: SERIES_COLORS[i % SERIES_COLORS.length],
+    }))
+    .filter((ds) => enabled[ds.label]);
+
+  const xLabels = data.labels.map((l) => formatLabel(l, period));
+
+  return (
+    <Card style={styles.chartCard}>
+      <Text style={[styles.chartTitle, { color: colors.gray[700] }]}>{title}</Text>
+
+      {/* Sensor toggles */}
+      <View style={styles.legendRow}>
+        {data.datasets.map((ds, i) => {
+          const active = !!enabled[ds.label];
+          const color = SERIES_COLORS[i % SERIES_COLORS.length];
+          return (
+            <TouchableOpacity
+              key={ds.label}
+              style={[
+                styles.legendBtn,
+                { borderColor: colors.gray[200] },
+                active && { backgroundColor: color + "22", borderColor: color },
+              ]}
+              onPress={() =>
+                setEnabled((prev) => ({ ...prev, [ds.label]: !prev[ds.label] }))
+              }
+            >
+              <View style={[styles.legendDot, { backgroundColor: color }]} />
+              <Text style={[styles.legendText, { color: colors.gray[700] }]} numberOfLines={1}>
+                {ds.label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+
+      {visibleDatasets.length > 0 ? (
+        <LineChart
+          labels={xLabels}
+          datasets={visibleDatasets}
+          unit={unit}
+          width={CHART_WIDTH}
+          height={200}
+        />
+      ) : (
+        <Text style={[styles.noData, { color: colors.gray[400] }]}>—</Text>
+      )}
+    </Card>
+  );
+}
+
+export default function StatsScreen() {
+  const { t } = useTranslation();
+  const { colors } = useTheme();
+  const [period, setPeriod] = useState<Period>("24h");
 
   return (
     <ScrollView
       style={[styles.container, { backgroundColor: colors.gray[100] }]}
       contentContainerStyle={styles.content}
-      refreshControl={<RefreshControl refreshing={isLoading} onRefresh={refetch} />}
+      refreshControl={<RefreshControl refreshing={false} onRefresh={() => {}} />}
     >
       {/* Period selector */}
       <View style={[styles.periodRow, { backgroundColor: colors.white, borderColor: colors.gray[200] }]}>
@@ -122,58 +195,40 @@ export default function StatsScreen() {
 
       {/* Climate */}
       <Section title={t("statistics.climate")}>
-        {climateData?.datasets?.length > 0 ? (
-          climateData.datasets.map((ds: any) => (
-            <Card key={ds.label} style={styles.chartCard}>
-              <Text style={[styles.chartTitle, { color: colors.gray[700] }]}>{ds.label}</Text>
-              <MiniChart data={ds.data.filter((v: any) => v != null)} color={colors.orange[500]} />
-            </Card>
-          ))
-        ) : (
-          <Text style={[styles.noData, { color: colors.gray[400] }]}>{t("statistics.noData")}</Text>
-        )}
-      </Section>
-
-      {/* Atmospheric Pressure */}
-      <Section title={t("statistics.pressureAtmo")}>
-        {pressureAtmoData?.datasets?.length > 0 ? (
-          pressureAtmoData.datasets.map((ds: any) => (
-            <Card key={ds.label} style={styles.chartCard}>
-              <Text style={[styles.chartTitle, { color: colors.gray[700] }]}>{ds.label}</Text>
-              <MiniChart data={ds.data.filter((v: any) => v != null)} color={colors.emerald[500]} />
-            </Card>
-          ))
-        ) : (
-          <Text style={[styles.noData, { color: colors.gray[400] }]}>{t("statistics.noData")}</Text>
-        )}
+        <SensorChart
+          chartType="ChartTemperature"
+          title={t("dashboard.temperature")}
+          unit="°"
+          period={period}
+        />
+        <SensorChart
+          chartType="ChartHumidity"
+          title={t("dashboard.humidity")}
+          unit="%"
+          period={period}
+        />
+        <SensorChart
+          chartType="ChartPressureAtmo"
+          title={t("statistics.pressureAtmo")}
+          unit=" гПа"
+          period={period}
+        />
       </Section>
 
       {/* Heating */}
       <Section title={t("statistics.heatingCharts")}>
-        {heatingData?.datasets?.length > 0 ? (
-          heatingData.datasets.map((ds: any) => (
-            <Card key={ds.label} style={styles.chartCard}>
-              <Text style={[styles.chartTitle, { color: colors.gray[700] }]}>{ds.label}</Text>
-              <MiniChart data={ds.data.filter((v: any) => v != null)} color={colors.red[500]} />
-            </Card>
-          ))
-        ) : (
-          <Text style={[styles.noData, { color: colors.gray[400] }]}>{t("statistics.noData")}</Text>
-        )}
-      </Section>
-
-      {/* System Pressure */}
-      <Section title={t("statistics.pressureSystem")}>
-        {pressureSystemData?.datasets?.length > 0 ? (
-          pressureSystemData.datasets.map((ds: any) => (
-            <Card key={ds.label} style={styles.chartCard}>
-              <Text style={[styles.chartTitle, { color: colors.gray[700] }]}>{ds.label}</Text>
-              <MiniChart data={ds.data.filter((v: any) => v != null)} color={colors.sky[500]} />
-            </Card>
-          ))
-        ) : (
-          <Text style={[styles.noData, { color: colors.gray[400] }]}>{t("statistics.noData")}</Text>
-        )}
+        <SensorChart
+          chartType="ChartPressureSystem"
+          title={t("statistics.pressureSystem")}
+          unit=" бар"
+          period={period}
+        />
+        <SensorChart
+          chartType="ChartHeating"
+          title={t("heating.title")}
+          unit="°"
+          period={period}
+        />
       </Section>
     </ScrollView>
   );
@@ -195,19 +250,21 @@ const styles = StyleSheet.create({
     alignItems: "center",
     borderRadius: 10,
   },
-  periodText: {
-    fontSize: 14,
-    fontWeight: "600",
-  },
-  chartCard: { marginBottom: 10 },
-  chartTitle: { fontSize: 13, fontWeight: "600", marginBottom: 8 },
-  chartContainer: { overflow: "hidden" },
-  chartBars: { flexDirection: "row", alignItems: "flex-end", flex: 1 },
-  chartLabels: {
+  periodText: { fontSize: 14, fontWeight: "600" },
+  chartCard: { marginBottom: 12 },
+  chartTitle: { fontSize: 13, fontWeight: "700", marginBottom: 8 },
+  legendRow: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: 8 },
+  legendBtn: {
     flexDirection: "row",
-    justifyContent: "space-between",
-    marginTop: 4,
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 16,
+    borderWidth: 1,
+    maxWidth: "48%",
   },
-  chartLabel: { fontSize: 10 },
+  legendDot: { width: 8, height: 8, borderRadius: 4 },
+  legendText: { fontSize: 11, fontWeight: "500" },
   noData: { fontSize: 14, textAlign: "center", paddingVertical: 20 },
 });

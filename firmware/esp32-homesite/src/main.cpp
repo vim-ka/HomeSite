@@ -206,6 +206,66 @@ void onCommand(const String& key, const String& value) {
         return;
     }
 
+    if (key == "sensor_offset") {
+        ackDoc.remove(key);  // offset is a config write, no generic ack
+        // Value format: "sensor_name:datatype_code:value"
+        //   sensor_name — logical name (matches SensorMapping.name) OR a
+        //                 pressure sensor name (prs_heating / prs_water)
+        //   datatype_code — "tmp", "hmt", or "prs"
+        //   value — float (added to raw reading, in °C / % / bar)
+        int sep1 = value.indexOf(':');
+        int sep2 = value.indexOf(':', sep1 + 1);
+        if (sep1 < 0 || sep2 < 0) {
+            Serial.println("sensor_offset: bad format");
+            return;
+        }
+        String sname = value.substring(0, sep1);
+        String code = value.substring(sep1 + 1, sep2);
+        float off = value.substring(sep2 + 1).toFloat();
+        sname.trim(); code.trim();
+
+        // Pressure sensors (prs) live outside SensorMapping — handled via
+        // ConfigManager's prs_h_* / prs_w_* keys and PressureReader runtime state.
+        if (code == "prs") {
+            PressureConfig prsHeat = config.pressureHeating();
+            PressureConfig prsWater = config.pressureWater();
+            if (sname == prsHeat.name) {
+                config.setPressureHeatingOffset(off);
+                pressure.setHeatingOffset(off);
+                Serial.printf("Pressure offset heating=%.3f bar\n", off);
+            } else if (sname == prsWater.name) {
+                config.setPressureWaterOffset(off);
+                pressure.setWaterOffset(off);
+                Serial.printf("Pressure offset water=%.3f bar\n", off);
+            } else {
+                Serial.print("sensor_offset: unknown pressure sensor ");
+                Serial.println(sname);
+            }
+            return;
+        }
+
+        // Temperature/humidity offsets live on the SensorMapping JSON.
+        auto mappings = config.sensors();
+        bool found = false;
+        for (auto& m : mappings) {
+            if (m.name != sname) continue;
+            if (code == "tmp") m.offsetTmp = off;
+            else if (code == "hmt") m.offsetHmt = off;
+            else { Serial.print("sensor_offset: bad code "); Serial.println(code); return; }
+            found = true;
+            break;
+        }
+        if (!found) {
+            Serial.print("sensor_offset: sensor not found ");
+            Serial.println(sname);
+            return;
+        }
+        config.setSensors(mappings);
+        sensors.setMappings(mappings);
+        Serial.printf("Offset %s/%s = %.3f\n", sname.c_str(), code.c_str(), off);
+        return;
+    }
+
     // All boiler/heating/water settings go to BoilerLogic
     boilerLogic.onSettingChanged(key, value);
 }
@@ -331,6 +391,8 @@ void setup() {
     pressureWaterName = prsWater.name;
     if (pressureHeatingName.length() > 0 || pressureWaterName.length() > 0) {
         pressure.begin(prsHeat.pin, prsWater.pin);
+        pressure.setHeatingOffset(prsHeat.offset);
+        pressure.setWaterOffset(prsWater.offset);
     }
 
     // Initialize NTP

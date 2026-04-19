@@ -9,11 +9,13 @@ import {
   Alert,
 } from "react-native";
 import { router } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
 import { useTranslation } from "react-i18next";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "../../src/api/client";
 import { useAuthStore } from "../../src/stores/authStore";
 import { useThemeStore, type ThemeMode } from "../../src/stores/themeStore";
+import { useLangStore, type Language } from "../../src/stores/langStore";
 import { setBaseURL } from "../../src/api/client";
 import { useTheme } from "../../src/hooks/useTheme";
 import Card from "../../src/components/Card";
@@ -42,12 +44,18 @@ const THEME_OPTIONS: { key: ThemeMode; label: string }[] = [
   { key: "system", label: "⚙️" },
 ];
 
+const LANG_OPTIONS: { key: Language; label: string }[] = [
+  { key: "ru", label: "RU" },
+  { key: "en", label: "EN" },
+];
+
 export default function MoreScreen() {
   const { t } = useTranslation();
   const { colors } = useTheme();
   const queryClient = useQueryClient();
   const { username, role, serverUrl, setServerUrl, logout } = useAuthStore();
   const { theme, setTheme } = useThemeStore();
+  const { lang, setLang } = useLangStore();
 
   const [urlInput, setUrlInput] = useState(serverUrl);
   const [urlSaved, setUrlSaved] = useState(false);
@@ -75,13 +83,23 @@ export default function MoreScreen() {
   };
 
   const [eventsPage, setEventsPage] = useState(1);
+  const [levelFilter, setLevelFilter] = useState<"" | "INFO" | "WARNING" | "ERROR">("");
   const { data: events } = useQuery<PaginatedEvents>({
-    queryKey: ["events", eventsPage],
+    queryKey: ["events", eventsPage, levelFilter],
     queryFn: async () => {
-      const { data } = await api.get(`/events?page=${eventsPage}&page_size=20`);
+      const params = new URLSearchParams({ page: String(eventsPage), per_page: "20" });
+      if (levelFilter) params.set("level", levelFilter);
+      const { data } = await api.get(`/events?${params}`);
       return data;
     },
   });
+
+  const LEVEL_FILTERS: { key: "" | "INFO" | "WARNING" | "ERROR"; label: string }[] = [
+    { key: "", label: t("events.filterAll") },
+    { key: "INFO", label: "INFO" },
+    { key: "WARNING", label: "WARN" },
+    { key: "ERROR", label: "ERR" },
+  ];
 
   return (
     <ScrollView style={[styles.container, { backgroundColor: colors.gray[100] }]} contentContainerStyle={styles.content}>
@@ -97,6 +115,24 @@ export default function MoreScreen() {
           </View>
         </View>
       </Card>
+
+      {/* Admin section */}
+      {role === "admin" && (
+        <Section title={t("settings.adminSettings")}>
+          <Card>
+            <TouchableOpacity
+              style={[styles.adminLink, { borderBottomColor: colors.gray[100] }]}
+              onPress={() => router.push("/admin")}
+            >
+              <Ionicons name="construct-outline" size={20} color={colors.primary[600]} />
+              <Text style={[styles.adminLinkText, { color: colors.gray[800] }]}>
+                {t("settings.adminPanel")}
+              </Text>
+              <Ionicons name="chevron-forward" size={18} color={colors.gray[400]} style={{ marginLeft: "auto" }} />
+            </TouchableOpacity>
+          </Card>
+        </Section>
+      )}
 
       {/* Theme selector */}
       <Section title={t("settings.theme")}>
@@ -119,6 +155,33 @@ export default function MoreScreen() {
                   theme === opt.key && { color: "#ffffff", fontWeight: "700" },
                 ]}>
                   {t(`settings.theme_${opt.key}`)}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </Card>
+      </Section>
+
+      {/* Language selector */}
+      <Section title={t("settings.language")}>
+        <Card>
+          <View style={styles.themeRow}>
+            {LANG_OPTIONS.map((opt) => (
+              <TouchableOpacity
+                key={opt.key}
+                style={[
+                  styles.themeBtn,
+                  { borderColor: colors.gray[200], backgroundColor: colors.gray[100] },
+                  lang === opt.key && { backgroundColor: colors.primary[600], borderColor: colors.primary[600] },
+                ]}
+                onPress={() => setLang(opt.key)}
+              >
+                <Text style={[
+                  styles.themeLabel,
+                  { color: colors.gray[600], fontSize: 14, fontWeight: "700" },
+                  lang === opt.key && { color: "#ffffff" },
+                ]}>
+                  {opt.label}
                 </Text>
               </TouchableOpacity>
             ))}
@@ -149,6 +212,27 @@ export default function MoreScreen() {
       {/* Events */}
       <Section title={t("events.title")}>
         <Card>
+          <View style={styles.levelFilterRow}>
+            {LEVEL_FILTERS.map((lf) => (
+              <TouchableOpacity
+                key={lf.key || "all"}
+                onPress={() => { setLevelFilter(lf.key); setEventsPage(1); }}
+                style={[
+                  styles.levelFilterBtn,
+                  { backgroundColor: colors.gray[100], borderColor: colors.gray[200] },
+                  levelFilter === lf.key && { backgroundColor: colors.primary[600], borderColor: colors.primary[600] },
+                ]}
+              >
+                <Text style={[
+                  styles.levelFilterText,
+                  { color: colors.gray[600] },
+                  levelFilter === lf.key && { color: "#ffffff", fontWeight: "700" },
+                ]}>
+                  {lf.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
           {events && events.items.length > 0 ? (
             <>
               {events.items.map((ev) => (
@@ -282,6 +366,22 @@ const styles = StyleSheet.create({
   pageBtnText: { color: "#ffffff", fontWeight: "700", fontSize: 16 },
   pageInfo: { fontSize: 14 },
   noData: { fontSize: 14, textAlign: "center", paddingVertical: 16 },
+  levelFilterRow: { flexDirection: "row", gap: 6, marginBottom: 10 },
+  levelFilterBtn: {
+    flex: 1,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    alignItems: "center",
+  },
+  levelFilterText: { fontSize: 11, fontWeight: "600" },
+  adminLink: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingVertical: 8,
+  },
+  adminLinkText: { fontSize: 15, fontWeight: "600" },
   aboutText: { fontSize: 15, fontWeight: "600" },
   aboutSub: { fontSize: 13, marginTop: 4 },
   logoutBtn: {

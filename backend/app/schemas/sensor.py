@@ -34,6 +34,7 @@ class ClimateRoomResponse(BaseModel):
 
 class HeatingCircuitStatus(BaseModel):
     circuit: str
+    config_prefix: str | None = None
     temp_set: float | None = None
     temp_supply: float | None = None
     temp_return: float | None = None

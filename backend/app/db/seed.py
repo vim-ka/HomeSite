@@ -25,7 +25,7 @@ from app.models.sensor import (
     SensorDataType,
     SensorType,
     SystemType,
-    sensor_datatype_link,
+    sensor_type_datatype_link,
 )
 from app.models.user import User
 
@@ -63,15 +63,23 @@ async def seed(session: AsyncSession) -> None:
     ]
 
     sensor_types = [
-        {"id": 1, "name": "18B10"},
-        {"id": 2, "name": "A2"},
-        {"id": 3, "name": "ff4"},
+        {"id": 1, "name": "18B10"},  # DS18B20 — temperature only
+        {"id": 2, "name": "A2"},     # YD4060 pressure transducer
+        {"id": 3, "name": "ff4"},    # DHT22 — temperature + humidity
     ]
 
     sensor_data_types = [
         {"id": 1, "name": "Temperature", "code": "tmp"},
         {"id": 2, "name": "Pressure", "code": "prs"},
         {"id": 3, "name": "Humidity", "code": "hmt"},
+    ]
+
+    # Which datatypes a sensor TYPE measures (fixed at the hardware level).
+    sensor_type_datatype_links = [
+        {"sensor_type_id": 1, "datatype_id": 1},  # 18B10 → tmp
+        {"sensor_type_id": 2, "datatype_id": 2},  # A2    → prs
+        {"sensor_type_id": 3, "datatype_id": 1},  # ff4   → tmp
+        {"sensor_type_id": 3, "datatype_id": 3},  # ff4   → hmt
     ]
 
     mount_points = [
@@ -94,35 +102,26 @@ async def seed(session: AsyncSession) -> None:
         {"id": 17, "name": "У кофемашины", "system_id": 3, "place_id": 3},
     ]
 
+    # actuator_id=1 → "boiler_unit" ESP32 (defined below in `actuators`).
+    # Climate sensors (11-17) intentionally have no actuator yet — second ESP32 pending.
     sensors = [
-        {"id": 1, "name": "tsboiler_s", "sensor_type_id": 1, "mount_point_id": 1},
-        {"id": 2, "name": "tsboiler_b", "sensor_type_id": 1, "mount_point_id": 2},
-        {"id": 3, "name": "tsrad_s", "sensor_type_id": 1, "mount_point_id": 3},
-        {"id": 4, "name": "tsrad_b", "sensor_type_id": 1, "mount_point_id": 4},
-        {"id": 5, "name": "tsfloor_s", "sensor_type_id": 1, "mount_point_id": 5},
-        {"id": 6, "name": "tsfloor_b", "sensor_type_id": 1, "mount_point_id": 6},
-        {"id": 7, "name": "tsihb_s", "sensor_type_id": 1, "mount_point_id": 7},
-        {"id": 8, "name": "tsihb_b", "sensor_type_id": 1, "mount_point_id": 8},
-        {"id": 9, "name": "tswatersupply_c", "sensor_type_id": 1, "mount_point_id": 9},
-        {"id": 10, "name": "tswatersupply_h", "sensor_type_id": 1, "mount_point_id": 10},
-        {"id": 11, "name": "clm_chld_th", "sensor_type_id": 3, "mount_point_id": 11},
-        {"id": 12, "name": "clm_cab_th", "sensor_type_id": 3, "mount_point_id": 12},
-        {"id": 13, "name": "clm_sleep_th", "sensor_type_id": 3, "mount_point_id": 13},
-        {"id": 14, "name": "clm_street_th", "sensor_type_id": 3, "mount_point_id": 14},
-        {"id": 15, "name": "clm_boiler_th", "sensor_type_id": 3, "mount_point_id": 15},
-        {"id": 16, "name": "clm_gost_th", "sensor_type_id": 3, "mount_point_id": 16},
-        {"id": 17, "name": "clm_kitchen_th", "sensor_type_id": 3, "mount_point_id": 17},
-    ]
-
-    # sensor_id → list of datatype_ids
-    sensor_datatype_links = [
-        # 18B10 (DS18B20) sensors → Temperature only
-        *[{"sensor_id": sid, "datatype_id": 1} for sid in range(1, 11)],
-        # ff4 (climate) sensors → Temperature + Humidity
-        *[link for sid in range(11, 18) for link in [
-            {"sensor_id": sid, "datatype_id": 1},
-            {"sensor_id": sid, "datatype_id": 3},
-        ]],
+        {"id": 1, "name": "tsboiler_s", "sensor_type_id": 1, "mount_point_id": 1, "actuator_id": 1},
+        {"id": 2, "name": "tsboiler_b", "sensor_type_id": 1, "mount_point_id": 2, "actuator_id": 1},
+        {"id": 3, "name": "tsrad_s", "sensor_type_id": 1, "mount_point_id": 3, "actuator_id": 1},
+        {"id": 4, "name": "tsrad_b", "sensor_type_id": 1, "mount_point_id": 4, "actuator_id": 1},
+        {"id": 5, "name": "tsfloor_s", "sensor_type_id": 1, "mount_point_id": 5, "actuator_id": 1},
+        {"id": 6, "name": "tsfloor_b", "sensor_type_id": 1, "mount_point_id": 6, "actuator_id": 1},
+        {"id": 7, "name": "tsihb_s", "sensor_type_id": 1, "mount_point_id": 7, "actuator_id": 1},
+        {"id": 8, "name": "tsihb_b", "sensor_type_id": 1, "mount_point_id": 8, "actuator_id": 1},
+        {"id": 9, "name": "tswatersupply_c", "sensor_type_id": 1, "mount_point_id": 9, "actuator_id": 1},
+        {"id": 10, "name": "tswatersupply_h", "sensor_type_id": 1, "mount_point_id": 10, "actuator_id": 1},
+        {"id": 11, "name": "clm_chld_th", "sensor_type_id": 3, "mount_point_id": 11, "actuator_id": None},
+        {"id": 12, "name": "clm_cab_th", "sensor_type_id": 3, "mount_point_id": 12, "actuator_id": None},
+        {"id": 13, "name": "clm_sleep_th", "sensor_type_id": 3, "mount_point_id": 13, "actuator_id": None},
+        {"id": 14, "name": "clm_street_th", "sensor_type_id": 3, "mount_point_id": 14, "actuator_id": None},
+        {"id": 15, "name": "clm_boiler_th", "sensor_type_id": 3, "mount_point_id": 15, "actuator_id": None},
+        {"id": 16, "name": "clm_gost_th", "sensor_type_id": 3, "mount_point_id": 16, "actuator_id": None},
+        {"id": 17, "name": "clm_kitchen_th", "sensor_type_id": 3, "mount_point_id": 17, "actuator_id": None},
     ]
 
     # --- Users (bcrypt instead of werkzeug scrypt) ---
@@ -316,19 +315,26 @@ async def seed(session: AsyncSession) -> None:
     await merge_if_missing(session, MountPoint, mount_points)
     await session.flush()
 
-    await merge_if_missing(session, Sensor, sensors)
+    # Actuators must exist before sensors (Sensor.actuator_id FK).
+    actuators = [
+        {"id": 1, "name": "Контроллер котельной", "mqtt_device_name": "boiler_unit", "description": "ESP32 — управление котлом, насосами, клапанами"},
+    ]
+    await merge_if_missing(session, Actuator, actuators)
     await session.flush()
 
-    # Sensor ↔ DataType links (skip existing)
+    # SensorType ↔ DataType links (new normalised table; skip existing rows)
     from sqlalchemy import select, update
-    existing_links = set(
+    existing_type_links = set(
         (r[0], r[1]) for r in
-        (await session.execute(select(sensor_datatype_link))).all()
+        (await session.execute(select(sensor_type_datatype_link))).all()
     )
-    for link in sensor_datatype_links:
-        key = (link["sensor_id"], link["datatype_id"])
-        if key not in existing_links:
-            await session.execute(sensor_datatype_link.insert().values(**link))
+    for link in sensor_type_datatype_links:
+        key = (link["sensor_type_id"], link["datatype_id"])
+        if key not in existing_type_links:
+            await session.execute(sensor_type_datatype_link.insert().values(**link))
+    await session.flush()
+
+    await merge_if_missing(session, Sensor, sensors)
     await session.flush()
 
     # Bind sensors to mount points (explicit temperature/humidity sensor_id)
@@ -358,13 +364,8 @@ async def seed(session: AsyncSession) -> None:
         )
     await session.flush()
 
-    # --- Actuators (physical devices that receive MQTT commands) ---
+    # --- Users / settings / schedules ---
 
-    actuators = [
-        {"id": 1, "name": "Контроллер котельной", "mqtt_device_name": "boiler_unit", "description": "ESP32 — управление котлом, насосами, клапанами"},
-    ]
-
-    await merge_if_missing(session, Actuator, actuators)
     await merge_if_missing(session, User, users)
     await merge_if_missing(session, ConfigKV, default_settings)
     await merge_if_missing(session, Schedule, schedules)

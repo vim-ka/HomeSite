@@ -67,6 +67,8 @@ std::vector<SensorMapping> ConfigManager::sensors() {
         m.addr = obj["addr"].as<String>();
         m.name = obj["name"].as<String>();
         m.type = obj["type"].as<String>();
+        m.offsetTmp = obj["offsetTmp"].is<float>() ? obj["offsetTmp"].as<float>() : 0.0f;
+        m.offsetHmt = obj["offsetHmt"].is<float>() ? obj["offsetHmt"].as<float>() : 0.0f;
         result.push_back(m);
     }
     return result;
@@ -81,6 +83,8 @@ void ConfigManager::setSensors(const std::vector<SensorMapping>& mappings) {
         obj["addr"] = m.addr;
         obj["name"] = m.name;
         obj["type"] = m.type;
+        if (m.offsetTmp != 0.0f) obj["offsetTmp"] = m.offsetTmp;
+        if (m.offsetHmt != 0.0f) obj["offsetHmt"] = m.offsetHmt;
     }
 
     String json;
@@ -133,6 +137,7 @@ PressureConfig ConfigManager::pressureHeating() {
     PressureConfig c;
     c.pin = _prefs.getUChar("prs_h_pin", DEFAULT_PRESSURE_HEATING_PIN);
     c.name = _prefs.getString("prs_h_name", "");  // empty = disabled
+    c.offset = _prefs.getFloat("prs_h_off", 0.0f);
     return c;
 }
 
@@ -140,6 +145,7 @@ PressureConfig ConfigManager::pressureWater() {
     PressureConfig c;
     c.pin = _prefs.getUChar("prs_w_pin", DEFAULT_PRESSURE_WATER_PIN);
     c.name = _prefs.getString("prs_w_name", "");  // empty = disabled
+    c.offset = _prefs.getFloat("prs_w_off", 0.0f);
     return c;
 }
 
@@ -151,6 +157,14 @@ void ConfigManager::setPressureHeating(uint8_t pin, const String& name) {
 void ConfigManager::setPressureWater(uint8_t pin, const String& name) {
     _prefs.putUChar("prs_w_pin", pin);
     _prefs.putString("prs_w_name", name);
+}
+
+void ConfigManager::setPressureHeatingOffset(float offset) {
+    _prefs.putFloat("prs_h_off", offset);
+}
+
+void ConfigManager::setPressureWaterOffset(float offset) {
+    _prefs.putFloat("prs_w_off", offset);
 }
 
 // -- Timezone --

@@ -204,8 +204,8 @@ void BoilerLogic::updateBoiler(const TempMap& temps) {
             if (t > target) target = t;
         }
 
-        // IHB (DHW) circuit
-        if (_ihbPumpCmd) {
+        // IHB (DHW) circuit — include if automode (pump cycles as needed) or manual pump on
+        if (_ihbAutomode || _ihbPumpCmd) {
             float t = _ihbTempSet;
             if (_almActive && _almTemp > t) t = _almTemp;
             if (t > target) target = t;
@@ -244,19 +244,35 @@ void BoilerLogic::updateBoiler(const TempMap& temps) {
 // ── Pump control with off_ihb priority ────────────────────────
 
 void BoilerLogic::updatePumps(const TempMap& temps) {
-    // IHB pump — always follows command
-    _relays->set(RELAY_IHB_PUMP, _ihbPumpCmd);
+    // IHB pump — automode cycles on/off by temperature, manual follows command
+    bool ihbPumpOn;
+    if (_ihbAutomode) {
+        float ihbTemp = getTemp(temps, "tsihb_s");
+        bool wasOn = _relays->get(RELAY_IHB_PUMP);
+        if (ihbTemp == TEMP_INVALID) {
+            ihbPumpOn = false;  // no sensor data — fail-safe OFF (critical alarm raised in updateAlarms)
+        } else if (!wasOn && ihbTemp < _ihbTempSet) {
+            ihbPumpOn = true;
+        } else if (wasOn && ihbTemp >= _ihbTempSet + IHB_HYSTERESIS) {
+            ihbPumpOn = false;
+        } else {
+            ihbPumpOn = wasOn;  // within hysteresis band
+        }
+    } else {
+        ihbPumpOn = _ihbPumpCmd;
+    }
+    _relays->set(RELAY_IHB_PUMP, ihbPumpOn);
 
-    // Radiator pump — off_ihb can override
+    // Radiator pump — off_ihb can override based on actual IHB pump state
     bool radOn = _radPumpCmd;
-    if (_radOffIhb && _ihbHeating && _ihbPumpCmd) {
+    if (_radOffIhb && _ihbHeating && ihbPumpOn) {
         radOn = false;  // Priority: turn off radiators while IHB is heating
     }
     _relays->set(RELAY_RADIATOR_PUMP, radOn);
 
     // Floor pump — off_ihb can override
     bool floorOn = _floorPumpCmd;
-    if (_floorOffIhb && _ihbHeating && _ihbPumpCmd) {
+    if (_floorOffIhb && _ihbHeating && ihbPumpOn) {
         floorOn = false;
     }
     _relays->set(RELAY_FLOOR_PUMP, floorOn);
@@ -340,7 +356,7 @@ void BoilerLogic::updateTeh(const TempMap& temps) {
 
     if (_tehAutomode) {
         // Auto: TEH kicks in after delay if boiler isn't heating IHB
-        bool boilerHeatingIhb = _relays->get(RELAY_BOILER_POWER) && _ihbPumpCmd;
+        bool boilerHeatingIhb = _relays->get(RELAY_BOILER_POWER) && _relays->get(RELAY_IHB_PUMP);
 
         if (boilerHeatingIhb) {
             // Boiler is working — reset TEH delay
@@ -514,6 +530,11 @@ void BoilerLogic::updateAlarms(const TempMap& temps, float heatingPressure) {
     if ((_radPumpCmd && radActual == TEMP_INVALID) ||
         (_floorPumpCmd && floorActual == TEMP_INVALID)) {
         _warningActive = true;  // no supply temp for active circuit
+    }
+
+    // IHB sensor loss in automode is critical — pump is forced OFF, DHW not regulated
+    if (_ihbAutomode && getTemp(temps, "tsihb_s") == TEMP_INVALID) {
+        _criticalActive = true;
     }
 
     _relays->set(RELAY_LAMP_WARNING, _warningActive);

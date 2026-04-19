@@ -24,6 +24,11 @@ class SensorUpdatePayload(BaseModel):
     data: dict[str, Any]
 
 
+class RfDebugPayload(BaseModel):
+    device_name: str
+    payload: str
+
+
 def _verify_internal_secret(x_internal_secret: str = Header()) -> None:
     if x_internal_secret != settings.internal_api_secret:
         raise HTTPException(status_code=403, detail="Invalid internal secret")
@@ -48,4 +53,18 @@ async def sensor_update(
         sensor_id=payload.sensor_id,
         ws_clients=manager.active_count,
     )
+    return {"broadcast": True, "clients": manager.active_count}
+
+
+@router.post("/rf-debug")
+async def rf_debug(
+    payload: RfDebugPayload,
+    _: None = Depends(_verify_internal_secret),
+):
+    """Receive raw RF frame from gateway and broadcast to WebSocket clients."""
+    await manager.broadcast({
+        "type": "rf_debug",
+        "device_name": payload.device_name,
+        "payload": payload.payload,
+    })
     return {"broadcast": True, "clients": manager.active_count}

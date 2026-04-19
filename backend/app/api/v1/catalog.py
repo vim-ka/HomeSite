@@ -24,6 +24,8 @@ from app.schemas.catalog import (
     SensorCreateRequest,
     SensorDataTypeResponse,
     SensorDetailResponse,
+    SensorOffsetResponse,
+    SensorOffsetUpdateRequest,
     SensorTypeCreateRequest,
     SensorTypeResponse,
     SensorTypeUpdateRequest,
@@ -67,7 +69,7 @@ async def create_sensor_type(
     service: CatalogService = Depends(get_catalog_service),
     db: AsyncSession = Depends(get_db),
 ):
-    result = await service.create_sensor_type(payload.name)
+    result = await service.create_sensor_type(payload.name, payload.datatype_ids)
     db.add(EventLog(level="INFO", source="catalog", method="POST", path="/api/v1/catalog/sensor-types",
                     message=f"Создан тип датчика: {payload.name}", user_id=user.id))
     return result
@@ -81,7 +83,7 @@ async def update_sensor_type(
     service: CatalogService = Depends(get_catalog_service),
     db: AsyncSession = Depends(get_db),
 ):
-    result = await service.update_sensor_type(st_id, payload.name)
+    result = await service.update_sensor_type(st_id, payload.name, payload.datatype_ids)
     db.add(EventLog(level="INFO", source="catalog", method="PUT", path=f"/api/v1/catalog/sensor-types/{st_id}",
                     message=f"Обновлён тип датчика id={st_id}: {payload.name}", user_id=user.id))
     return result
@@ -228,7 +230,10 @@ async def create_sensor(
     db: AsyncSession = Depends(get_db),
 ):
     sensor = await service.create_sensor(
-        payload.name, payload.sensor_type_id, payload.mount_point_id, payload.datatype_ids
+        payload.name,
+        payload.sensor_type_id,
+        payload.mount_point_id,
+        payload.actuator_id,
     )
     sensors = await service.get_all_sensors_detail()
     db.add(EventLog(level="INFO", source="catalog", method="POST", path="/api/v1/catalog/sensors",
@@ -245,7 +250,11 @@ async def update_sensor(
     db: AsyncSession = Depends(get_db),
 ):
     await service.update_sensor(
-        sensor_id, payload.name, payload.sensor_type_id, payload.mount_point_id, payload.datatype_ids
+        sensor_id,
+        payload.name,
+        payload.sensor_type_id,
+        payload.mount_point_id,
+        payload.actuator_id,
     )
     sensors = await service.get_all_sensors_detail()
     db.add(EventLog(level="INFO", source="catalog", method="PUT", path=f"/api/v1/catalog/sensors/{sensor_id}",
@@ -263,6 +272,50 @@ async def delete_sensor(
     await service.delete_sensor(sensor_id)
     db.add(EventLog(level="INFO", source="catalog", method="DELETE", path=f"/api/v1/catalog/sensors/{sensor_id}",
                     message=f"Удалён датчик id={sensor_id}", user_id=user.id))
+
+
+# ---- Sensor Offsets ----
+
+
+@router.get("/sensors/{sensor_id}/offsets", response_model=list[SensorOffsetResponse])
+async def list_sensor_offsets(
+    sensor_id: int,
+    _user: User = Depends(admin_only),
+    service: CatalogService = Depends(get_catalog_service),
+):
+    return await service.get_sensor_offsets(sensor_id)
+
+
+@router.put("/sensors/{sensor_id}/offsets/{datatype_id}", response_model=SensorOffsetResponse)
+async def update_sensor_offset(
+    sensor_id: int,
+    datatype_id: int,
+    payload: SensorOffsetUpdateRequest,
+    user: User = Depends(admin_only),
+    service: CatalogService = Depends(get_catalog_service),
+    db: AsyncSession = Depends(get_db),
+):
+    offset, publish = await service.update_sensor_offset(sensor_id, datatype_id, payload.value)
+
+    # Best-effort push to the device. If the sensor isn't bound to an actuator
+    # yet, or the gateway is offline, the DB value remains authoritative —
+    # offsets are re-pushable via the settings-resync flow later.
+    if publish is not None:
+        from app.services.gateway_client import GatewayClient
+        await GatewayClient().sensor_offset(
+            publish["mqtt_device_name"],
+            publish["sensor_name"],
+            publish["datatype_code"],
+            publish["value"],
+        )
+
+    db.add(EventLog(
+        level="INFO", source="catalog", method="PUT",
+        path=f"/api/v1/catalog/sensors/{sensor_id}/offsets/{datatype_id}",
+        message=f"Оффсет датчика id={sensor_id} datatype={offset['datatype_code']}: {payload.value}",
+        user_id=user.id,
+    ))
+    return offset
 
 
 # ---- Pending Sensors (auto-discovery) ----
@@ -285,7 +338,7 @@ async def accept_pending_sensor(
     db: AsyncSession = Depends(get_db),
 ):
     sensor = await service.accept_pending_sensor(
-        ps_id, payload.sensor_type_id, payload.mount_point_id, payload.datatype_ids
+        ps_id, payload.sensor_type_id, payload.mount_point_id
     )
     sensors = await service.get_all_sensors_detail()
     db.add(EventLog(level="INFO", source="catalog", method="POST", path=f"/api/v1/catalog/pending-sensors/{ps_id}/accept",
@@ -332,6 +385,7 @@ async def assign_device_sensor(
     mqtt_device_name: str,
     payload: SensorAssignRequest,
     user: User = Depends(admin_only),
+    service: CatalogService = Depends(get_catalog_service),
     db: AsyncSession = Depends(get_db),
 ):
     """Assign a logical name to a sensor on ESP32 device."""
@@ -340,6 +394,15 @@ async def assign_device_sensor(
     ok = await GatewayClient().sensor_assign(mqtt_device_name, payload.address, payload.name)
     if not ok:
         raise HTTPException(status_code=502, detail="Gateway error")
+
+    # If a Sensor row already exists with this logical name, bind it to the
+    # actuator we just provisioned it on. Lets the offset-publish path know
+    # which device to target.
+    actuator = await service.repo.get_actuator_by_mqtt_name(mqtt_device_name)
+    sensor = await service.repo.get_sensor_by_name(payload.name)
+    if actuator is not None and sensor is not None and sensor.actuator_id != actuator.id:
+        sensor.actuator_id = actuator.id
+        await db.flush()
 
     db.add(EventLog(
         level="INFO", source="catalog", method="POST",
@@ -368,6 +431,38 @@ async def remove_device_sensor(
         level="INFO", source="catalog", method="POST",
         path=f"/api/v1/catalog/devices/{mqtt_device_name}/sensor-remove",
         message=f"Удалён датчик {payload.address} с {mqtt_device_name}",
+        user_id=user.id,
+    ))
+    return {"status": "ok"}
+
+
+class DeviceCommandRequest(BaseModel):
+    params: dict[str, str]
+
+
+@router.post("/devices/{mqtt_device_name}/command")
+async def send_device_command(
+    mqtt_device_name: str,
+    payload: DeviceCommandRequest,
+    user: User = Depends(admin_only),
+    db: AsyncSession = Depends(get_db),
+):
+    """Push arbitrary device-local commands (restart, node_name, interval, timezone, raw_debug, ...)
+    via gateway → MQTT cmd topic. Bypasses config_kv (these are NVS-resident on the device)."""
+    from app.services.gateway_client import GatewayClient
+
+    if not payload.params:
+        raise HTTPException(status_code=400, detail="params required")
+
+    ok = await GatewayClient().dispatch_command(mqtt_device_name, payload.params)
+    if not ok:
+        raise HTTPException(status_code=502, detail="Gateway error")
+
+    summary = ", ".join(f"{k}={v}" for k, v in payload.params.items())
+    db.add(EventLog(
+        level="INFO", source="catalog", method="POST",
+        path=f"/api/v1/catalog/devices/{mqtt_device_name}/command",
+        message=f"Команда устройству {mqtt_device_name}: {summary}",
         user_id=user.id,
     ))
     return {"status": "ok"}

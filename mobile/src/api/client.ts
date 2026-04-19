@@ -8,17 +8,27 @@ const api = axios.create({
   timeout: 10000,
 });
 
+// Separate instance for non-versioned paths (e.g. /health/*)
+export const apiRoot = axios.create({
+  baseURL: "http://192.168.1.100:8000",
+  headers: { "Content-Type": "application/json" },
+  timeout: 10000,
+});
+
 export function setBaseURL(url: string) {
-  api.defaults.baseURL = url.replace(/\/$/, "") + "/api/v1";
+  const clean = url.replace(/\/$/, "");
+  api.defaults.baseURL = clean + "/api/v1";
+  apiRoot.defaults.baseURL = clean;
 }
 
-api.interceptors.request.use((config) => {
+function attachAuth(config: any) {
   const token = useAuthStore.getState().accessToken;
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
+  if (token) config.headers.Authorization = `Bearer ${token}`;
   return config;
-});
+}
+
+api.interceptors.request.use(attachAuth);
+apiRoot.interceptors.request.use(attachAuth);
 
 api.interceptors.response.use(
   (response) => response,

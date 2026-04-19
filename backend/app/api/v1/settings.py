@@ -160,21 +160,35 @@ async def update_database(
             f"@{payload.host}:{payload.port}/{payload.dbname}"
         )
 
-    # Validate connection before saving
-    if payload.type == "postgresql":
-        from sqlalchemy.ext.asyncio import create_async_engine as _create_engine
-        from sqlalchemy import text as _text
-        test_engine = _create_engine(new_url, pool_pre_ping=True)
-        try:
-            async with test_engine.connect() as conn:
-                await conn.execute(_text("SELECT 1"))
-        except Exception as e:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Cannot connect to PostgreSQL: {str(e)}"
-            )
-        finally:
-            await test_engine.dispose()
+    # Validate connection before saving, and check whether the target DB
+    # already has tables. If empty, the UI must warn the admin that switching
+    # will land on a bare DB until `alembic upgrade head` + data migration.
+    target_is_empty = False
+    from sqlalchemy.ext.asyncio import create_async_engine as _create_engine
+    from sqlalchemy import text as _text
+    test_engine = _create_engine(new_url, pool_pre_ping=True)
+    try:
+        async with test_engine.connect() as conn:
+            await conn.execute(_text("SELECT 1"))
+            if payload.type == "postgresql":
+                count_q = _text(
+                    "SELECT COUNT(*) FROM information_schema.tables "
+                    "WHERE table_schema = 'public'"
+                )
+            else:
+                count_q = _text(
+                    "SELECT COUNT(*) FROM sqlite_master "
+                    "WHERE type='table' AND name NOT LIKE 'sqlite_%'"
+                )
+            result = await conn.execute(count_q)
+            target_is_empty = (result.scalar() or 0) == 0
+    except Exception as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot connect to {payload.type}: {str(e)}",
+        )
+    finally:
+        await test_engine.dispose()
 
     env_path = ".env"
     lines: list[str] = []
@@ -201,7 +215,11 @@ async def update_database(
         message=f"Обновлена конфигурация БД: type={payload.type}",
         user_id=user.id,
     ))
-    return {"success": True, "restart_required": True}
+    return {
+        "success": True,
+        "restart_required": True,
+        "target_is_empty": target_is_empty,
+    }
 
 
 # --- Backup ---

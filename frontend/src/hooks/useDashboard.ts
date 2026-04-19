@@ -10,6 +10,7 @@ export interface ClimateRoom {
 
 export interface HeatingCircuit {
   circuit: string;
+  config_prefix: string | null;
   temp_set: number | null;
   temp_supply: number | null;
   temp_return: number | null;

@@ -3,6 +3,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
+from app.models.config import Actuator
 from app.models.heating import HeatingCircuit
 from app.models.pending_sensor import PendingSensor
 from app.models.sensor import (
@@ -12,9 +13,10 @@ from app.models.sensor import (
     SensorData,
     SensorDataHistory,
     SensorDataType,
+    SensorOffset,
     SensorType,
     SystemType,
-    sensor_datatype_link,
+    sensor_type_datatype_link,
 )
 
 
@@ -31,6 +33,22 @@ class CatalogRepository:
     async def get_sensor_types(self) -> list[SensorType]:
         result = await self.db.execute(select(SensorType).order_by(SensorType.id))
         return list(result.scalars().all())
+
+    async def get_sensor_types_with_datatypes(self) -> list[dict]:
+        rows = await self.get_sensor_types()
+        link_rows = await self.db.execute(
+            select(
+                sensor_type_datatype_link.c.sensor_type_id,
+                sensor_type_datatype_link.c.datatype_id,
+            )
+        )
+        dt_map: dict[int, list[int]] = {}
+        for r in link_rows.all():
+            dt_map.setdefault(r.sensor_type_id, []).append(r.datatype_id)
+        return [
+            {"id": st.id, "name": st.name, "datatype_ids": sorted(dt_map.get(st.id, []))}
+            for st in rows
+        ]
 
     async def get_sensor_type_by_id(self, st_id: int) -> SensorType | None:
         result = await self.db.execute(select(SensorType).where(SensorType.id == st_id))
@@ -51,6 +69,40 @@ class CatalogRepository:
         await self.db.commit()
         await self.db.refresh(st)
         return st
+
+    async def set_sensor_type_datatypes(self, st_id: int, datatype_ids: list[int]) -> None:
+        result = await self.db.execute(
+            select(sensor_type_datatype_link.c.datatype_id).where(
+                sensor_type_datatype_link.c.sensor_type_id == st_id
+            )
+        )
+        current = set(r[0] for r in result.all())
+        desired = set(datatype_ids)
+
+        to_remove = current - desired
+        if to_remove:
+            await self.db.execute(
+                sa_delete(sensor_type_datatype_link).where(
+                    sensor_type_datatype_link.c.sensor_type_id == st_id,
+                    sensor_type_datatype_link.c.datatype_id.in_(to_remove),
+                )
+            )
+        for dt_id in desired - current:
+            await self.db.execute(
+                sensor_type_datatype_link.insert().values(
+                    sensor_type_id=st_id, datatype_id=dt_id
+                )
+            )
+        if to_remove or (desired - current):
+            await self.db.commit()
+
+    async def get_datatype_ids_for_sensor_type(self, st_id: int) -> list[int]:
+        result = await self.db.execute(
+            select(sensor_type_datatype_link.c.datatype_id).where(
+                sensor_type_datatype_link.c.sensor_type_id == st_id
+            )
+        )
+        return sorted(r[0] for r in result.all())
 
     async def delete_sensor_type(self, st_id: int) -> bool:
         st = await self.get_sensor_type_by_id(st_id)
@@ -232,27 +284,52 @@ class CatalogRepository:
                 MountPoint.name.label("mount_point_name"),
                 Place.name.label("place_name"),
                 SystemType.name.label("system_name"),
+                Sensor.actuator_id,
+                Actuator.name.label("actuator_name"),
+                Actuator.mqtt_device_name.label("actuator_mqtt_device_name"),
                 last_reading_sq.c.last_reading,
             )
             .join(SensorType, Sensor.sensor_type_id == SensorType.id)
             .join(MountPoint, Sensor.mount_point_id == MountPoint.id)
             .join(Place, MountPoint.place_id == Place.id)
             .join(SystemType, MountPoint.system_id == SystemType.id)
+            .outerjoin(Actuator, Sensor.actuator_id == Actuator.id)
             .outerjoin(last_reading_sq, Sensor.id == last_reading_sq.c.sensor_id)
             .order_by(Sensor.id)
         )
         result = await self.db.execute(stmt)
         rows = [row._asdict() for row in result.all()]
 
-        # Fetch datatype_ids from link table
-        dt_stmt = select(sensor_datatype_link.c.sensor_id, sensor_datatype_link.c.datatype_id)
+        # Fetch datatype_ids per sensor_type (now normalised at the type level).
+        dt_stmt = select(
+            sensor_type_datatype_link.c.sensor_type_id,
+            sensor_type_datatype_link.c.datatype_id,
+        )
         dt_result = await self.db.execute(dt_stmt)
         dt_map: dict[int, list[int]] = {}
         for r in dt_result.all():
-            dt_map.setdefault(r.sensor_id, []).append(r.datatype_id)
+            dt_map.setdefault(r.sensor_type_id, []).append(r.datatype_id)
+
+        # Non-zero offsets, joined with datatype code, for badge display.
+        off_stmt = (
+            select(
+                SensorOffset.sensor_id,
+                SensorDataType.code,
+                SensorOffset.value,
+            )
+            .join(SensorDataType, SensorDataType.id == SensorOffset.datatype_id)
+            .where(SensorOffset.value != 0)
+        )
+        off_result = await self.db.execute(off_stmt)
+        off_map: dict[int, list[dict]] = {}
+        for r in off_result.all():
+            off_map.setdefault(r.sensor_id, []).append(
+                {"datatype_code": r.code, "value": r.value}
+            )
 
         for row in rows:
-            row["datatype_ids"] = sorted(dt_map.get(row["id"], []))
+            row["datatype_ids"] = sorted(dt_map.get(row["sensor_type_id"], []))
+            row["offsets"] = off_map.get(row["id"], [])
 
         return rows
 
@@ -260,15 +337,31 @@ class CatalogRepository:
         result = await self.db.execute(select(Sensor).where(Sensor.id == sensor_id))
         return result.scalar_one_or_none()
 
-    async def create_sensor(self, name: str, sensor_type_id: int, mount_point_id: int) -> Sensor:
-        sensor = Sensor(name=name, sensor_type_id=sensor_type_id, mount_point_id=mount_point_id)
+    async def create_sensor(
+        self,
+        name: str,
+        sensor_type_id: int,
+        mount_point_id: int,
+        actuator_id: int | None = None,
+    ) -> Sensor:
+        sensor = Sensor(
+            name=name,
+            sensor_type_id=sensor_type_id,
+            mount_point_id=mount_point_id,
+            actuator_id=actuator_id,
+        )
         self.db.add(sensor)
         await self.db.commit()
         await self.db.refresh(sensor)
         return sensor
 
     async def update_sensor(
-        self, sensor_id: int, name: str, sensor_type_id: int, mount_point_id: int
+        self,
+        sensor_id: int,
+        name: str,
+        sensor_type_id: int,
+        mount_point_id: int,
+        actuator_id: int | None = None,
     ) -> Sensor | None:
         sensor = await self.get_sensor_by_id(sensor_id)
         if sensor is None:
@@ -276,9 +369,20 @@ class CatalogRepository:
         sensor.name = name
         sensor.sensor_type_id = sensor_type_id
         sensor.mount_point_id = mount_point_id
+        sensor.actuator_id = actuator_id
         await self.db.commit()
         await self.db.refresh(sensor)
         return sensor
+
+    async def get_sensor_by_name(self, name: str) -> Sensor | None:
+        result = await self.db.execute(select(Sensor).where(Sensor.name == name))
+        return result.scalar_one_or_none()
+
+    async def get_actuator_by_mqtt_name(self, mqtt_device_name: str) -> Actuator | None:
+        result = await self.db.execute(
+            select(Actuator).where(Actuator.mqtt_device_name == mqtt_device_name)
+        )
+        return result.scalar_one_or_none()
 
     async def delete_sensor(self, sensor_id: int) -> bool:
         sensor = await self.get_sensor_by_id(sensor_id)
@@ -288,33 +392,72 @@ class CatalogRepository:
         await self.db.commit()
         return True
 
-    async def set_sensor_datatypes(self, sensor_id: int, datatype_ids: list[int]) -> None:
-        """Sync sensor_datatype_link rows for the given sensor."""
-        result = await self.db.execute(
-            select(sensor_datatype_link.c.datatype_id).where(
-                sensor_datatype_link.c.sensor_id == sensor_id
+    # ---- Sensor Offsets ----
+
+    async def get_sensor_offsets(self, sensor_id: int) -> list[dict]:
+        """Return one offset row per datatype the sensor's TYPE exposes.
+
+        Missing rows surface as value=0.0 so the UI can edit them without a
+        prior insert.
+        """
+        sensor = await self.get_sensor_by_id(sensor_id)
+        if sensor is None:
+            return []
+
+        dt_rows = await self.db.execute(
+            select(SensorDataType.id, SensorDataType.code, SensorDataType.name)
+            .join(
+                sensor_type_datatype_link,
+                sensor_type_datatype_link.c.datatype_id == SensorDataType.id,
+            )
+            .where(sensor_type_datatype_link.c.sensor_type_id == sensor.sensor_type_id)
+            .order_by(SensorDataType.id)
+        )
+        datatypes = [dict(r._mapping) for r in dt_rows.all()]
+
+        # Existing offsets
+        off_rows = await self.db.execute(
+            select(SensorOffset.datatype_id, SensorOffset.value).where(
+                SensorOffset.sensor_id == sensor_id
             )
         )
-        current = set(r[0] for r in result.all())
-        desired = set(datatype_ids)
+        offsets = {r.datatype_id: r.value for r in off_rows.all()}
 
-        to_remove = current - desired
-        if to_remove:
-            await self.db.execute(
-                sa_delete(sensor_datatype_link).where(
-                    sensor_datatype_link.c.sensor_id == sensor_id,
-                    sensor_datatype_link.c.datatype_id.in_(to_remove),
-                )
+        return [
+            {
+                "sensor_id": sensor_id,
+                "datatype_id": dt["id"],
+                "datatype_code": dt["code"],
+                "datatype_name": dt["name"],
+                "value": offsets.get(dt["id"], 0.0),
+            }
+            for dt in datatypes
+        ]
+
+    async def upsert_sensor_offset(
+        self, sensor_id: int, datatype_id: int, value: float
+    ) -> SensorOffset:
+        result = await self.db.execute(
+            select(SensorOffset).where(
+                SensorOffset.sensor_id == sensor_id,
+                SensorOffset.datatype_id == datatype_id,
             )
+        )
+        row = result.scalar_one_or_none()
+        if row is None:
+            row = SensorOffset(sensor_id=sensor_id, datatype_id=datatype_id, value=value)
+            self.db.add(row)
+        else:
+            row.value = value
+        await self.db.commit()
+        await self.db.refresh(row)
+        return row
 
-        to_add = desired - current
-        for dt_id in to_add:
-            await self.db.execute(
-                sensor_datatype_link.insert().values(sensor_id=sensor_id, datatype_id=dt_id)
-            )
-
-        if to_remove or to_add:
-            await self.db.commit()
+    async def get_data_type_by_id(self, dt_id: int) -> SensorDataType | None:
+        result = await self.db.execute(
+            select(SensorDataType).where(SensorDataType.id == dt_id)
+        )
+        return result.scalar_one_or_none()
 
     async def sensor_has_history(self, sensor_id: int) -> bool:
         """Check if sensor has historical data that would be lost on deletion."""
@@ -415,9 +558,13 @@ class CatalogRepository:
         return True
 
     async def accept_pending_sensor(
-        self, ps_id: int, sensor_type_id: int, mount_point_id: int, datatype_ids: list[int]
+        self, ps_id: int, sensor_type_id: int, mount_point_id: int
     ) -> Sensor:
-        """Accept a pending sensor: create a real Sensor and remove from pending."""
+        """Accept a pending sensor: create a real Sensor and remove from pending.
+
+        Datatypes are derived from the chosen sensor type — no per-sensor
+        configuration needed.
+        """
         ps = await self.get_pending_sensor_by_id(ps_id)
         if ps is None:
             raise ValueError("Pending sensor not found")
@@ -428,12 +575,7 @@ class CatalogRepository:
             mount_point_id=mount_point_id,
         )
         self.db.add(sensor)
-        await self.db.flush()  # get sensor.id
-
-        for dt_id in datatype_ids:
-            await self.db.execute(
-                sensor_datatype_link.insert().values(sensor_id=sensor.id, datatype_id=dt_id)
-            )
+        await self.db.flush()
 
         await self.db.delete(ps)
         await self.db.commit()

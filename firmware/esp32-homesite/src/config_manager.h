@@ -8,11 +8,16 @@ struct SensorMapping {
     String addr;   // hardware address (e.g. "28FFA32C64140000") or pin for DHT
     String name;   // logical name (e.g. "tsboiler_s")
     String type;   // "ds18b20" or "dht22"
+    // Calibration offsets — added to raw reading before publishing.
+    // DHT22 exposes both datatypes; DS18B20 only uses offsetTmp.
+    float offsetTmp = 0.0f;
+    float offsetHmt = 0.0f;
 };
 
 struct PressureConfig {
     uint8_t pin;
-    String name;   // MQTT sensor name (e.g. "prs_heating")
+    String name;     // MQTT sensor name (e.g. "prs_heating")
+    float offset = 0.0f;  // bar, added to raw reading before publishing
 };
 
 // Default relay pins (16 channels)
@@ -62,6 +67,8 @@ public:
     PressureConfig pressureWater();
     void setPressureHeating(uint8_t pin, const String& name);
     void setPressureWater(uint8_t pin, const String& name);
+    void setPressureHeatingOffset(float offset);
+    void setPressureWaterOffset(float offset);
 
     // --- Timezone ---
     String timezone();

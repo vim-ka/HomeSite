@@ -5,12 +5,14 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.schema import PrimaryKeyConstraint
 
 from app.models.base import Base, TimestampMixin
+from app.models.config import Actuator  # noqa: F401  (used in type hint)
 
-# Many-to-many: which data types a sensor provides
-sensor_datatype_link = Table(
-    "sensor_datatype_link",
+# Many-to-many: which data types a sensor TYPE provides (DS18B20 → tmp,
+# DHT22 → tmp+hmt, YD4060 → prs). Individual sensors inherit from their type.
+sensor_type_datatype_link = Table(
+    "sensor_type_datatype_link",
     Base.metadata,
-    Column("sensor_id", ForeignKey("sensors.id", ondelete="CASCADE"), primary_key=True),
+    Column("sensor_type_id", ForeignKey("sensor_types.id", ondelete="CASCADE"), primary_key=True),
     Column("datatype_id", ForeignKey("sensor_data_types.id", ondelete="CASCADE"), primary_key=True),
 )
 
@@ -44,7 +46,13 @@ class Place(Base):
 
 
 class SensorType(Base):
-    """Hardware sensor types: 18B10, A2, ff4, etc."""
+    """Hardware sensor types: 18B10, A2, ff4, etc.
+
+    The set of data types a sensor type measures is fixed at the hardware
+    level — DS18B20 always measures temperature, DHT22 always measures
+    temperature + humidity, YD4060 always measures pressure. Individual
+    sensors of a given type inherit that set.
+    """
 
     __tablename__ = "sensor_types"
 
@@ -52,6 +60,9 @@ class SensorType(Base):
     name: Mapped[str] = mapped_column(String(64), nullable=False)
 
     sensors: Mapped[list["Sensor"]] = relationship(back_populates="sensor_type")
+    data_types: Mapped[list["SensorDataType"]] = relationship(
+        secondary=sensor_type_datatype_link, lazy="selectin",
+    )
 
     def __repr__(self) -> str:
         return f"<SensorType {self.name}>"
@@ -115,14 +126,18 @@ class Sensor(Base):
     name: Mapped[str] = mapped_column(String(64), nullable=False)
     sensor_type_id: Mapped[int] = mapped_column(ForeignKey("sensor_types.id"), nullable=False)
     mount_point_id: Mapped[int] = mapped_column(ForeignKey("mount_points.id"), nullable=False)
+    # Which ESP32 (actuator) this sensor is physically wired to. Null = not yet bound.
+    actuator_id: Mapped[int | None] = mapped_column(
+        ForeignKey("actuators.id"), nullable=True
+    )
 
-    sensor_type: Mapped["SensorType"] = relationship(back_populates="sensors")
+    sensor_type: Mapped["SensorType"] = relationship(
+        back_populates="sensors", lazy="joined"
+    )
     mount_point: Mapped["MountPoint"] = relationship(
         back_populates="sensors", foreign_keys=[mount_point_id]
     )
-    data_types: Mapped[list["SensorDataType"]] = relationship(
-        secondary=sensor_datatype_link, lazy="selectin",
-    )
+    actuator: Mapped["Actuator | None"] = relationship(lazy="joined")
     current_data: Mapped[list["SensorData"]] = relationship(back_populates="sensor")
     history: Mapped[list["SensorDataHistory"]] = relationship(back_populates="sensor")
 
@@ -151,6 +166,34 @@ class SensorData(Base):
 
     def __repr__(self) -> str:
         return f"<SensorData sensor={self.sensor_id} type={self.datatype_id} val={self.value}>"
+
+
+class SensorOffset(Base):
+    """Calibration offset added to raw sensor readings before publishing.
+
+    Composite PK (sensor_id, datatype_id) — DHT22 has separate offsets for
+    temperature ('tmp') and humidity ('hmt'). Applied firmware-side: the
+    backend pushes the value to the device, ESP32 stores it in NVS and
+    adds it to every reading from that sensor's datatype.
+    """
+
+    __tablename__ = "sensor_offsets"
+
+    sensor_id: Mapped[int] = mapped_column(
+        ForeignKey("sensors.id", ondelete="CASCADE"), nullable=False
+    )
+    datatype_id: Mapped[int] = mapped_column(
+        ForeignKey("sensor_data_types.id", ondelete="CASCADE"), nullable=False
+    )
+    value: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+
+    __table_args__ = (PrimaryKeyConstraint("sensor_id", "datatype_id"),)
+
+    sensor: Mapped["Sensor"] = relationship()
+    data_type: Mapped["SensorDataType"] = relationship()
+
+    def __repr__(self) -> str:
+        return f"<SensorOffset sensor={self.sensor_id} type={self.datatype_id} val={self.value}>"
 
 
 class SensorDataHistory(Base, TimestampMixin):
