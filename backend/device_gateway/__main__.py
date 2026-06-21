@@ -115,8 +115,8 @@ async def main() -> None:
                 # Check heartbeat timeouts
                 now = datetime.now(UTC)
                 heartbeat_timeout = timedelta(seconds=hb_timeout)
-                for device_name, last_seen in list(handler.heartbeats.items()):
-                    if now - last_seen > heartbeat_timeout:
+                for device_name, hb_record in list(handler.heartbeats.items()):
+                    if now - hb_record["timestamp"] > heartbeat_timeout:
                         msg = f"Device '{device_name}' heartbeat lost"
                         logger.warning("heartbeat_lost", device=device_name)
                         events.append({"level": "ERROR", "source": "gateway_watchdog", "message": msg})

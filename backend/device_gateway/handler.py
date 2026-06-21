@@ -313,7 +313,7 @@ class MQTTHandler:
         try:
             async with httpx.AsyncClient(timeout=3.0) as client:
                 await client.post(
-                    f"{self.settings.backend_url}/internal/sensor-update",
+                    f"{self.settings.backend_url}/api/v1/internal/sensor-update",
                     json={
                         "device_name": device_name,
                         "sensor_id": sensor_id,
@@ -331,7 +331,7 @@ class MQTTHandler:
         try:
             async with httpx.AsyncClient(timeout=3.0) as client:
                 await client.post(
-                    f"{self.settings.backend_url}/internal/rf-debug",
+                    f"{self.settings.backend_url}/api/v1/internal/rf-debug",
                     json={"device_name": device_name, "payload": payload},
                     headers={"X-Internal-Secret": self.settings.internal_api_secret},
                 )
