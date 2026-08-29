@@ -153,6 +153,14 @@ class SensorRepository:
             "heating_floorheating": ("heating_floorheating_wbm", "heating_floorheating_curve", "floor"),
         }
 
+        # Auto-mode mapping: prefix → config key (boiler derives setpoint from active
+        # circuits; IHB cycles the pump on temperature). Different behaviour, same
+        # "Авто" badge on the UI.
+        auto_mode_keys = {
+            "heating_boiler": "heating_boiler_automode",
+            "watersupply_ihb": "watersupply_ihb_automode",
+        }
+
         results = []
         for c in circuits:
             temp_sup = await self._get_mount_point_value(c.supply_mount_point_id, 1)
@@ -178,6 +186,11 @@ class SensorRepository:
                     if pza_target is not None:
                         temp_set = pza_target
 
+            auto_mode = False
+            auto_key = auto_mode_keys.get(c.config_prefix or "")
+            if auto_key is not None:
+                auto_mode = await self._get_config_value(auto_key) == "1"
+
             results.append({
                 "circuit": c.circuit_name,
                 "config_prefix": c.config_prefix,
@@ -189,6 +202,7 @@ class SensorRepository:
                 "pza_mode": pza_mode,
                 "pza_curve": pza_curve,
                 "pza_capable": pza_capable,
+                "auto_mode": auto_mode,
             })
 
         # Boiler automode override — duplicates firmware updateBoiler() so the

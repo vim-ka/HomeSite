@@ -43,6 +43,7 @@ class HeatingCircuitStatus(BaseModel):
     pza_mode: bool = False
     pza_curve: int | None = None
     pza_capable: bool = False
+    auto_mode: bool = False
 
 
 class WaterSupplyStatus(BaseModel):

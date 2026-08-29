@@ -275,6 +275,7 @@ function PZAIndicators({
 
   const radManual = Number(settings.heating_radiator_temp ?? "45");
   const floorManual = Number(settings.heating_floorheating_temp ?? "30");
+  const ihbAuto = settings.watersupply_ihb_automode === "1";
 
   return (
     <section className="bg-white rounded-lg shadow p-4">
@@ -306,6 +307,8 @@ function PZAIndicators({
         <Indicator
           label={t("heating.ihb")}
           value={`${settings.watersupply_ihb_temp ?? "45"}°C`}
+          badge={ihbAuto ? "Авто" : undefined}
+          badgeColor={ihbAuto ? "green" : undefined}
           icon={<Droplets className="h-4 w-4 text-blue-500" />}
         />
       </div>
@@ -477,13 +480,11 @@ export default function HeatingPage() {
             {dashboard.heating.map((c) => {
               const keys = circuitKeys[c.config_prefix ?? ""];
               const pumpOn = keys ? bool(keys.pump) : !!c.pump;
-              const isBoiler = c.config_prefix === "heating_boiler";
-              // Backend provides the authoritative temp_set:
+              // Backend provides the authoritative temp_set when it's derived:
               //   • PZA mode → interpolated from curve
-              //   • Boiler automode → max of active circuits (same as firmware)
-              //   • Otherwise → manual setpoint from config_kv
-              // Non-PZA / non-auto circuits can still show optimistic local edits.
-              const useBackendSet = c.pza_mode || (isBoiler && boilerAuto);
+              //   • Auto mode (boiler / IHB) → computed server-side
+              //   • Otherwise → manual setpoint (fall back to optimistic local edits).
+              const useBackendSet = c.pza_mode || c.auto_mode;
               const tempSet = useBackendSet
                 ? c.temp_set
                 : keys ? num(keys.temp, String(c.temp_set ?? 0)) : c.temp_set;
@@ -508,7 +509,7 @@ export default function HeatingPage() {
                     <div className="flex justify-between items-center">
                       <span className="flex items-center gap-1">
                         {t("dashboard.tempSet")}
-                        {isBoiler && boilerAuto ? (
+                        {c.auto_mode ? (
                           <span className="text-[9px] px-1 py-0.5 rounded bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300">
                             Авто
                           </span>

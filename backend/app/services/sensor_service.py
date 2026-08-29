@@ -38,6 +38,7 @@ class SensorService:
                 pza_mode=h.get("pza_mode", False),
                 pza_curve=h.get("pza_curve"),
                 pza_capable=h.get("pza_capable", False),
+                auto_mode=h.get("auto_mode", False),
             )
             for h in heating_raw
         ]

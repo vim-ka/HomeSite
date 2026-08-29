@@ -19,6 +19,7 @@ export interface HeatingCircuit {
   pza_mode: boolean;
   pza_curve: number | null;
   pza_capable: boolean;
+  auto_mode: boolean;
 }
 
 export interface WaterSupplyItem {

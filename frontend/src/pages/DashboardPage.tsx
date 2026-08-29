@@ -113,7 +113,11 @@ function HeatingCard({ circuit: c }: { circuit: HeatingCircuit }) {
       <div className="mb-4 flex items-center justify-between">
         <div>
           <span className="text-sm text-gray-500">{t("dashboard.tempSet")}</span>
-          {c.pza_mode ? (
+          {c.auto_mode ? (
+            <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300">
+              Авто
+            </span>
+          ) : c.pza_mode ? (
             <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300">
               ПЗА кр.{c.pza_curve}
             </span>
