@@ -29,6 +29,10 @@ logs/
 .DS_Store
 Thumbs.db
 
+# Firmware build snapshots
+firmware/*.zip
+.pio/
+
 # Node
 node_modules/
 frontend/dist/
