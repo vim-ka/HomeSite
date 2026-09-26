@@ -50,9 +50,11 @@ export function useWebSocket() {
           const msg = JSON.parse(event.data);
           if (msg.type === "sensor_update") {
             refreshDashboard();
+            window.dispatchEvent(new Event("scheme-refresh"));
           } else if (msg.type === "settings_update") {
             queryClient.invalidateQueries({ queryKey: ["settings"] });
             queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+            window.dispatchEvent(new Event("scheme-refresh"));
           }
         } catch {
           // ignore malformed messages
