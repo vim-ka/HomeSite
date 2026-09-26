@@ -151,3 +151,26 @@ def test_heartbeat_sent_right_after_command(monkeypatch):
     monkeypatch.setattr(emu, "publish", fake_publish)
     asyncio.run(emu.on_boiler_command({"heating_radiator_pump": "0"}))
     assert topics.index("boiler_unit/ack") < topics.index("boiler_unit/heartbeat")
+
+
+def test_outdoor_temp_forward_does_not_trigger_an_extra_cycle(monkeypatch):
+    """The gateway forwards outdoor_temp on every street reading — that is telemetry, not a command."""
+    import argparse
+
+    from house_emulator.__main__ import Emulator
+
+    args = argparse.Namespace(
+        prefix="home/devices/", node="boiler_unit", rf_node="rf-gateway", speed=1, seed=1, outdoor=-12,
+        leak=0.3, boiler_panel=75, prs_heating="prs_heating", prs_water="prs_water", local_outdoor=False,
+        quiet=True,
+    )
+    emu = Emulator(args)
+    topics = []
+
+    async def fake_publish(topic, payload, qos=0):
+        topics.append(topic)
+
+    monkeypatch.setattr(emu, "publish", fake_publish)
+    asyncio.run(emu.on_boiler_command({"outdoor_temp": "-5.5"}))
+    assert topics == []
+    assert emu.sim.controller.outdoor == -5.5

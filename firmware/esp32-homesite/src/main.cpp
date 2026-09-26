@@ -85,7 +85,9 @@ void onCommand(const String& key, const String& value) {
 
     // Track for ack
     ackDoc[key] = "ok";
-    heartbeatSoon = true;
+    // outdoor_temp is telemetry forwarded on every street reading, not a command:
+    // it must not force an extra read/publish/control cycle each time
+    if (key != "outdoor_temp") heartbeatSoon = true;
 
     // System commands
     if (key == "reset_config") {
