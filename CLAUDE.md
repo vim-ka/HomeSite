@@ -90,6 +90,12 @@ Runtime settings stored in `config_kv` table (not in `.env`):
 - Range alerts: `heating_pressure_min`, `heating_pressure_max`, `heating_boiler_max_temp`
 - System: `access_token_expire_minutes`, `refresh_token_expire_days`, `log_level`, `device_gateway_url`
 - Charts: `chart_history_days`
+- PZA outdoor source: `pza_outdoor_sensor` (sensor name), `pza_outdoor_device` (controller that gets it forwarded as `outdoor_temp`)
+- Backups: `backup_enabled`, `backup_interval`, `backup_time` (UTC), `backup_last_run` — set via `/settings/backup-schedule`
+
+Every key writable via `PUT /settings` must be in the allowlist `backend/app/core/setting_rules.py`
+(type, range, admin-only flag). Device ranges there mirror the firmware SETTINGS table in
+`firmware/esp32-homesite/src/boiler_logic.cpp` — change both together.
 
 Infrastructure settings in `.env` only (not runtime-changeable):
 - `DATABASE_URL`, `JWT_SECRET_KEY`, `INTERNAL_API_SECRET`, `CORS_ORIGINS`
@@ -111,14 +117,22 @@ Tests use pytest-asyncio, httpx AsyncClient, isolated SQLite DB per session.
 ## Command Dispatch
 
 Settings changes → Gateway → grouped MQTT message per device:
-1. Frontend `PUT /settings` → Backend saves to `config_kv` + calls Gateway `POST /settings`
+1. Frontend `PUT /settings` → Backend validates (allowlist), saves to `config_kv` + calls Gateway `POST /settings`;
+   response carries `delivery` (`queued`/`failed`/`none`) and `unrouted` keys
 2. Gateway matches `config_key` to device via `config_prefix` in `heating_circuits` table (longest prefix wins)
-3. Dispatcher accumulates params per device, deduplicates (last write wins), debounces 5s
+3. Dispatcher accumulates params per device, deduplicates (last write wins), debounces 5s (max wait 15s);
+   failed publishes are re-queued
 4. Publishes single MQTT message: `home/devices/{mqtt_device_name}/cmd` → `{"key1": "val1", "key2": "val2"}`
-5. ESP32 should respond with ack: `home/devices/{name}/ack` → `{"key1": "ok"}`
+   — **never retained** (a retained `restart` boot-loops the device)
+5. ESP32 responds with ack: `home/devices/{name}/ack` → `{"key1": "ok"}`; non-`ok` values
+   (`invalid_value`, `unknown_key`, `persist_failed`) mark the key unsynced + ERROR event
 6. Watchdog checks for ack timeout (configurable `ack_timeout_seconds`, default 30s)
 
-ESP32 should also publish periodic heartbeat: `home/devices/{name}/heartbeat` (any payload).
+`config_kv` is the desired state: when a device reboots (heartbeat `uptime` decreases) or is first
+seen after a gateway restart, the gateway re-sends all of its keys (`device_gateway/sync.py`).
+
+ESP32 publishes a periodic heartbeat: `home/devices/{name}/heartbeat` (JSON with `uptime`, relays,
+safety flags `autofill_fault` / `boiler_sensor_lost` / `overtemp`).
 Heartbeat loss detected after `heartbeat_timeout_seconds` (default 60s) → ERROR in event log.
 
 ## Deployment Target
