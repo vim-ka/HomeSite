@@ -10,6 +10,8 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
+  ReferenceLine,
+  ReferenceDot,
 } from "recharts";
 import {
   Flame,
@@ -158,17 +160,23 @@ function TempSlider({
 /*  PZA chart with curve selector                                     */
 /* ------------------------------------------------------------------ */
 
+const PZA_OUTDOOR_MIN = -35;
+const PZA_OUTDOOR_MAX = 20;
+
 function PZAChart({
   curves,
   selectedCurve,
   onSelectCurve,
   outdoorTemp,
+  actualSupply,
   maxY,
 }: {
   curves: PZACurve[];
   selectedCurve: number;
   onSelectCurve: (i: number) => void;
   outdoorTemp?: number;
+  /** Measured supply temperature of the circuit (sensor) */
+  actualSupply?: number | null;
   maxY: number;
 }) {
   const COLORS = ["#2563eb", "#16a34a", "#d97706", "#dc2626", "#7c3aed"];
@@ -185,6 +193,12 @@ function PZAChart({
     outdoorTemp != null
       ? interpolatePZA(curves[selectedCurve]!, outdoorTemp)
       : null;
+  // Marker position on the axis (the curve is flat beyond its end points)
+  const markerX =
+    outdoorTemp != null
+      ? Math.min(PZA_OUTDOOR_MAX, Math.max(PZA_OUTDOOR_MIN, outdoorTemp))
+      : null;
+  const selectedColor = COLORS[selectedCurve] ?? "#2563eb";
 
   return (
     <div>
@@ -204,15 +218,19 @@ function PZAChart({
         ))}
         {currentSupply != null && outdoorTemp != null && (
           <span className="ml-auto text-xs text-gray-500">
-            При {fmt(outdoorTemp)}°C = <strong>{fmt(currentSupply)}°C</strong>
+            Улица {fmt(outdoorTemp)}°C → подача <strong>{fmt(currentSupply)}°C</strong>
+            {actualSupply != null && <> (факт {fmt(actualSupply)}°C)</>}
           </span>
         )}
       </div>
       <ResponsiveContainer width="100%" height={220}>
-        <LineChart data={chartData}>
+        <LineChart data={chartData} margin={{ top: 18, right: 12, left: 0, bottom: 10 }}>
           <CartesianGrid strokeDasharray="3 3" />
           <XAxis
             dataKey="outdoor"
+            type="number"
+            domain={[PZA_OUTDOOR_MIN, PZA_OUTDOOR_MAX]}
+            ticks={[20, 10, 0, -10, -20, -35]}
             reversed
             tick={{ fontSize: 11 }}
             label={{ value: "°C улица", position: "insideBottomRight", offset: -5, fontSize: 11 }}
@@ -238,6 +256,30 @@ function PZAChart({
               dot={false}
             />
           ))}
+          {/* Recharts only picks up direct children — no fragments here */}
+          {markerX != null && currentSupply != null && (
+            <ReferenceLine
+              x={markerX}
+              stroke="#64748b"
+              strokeDasharray="4 3"
+              label={{ value: `${fmt(outdoorTemp)}°`, position: "top", fontSize: 11, fill: "#475569" }}
+            />
+          )}
+          {markerX != null && currentSupply != null && (
+            <ReferenceLine
+              y={currentSupply}
+              stroke={selectedColor}
+              strokeDasharray="4 3"
+              label={{ value: `${fmt(currentSupply)}°`, position: "insideTopLeft", fontSize: 11, fill: selectedColor }}
+            />
+          )}
+          {/* Actual supply (sensor) as a ring, target on the curve as a dot drawn on top */}
+          {markerX != null && actualSupply != null && (
+            <ReferenceDot x={markerX} y={actualSupply} r={7} fill="none" stroke="#0f172a" strokeWidth={1.5} />
+          )}
+          {markerX != null && currentSupply != null && (
+            <ReferenceDot x={markerX} y={currentSupply} r={4} fill={selectedColor} stroke="#fff" strokeWidth={1.5} />
+          )}
         </LineChart>
       </ResponsiveContainer>
     </div>
@@ -384,6 +426,9 @@ export default function HeatingPage() {
   const outdoorTemp = dashboard?.climate?.find(
     (r) => r.room === "Улица",
   )?.temperature ?? undefined;
+
+  const supplyOf = (prefix: string) =>
+    dashboard?.heating?.find((c) => c.config_prefix === prefix)?.temp_supply ?? null;
 
   /* ---- helpers ---- */
   const toggle = (key: string) =>
@@ -685,6 +730,7 @@ export default function HeatingPage() {
                   selectedCurve={Math.min(Math.max(radCurveIdx, 0), 4)}
                   onSelectCurve={(i) => set("heating_radiator_curve", i + 1)}
                   outdoorTemp={outdoorTemp}
+                  actualSupply={supplyOf("heating_radiator")}
                   maxY={90}
                 />
               </div>
@@ -737,6 +783,7 @@ export default function HeatingPage() {
                   selectedCurve={Math.min(Math.max(floorCurveIdx, 0), 4)}
                   onSelectCurve={(i) => set("heating_floorheating_curve", i + 1)}
                   outdoorTemp={outdoorTemp}
+                  actualSupply={supplyOf("heating_floorheating")}
                   maxY={45}
                 />
               </div>
