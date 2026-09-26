@@ -50,3 +50,5 @@ backend/app/db/migrations/versions/__pycache__/
 .coverage
 htmlcov/
 .claude/
+*.db-shm
+*.db-wal

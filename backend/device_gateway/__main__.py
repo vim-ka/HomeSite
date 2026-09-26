@@ -33,6 +33,14 @@ async def main() -> None:
     setup_logging(settings.log_level)
     logger = structlog.get_logger("device_gateway")
 
+    if settings.secret_is_placeholder:
+        if settings.is_production:
+            raise SystemExit(
+                "Refusing to start in production with placeholder INTERNAL_API_SECRET "
+                "(anyone who can reach the gateway API could command devices)"
+            )
+        logger.warning("insecure_default_internal_secret")
+
     # Override MQTT settings from config_kv (single source of truth)
     from device_gateway.config_db import load_mqtt_from_db
 

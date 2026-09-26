@@ -47,8 +47,12 @@ if [ ! -f "$INSTALL_DIR/.env" ]; then
     cp backend/.env.example "$INSTALL_DIR/.env"
     # Enable log file rotation for production
     sed -i 's|^# LOG_FILE=.*|LOG_FILE=/opt/homesite/logs/backend.log|' "$INSTALL_DIR/.env"
-    echo "IMPORTANT: Edit $INSTALL_DIR/.env with your settings!"
+    echo "IMPORTANT: Review $INSTALL_DIR/.env (CORS_ORIGINS etc.)"
 fi
+
+# Never run with placeholder secrets (JWT / internal API)
+source deploy/lib_secrets.sh
+ensure_secrets "$INSTALL_DIR/.env"
 
 # Set permissions
 chown -R "$USER:$USER" "$INSTALL_DIR"

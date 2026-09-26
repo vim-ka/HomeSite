@@ -6,6 +6,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, require_role
 from app.core.config import get_settings as get_app_settings
+from app.core.setting_rules import (
+    RULES,
+    SECRET_KEYS,
+    SettingsPermissionError,
+    SettingsValidationError,
+)
 from app.db.session import get_db
 from app.models.event import EventLog
 from app.models.user import User, UserRole
@@ -44,10 +50,62 @@ async def get_all_settings(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Get all Config_KV entries."""
+    """Get all Config_KV entries (secrets excluded — admin reads MQTT via /settings/mqtt)."""
     repo = SettingsRepository(db)
     settings = await repo.get_all()
-    return [SettingResponse(key=k, value=v) for k, v in settings.items()]
+    return [SettingResponse(key=k, value=v) for k, v in settings.items() if k not in SECRET_KEYS]
+
+
+async def _apply_settings(
+    service: SettingsService, updates: dict, user: User, db: AsyncSession, path: str
+) -> dict:
+    """Validate + save + dispatch, log the change and notify WS clients."""
+    try:
+        result = await service.update_settings(updates, user.role)
+    except SettingsPermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e)) from e
+    except SettingsValidationError as e:
+        raise HTTPException(status_code=422, detail={"errors": e.errors}) from e
+
+    normalized: dict[str, str] = result["settings"]
+    summary = ", ".join(f"{k}={v}" for k, v in normalized.items())
+    db.add(EventLog(
+        level="INFO",
+        source="settings",
+        method="PUT",
+        path=path,
+        message=f"Settings updated: {summary}",
+        user_id=user.id,
+    ))
+    if result["delivery"] == "failed":
+        db.add(EventLog(
+            level="WARNING",
+            source="settings",
+            path=path,
+            message=(
+                f"Settings saved but not delivered to device ({result['error']}); "
+                "they will be re-sent when the gateway sees the device again"
+            ),
+            user_id=user.id,
+        ))
+    if result["unrouted"]:
+        db.add(EventLog(
+            level="ERROR",
+            source="settings",
+            path=path,
+            message=f"No device configured for settings: {', '.join(result['unrouted'])}",
+            user_id=user.id,
+        ))
+
+    # Notify all WebSocket clients about the settings change
+    await ws_manager.broadcast({"type": "settings_update", "settings": normalized})
+
+    return {
+        "success": True,
+        "delivery": result["delivery"],
+        "unrouted": result["unrouted"],
+        "error": result["error"],
+    }
 
 
 @router.put("")
@@ -57,26 +115,12 @@ async def update_settings(
     service: SettingsService = Depends(get_settings_service),
     db: AsyncSession = Depends(get_db),
 ):
-    """Update settings and dispatch to DeviceGateway. RBAC: admin/operator."""
-    await service.update_settings(payload.settings)
+    """Update settings and dispatch to DeviceGateway.
 
-    summary = ", ".join(f"{k}={v}" for k, v in payload.settings.items())
-    db.add(EventLog(
-        level="INFO",
-        source="settings",
-        method="PUT",
-        path="/api/v1/settings",
-        message=f"Settings updated: {summary}",
-        user_id=user.id,
-    ))
-
-    # Notify all WebSocket clients about the settings change
-    await ws_manager.broadcast({
-        "type": "settings_update",
-        "settings": {k: str(v) for k, v in payload.settings.items()},
-    })
-
-    return {"success": True}
+    RBAC: admin/operator; safety limits and system parameters are admin-only
+    (see app.core.setting_rules). Unknown keys and out-of-range values → 422.
+    """
+    return await _apply_settings(service, payload.settings, user, db, "/api/v1/settings")
 
 
 @router.get("/mqtt", response_model=MqttSettingsResponse)
@@ -120,10 +164,14 @@ async def toggle_device(
     payload: ToggleRequest,
     user: User = Depends(require_role([UserRole.ADMIN, UserRole.OPERATOR])),
     service: SettingsService = Depends(get_settings_service),
+    db: AsyncSession = Depends(get_db),
 ):
-    """Toggle a device ON/OFF — actually dispatches via GatewayClient (fixes v1 stub)."""
+    """Toggle a device ON/OFF — only boolean settings can be toggled."""
+    rule = RULES.get(payload.id)
+    if rule is None or rule.kind != "bool":
+        raise HTTPException(status_code=422, detail=f"'{payload.id}' is not a toggleable setting")
     new_status = "1" if payload.toggle else "0"
-    await service.update_settings({payload.id: new_status})
+    await _apply_settings(service, {payload.id: new_status}, user, db, "/api/v1/settings/toggle")
     return ToggleResponse(id=payload.id, status="ON" if payload.toggle else "OFF")
 
 

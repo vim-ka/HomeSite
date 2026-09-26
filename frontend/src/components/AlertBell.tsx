@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { Bell } from "lucide-react";
+import { authFetch } from "@/api/client";
 
 const DEFAULT_POLL_MS = 30_000;
 const LS_KEY = "homesite-alerts-seen";
@@ -21,7 +22,7 @@ export default function AlertBell() {
     try {
       const since = getLastSeen();
       const url = since ? `/health/alerts?since=${encodeURIComponent(since)}` : "/health/alerts";
-      const res = await fetch(url, { signal: controller.signal });
+      const res = await authFetch(url, { signal: controller.signal });
       if (res.ok) {
         const data = await res.json();
         setCount(data.count ?? 0);

@@ -1,3 +1,4 @@
+from dataclasses import dataclass, field
 from typing import Any
 
 import httpx
@@ -7,6 +8,15 @@ from app.core.logging import get_logger
 
 logger = get_logger(__name__)
 settings = get_settings()
+
+
+@dataclass
+class DispatchResult:
+    """Outcome of handing settings to the gateway."""
+
+    accepted: bool
+    unrouted: list[str] = field(default_factory=list)
+    error: str | None = None
 
 
 class GatewayClient:
@@ -36,8 +46,8 @@ class GatewayClient:
             logger.error("gateway_dispatch_error", error=str(e))
             return False
 
-    async def dispatch_settings(self, updates: dict[str, Any]) -> bool:
-        """Broadcast settings update to DeviceGateway for routing to relevant devices."""
+    async def dispatch_settings(self, updates: dict[str, Any]) -> DispatchResult:
+        """Hand settings to DeviceGateway for routing to relevant devices."""
         try:
             async with httpx.AsyncClient(base_url=self.base_url, timeout=self.timeout) as client:
                 response = await client.post(
@@ -45,13 +55,17 @@ class GatewayClient:
                     json={"settings": updates},
                     headers={"X-Internal-Secret": settings.internal_api_secret},
                 )
-                return response.status_code == 200
         except httpx.ConnectError:
             logger.warning("gateway_unreachable", base_url=self.base_url)
-            return False
+            return DispatchResult(accepted=False, error="gateway unreachable")
         except Exception as e:
             logger.error("gateway_dispatch_error", error=str(e))
-            return False
+            return DispatchResult(accepted=False, error=str(e) or type(e).__name__)
+
+        if response.status_code != 200:
+            return DispatchResult(accepted=False, error=f"gateway HTTP {response.status_code}")
+        body = response.json()
+        return DispatchResult(accepted=True, unrouted=list(body.get("unrouted", [])))
 
     async def reload_mqtt(self) -> bool:
         """Signal gateway to re-read MQTT config from DB and reconnect."""

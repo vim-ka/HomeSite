@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, require_role
@@ -66,11 +66,11 @@ async def create_user(
     db: AsyncSession = Depends(get_db),
 ):
     new_user = await service.create_user(
-        payload.username, payload.email, payload.password, payload.role
+        payload.username, payload.email, payload.password, payload.role.value
     )
     db.add(EventLog(
         level="INFO", source="auth", method="POST", path="/api/v1/auth/users",
-        message=f"Создан пользователь: {payload.username} (роль: {payload.role})",
+        message=f"Создан пользователь: {payload.username} (роль: {payload.role.value})",
         user_id=user.id,
     ))
     return new_user
@@ -86,6 +86,14 @@ async def delete_user(
     repo = UserRepository(db)
     target = await repo.get_by_id(user_id)
     target_username = target.username if target else f"id={user_id}"
+    if target is not None and target.id == user.id:
+        raise HTTPException(status_code=400, detail="Нельзя удалить собственную учётную запись")
+    if (
+        target is not None
+        and target.role == UserRole.ADMIN.value
+        and await repo.count_active_admins() <= 1
+    ):
+        raise HTTPException(status_code=400, detail="Нельзя удалить последнего администратора")
     await service.delete_user(user_id)
     db.add(EventLog(
         level="INFO", source="auth", method="DELETE", path=f"/api/v1/auth/users/{user_id}",

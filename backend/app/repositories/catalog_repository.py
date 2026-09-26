@@ -1,5 +1,5 @@
 from sqlalchemy import delete as sa_delete
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
@@ -388,6 +388,14 @@ class CatalogRepository:
         sensor = await self.get_sensor_by_id(sensor_id)
         if sensor is None:
             return False
+        # Unbind from mount points first — with foreign keys enforced the
+        # dangling reference would make the delete fail
+        for column in ("temperature_sensor_id", "pressure_sensor_id", "humidity_sensor_id"):
+            await self.db.execute(
+                update(MountPoint)
+                .where(getattr(MountPoint, column) == sensor_id)
+                .values({column: None})
+            )
         await self.db.delete(sensor)
         await self.db.commit()
         return True

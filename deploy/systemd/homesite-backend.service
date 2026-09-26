@@ -9,9 +9,12 @@ User=homesite
 Group=homesite
 WorkingDirectory=/opt/homesite/backend
 EnvironmentFile=/opt/homesite/.env
+# One worker on purpose: the WebSocket manager, HealthMonitor and rate limiter
+# live in-process. With 2 workers WS broadcasts reached ~half the clients and
+# every monitoring event was written twice.
 ExecStart=/opt/homesite/venv/bin/gunicorn app.main:app \
     --bind 127.0.0.1:8000 \
-    --workers 2 \
+    --workers 1 \
     --worker-class uvicorn.workers.UvicornWorker \
     --access-logfile - \
     --error-logfile -

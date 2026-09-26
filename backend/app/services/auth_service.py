@@ -5,6 +5,7 @@ from app.core.security import (
     create_refresh_token,
     decode_token,
     get_password_hash,
+    password_fingerprint,
     verify_password,
 )
 from app.repositories.user_repository import UserRepository
@@ -29,8 +30,9 @@ class AuthService:
                 detail="Аккаунт деактивирован",
             )
 
-        access_token = create_access_token(subject=user.username, role=user.role)
-        refresh_token = create_refresh_token(subject=user.username)
+        pv = password_fingerprint(user.password_hash)
+        access_token = create_access_token(subject=user.username, role=user.role, pv=pv)
+        refresh_token = create_refresh_token(subject=user.username, pv=pv)
 
         return TokenResponse(
             access_token=access_token,
@@ -60,8 +62,15 @@ class AuthService:
                 detail="User not found or inactive",
             )
 
-        access_token = create_access_token(subject=user.username, role=user.role)
-        new_refresh_token = create_refresh_token(subject=user.username)
+        pv = password_fingerprint(user.password_hash)
+        if payload.get("pv") != pv:
+            # Password changed since this token was issued
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid refresh token",
+            )
+        access_token = create_access_token(subject=user.username, role=user.role, pv=pv)
+        new_refresh_token = create_refresh_token(subject=user.username, pv=pv)
 
         return TokenResponse(
             access_token=access_token,

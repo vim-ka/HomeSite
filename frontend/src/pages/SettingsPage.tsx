@@ -3,7 +3,7 @@ import { useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Radio, Users, Database, Download, X, MapPin, Cpu, Waypoints, Radar, Wrench, CircuitBoard, SlidersHorizontal } from "lucide-react";
-import api from "@/api/client";
+import api, { authFetch } from "@/api/client";
 import { useAuthStore } from "@/stores/authStore";
 import { useThemeStore } from "@/stores/themeStore";
 import CollapsibleSection from "@/components/CollapsibleSection";
@@ -1855,7 +1855,7 @@ export default function SettingsPage() {
   const { data: devicesData, refetch: refetchDevices } = useQuery<DevicesResponse>({
     queryKey: ["health-devices"],
     queryFn: async () => {
-      const res = await fetch("/health/devices");
+      const res = await authFetch("/health/devices");
       if (!res.ok) throw new Error("Failed to fetch devices");
       return res.json();
     },

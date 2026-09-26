@@ -1,3 +1,4 @@
+import hashlib
 from datetime import UTC, datetime, timedelta
 
 import bcrypt
@@ -16,19 +17,39 @@ def get_password_hash(password: str) -> str:
     return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
 
 
-def create_access_token(subject: str, role: str, expires_delta: timedelta | None = None) -> str:
+def password_fingerprint(password_hash: str) -> str:
+    """Short digest of the stored hash, embedded in tokens as "pv".
+
+    Changing the password changes the hash, which invalidates every token
+    issued before — without a token blacklist or extra DB column.
+    """
+    return hashlib.sha256(password_hash.encode()).hexdigest()[:16]
+
+
+def create_access_token(
+    subject: str,
+    role: str,
+    expires_delta: timedelta | None = None,
+    pv: str | None = None,
+) -> str:
     expire = datetime.now(UTC) + (
         expires_delta or timedelta(minutes=settings.access_token_expire_minutes)
     )
     to_encode = {"sub": subject, "role": role, "exp": expire, "type": "access"}
+    if pv is not None:
+        to_encode["pv"] = pv
     return jwt.encode(to_encode, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
 
 
-def create_refresh_token(subject: str, expires_delta: timedelta | None = None) -> str:
+def create_refresh_token(
+    subject: str, expires_delta: timedelta | None = None, pv: str | None = None
+) -> str:
     expire = datetime.now(UTC) + (
         expires_delta or timedelta(days=settings.refresh_token_expire_days)
     )
     to_encode = {"sub": subject, "exp": expire, "type": "refresh"}
+    if pv is not None:
+        to_encode["pv"] = pv
     return jwt.encode(to_encode, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
 
 

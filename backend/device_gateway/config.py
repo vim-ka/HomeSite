@@ -56,6 +56,17 @@ class GatewaySettings(BaseSettings):
     # Logging
     log_level: str = "INFO"
 
+    # Application environment (shared .env with backend)
+    app_env: str = "dev"
+
+    @property
+    def secret_is_placeholder(self) -> bool:
+        return self.internal_api_secret.startswith("CHANGE-ME") or len(self.internal_api_secret) < 16
+
+    @property
+    def is_production(self) -> bool:
+        return self.app_env.lower() in ("prod", "production")
+
     @property
     def is_sqlite(self) -> bool:
         return self.database_url.startswith("sqlite")

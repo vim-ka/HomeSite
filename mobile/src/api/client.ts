@@ -46,7 +46,8 @@ api.interceptors.response.use(
           `${api.defaults.baseURL}/auth/refresh`,
           { refresh_token: refreshToken }
         );
-        useAuthStore.getState().setTokens(data.access_token, refreshToken!);
+        // Server rotates refresh tokens — keep the new one
+        useAuthStore.getState().setTokens(data.access_token, data.refresh_token ?? refreshToken!);
         originalRequest.headers.Authorization = `Bearer ${data.access_token}`;
         return api(originalRequest);
       } catch {
