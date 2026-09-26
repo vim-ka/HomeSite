@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuthStore } from "@/stores/authStore";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import { AlarmPanel } from "@/scheme/AlarmPanel";
@@ -16,15 +16,18 @@ export default function SchemePage() {
   const { data, isLoading, refetch } = useSchemeState({ fast: awaiting });
   useSchemeRefreshOnWs();
 
-  const box = useRef<HTMLDivElement>(null);
+  // Callback ref: the container only exists after the data has loaded (spinner
+  // first), so a mount-time effect would never see it and stay on "wide"
+  const observer = useRef<ResizeObserver | null>(null);
   const [layout, setLayout] = useState<LayoutName>("wide");
-  useEffect(() => {
-    const el = box.current;
+  const box = useCallback((el: HTMLDivElement | null) => {
+    observer.current?.disconnect();
+    observer.current = null;
     if (!el) return;
-    const ro = new ResizeObserver(([entry]) => setLayout(chooseLayout(entry!.contentRect.width)));
-    ro.observe(el);
-    return () => ro.disconnect();
+    observer.current = new ResizeObserver(([entry]) => setLayout(chooseLayout(entry!.contentRect.width)));
+    observer.current.observe(el);
   }, []);
+  useEffect(() => () => observer.current?.disconnect(), []);
 
   // stop fast polling once nothing is pending anymore
   useEffect(() => {
@@ -36,12 +39,9 @@ export default function SchemePage() {
   return (
     <div className="space-y-3" ref={box}>
       <TopStrip state={data} canRetry={role === "admin" || role === "operator"} />
-      <div className={layout === "wide" ? "relative" : "space-y-3"}>
-        <SchemeCanvas state={data} layout={layout} onOpen={(kind, r) => setDialog({ kind, role: r })} />
-        <div className={layout === "wide" ? "absolute bottom-3 right-3 w-72" : ""}>
-          <AlarmPanel state={data} collapsible={layout === "tall"} />
-        </div>
-      </div>
+      <SchemeCanvas state={data} layout={layout} onOpen={(kind, r) => setDialog({ kind, role: r })} />
+      {/* Below the scheme, never over it: on top it hid the tank and the water inlet */}
+      <AlarmPanel state={data} collapsible={layout === "tall"} />
       {dialog && (
         <ControlDialog kind={dialog.kind} role={dialog.role} state={data} userRole={role}
                        onClose={() => setDialog(null)}

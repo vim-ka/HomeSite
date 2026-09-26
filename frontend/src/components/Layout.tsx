@@ -20,6 +20,7 @@ import ThemeToggle from "@/components/ThemeToggle";
 import LanguageToggle from "@/components/LanguageToggle";
 import ServiceStatus from "@/components/ServiceStatus";
 import { cn } from "@/lib/utils";
+import { initialSidebarCollapsed } from "@/components/layoutPrefs";
 
 const NAV_ITEMS = [
   { to: "/dashboard", key: "dashboard", icon: LayoutDashboard },
@@ -38,7 +39,7 @@ export default function Layout() {
   const navigate = useNavigate();
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(initialSidebarCollapsed);
 
   useWebSocket();
 

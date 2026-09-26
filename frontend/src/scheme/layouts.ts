@@ -35,8 +35,8 @@ export const LAYOUTS: Record<LayoutName, LayoutDef> = {
       cold_water: [830, 440], hot_water: [912, 250], heating_pressure: [488, 332], water_pressure: [830, 462],
     },
     labels: [
-      { text: "К1 Радиаторы", at: [350, 114] }, { text: "К2 Тёплый пол", at: [530, 505] },
-      { text: "К3 Бойлер ГВС", at: [700, 460] }, { text: "Подпитка", at: [246, 498] },
+      { text: "Радиаторы", at: [250, 40] }, { text: "Тёплый пол", at: [530, 505] },
+      { text: "Бойлер ГВС", at: [700, 460] }, { text: "Подпитка", at: [246, 498] },
     ],
     badges: { rad: [250, 130], floor: [530, 522], tank: [700, 478] },
     pipes: [
@@ -68,7 +68,7 @@ export const LAYOUTS: Record<LayoutName, LayoutDef> = {
       water_pressure: [220, 590],
     },
     labels: [
-      { text: "К1 Радиаторы", at: [130, 122] }, { text: "К2 Тёплый пол", at: [130, 540] },
+      { text: "Радиаторы", at: [55, 54] }, { text: "Тёплый пол", at: [130, 540] },
       { text: "Бойлер", at: [288, 238] },
     ],
     badges: { rad: [130, 138], floor: [130, 556], tank: [282, 410] },

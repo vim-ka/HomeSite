@@ -41,10 +41,10 @@ export const FORMS: Record<Exclude<ElementKind, "sensor">, FormDef> = {
       { key: "heating_pressure_max", label: "Давление max", type: "number", min: 1.0, max: 2.8, step: 0.1, unit: "бар" },
     ],
   },
-  rad: circuit("heating_radiator", "Контур №1 — Радиаторы", 90),
-  floor: circuit("heating_floorheating", "Контур №2 — Тёплый пол", 50),
+  rad: circuit("heating_radiator", "Радиаторы", 90),
+  floor: circuit("heating_floorheating", "Тёплый пол", 50),
   tank: {
-    title: "Контур №3 — Бойлер ГВС",
+    title: "Бойлер ГВС",
     fields: [
       { key: "watersupply_ihb_automode", label: "Авто-режим БКН", type: "bool" },
       { key: "watersupply_ihb_pump", label: "Насос загрузки", type: "bool", disabledWhen: (v) => v.watersupply_ihb_automode === "1" },
