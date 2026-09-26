@@ -12,13 +12,15 @@ import { chooseLayout, type LayoutName } from "@/scheme/layouts";
 import { SchemeCanvas } from "@/scheme/SchemeCanvas";
 import { TopStrip } from "@/scheme/TopStrip";
 import type { ElementKind, RoleKey } from "@/scheme/types";
-import { SCHEME_QUERY_KEY, useSchemeRefreshOnWs, useSchemeState } from "@/scheme/useSchemeState";
+import { SCHEME_QUERY_KEY, stillAwaiting, useSchemeRefreshOnWs, useSchemeState } from "@/scheme/useSchemeState";
 import type { SchemeState } from "@/scheme/types";
 
 export default function SchemePage() {
   const role = useAuthStore((s) => s.user?.role);
   const [dialog, setDialog] = useState<{ kind: ElementKind; role?: RoleKey } | null>(null);
-  const [awaiting, setAwaiting] = useState(false);
+  // time of the last change sent from this page (null = not waiting for the device)
+  const [appliedAt, setAppliedAt] = useState<number | null>(null);
+  const awaiting = appliedAt !== null;
   const { data, isLoading, refetch } = useSchemeState({ fast: awaiting });
   useSchemeRefreshOnWs();
   const toast = useToast();
@@ -44,7 +46,7 @@ export default function SchemePage() {
     try {
       const { data: res } = await api.put("/settings", { settings: { [key]: next } });
       if (res?.delivery === "failed") toast.error("Шлюз недоступен — команда уйдёт при переподключении");
-      setAwaiting(true);
+      setAppliedAt(Date.now());
     } catch {
       toast.error(`${label}: не удалось отправить команду`);
     }
@@ -64,10 +66,10 @@ export default function SchemePage() {
   }, []);
   useEffect(() => () => observer.current?.disconnect(), []);
 
-  // stop fast polling once nothing is pending anymore
+  // stop fast polling once a state newer than the change has nothing pending
   useEffect(() => {
-    if (awaiting && data && data.sync.pending.length === 0) setAwaiting(false);
-  }, [awaiting, data]);
+    if (appliedAt !== null && data && !stillAwaiting(data, appliedAt)) setAppliedAt(null);
+  }, [appliedAt, data]);
 
   if (isLoading || !data) return <LoadingSpinner />;
 
@@ -80,7 +82,7 @@ export default function SchemePage() {
       {dialog && (
         <ControlDialog kind={dialog.kind} role={dialog.role} state={data} userRole={role}
                        onClose={() => setDialog(null)}
-                       onApplied={() => { setAwaiting(true); refetch(); }} />
+                       onApplied={() => { setAppliedAt(Date.now()); refetch(); }} />
       )}
     </div>
   );

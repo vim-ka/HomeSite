@@ -32,3 +32,8 @@ export function useSchemeRefreshOnWs() {
     return () => window.removeEventListener("scheme-refresh", onUpdate);
   }, [qc]);
 }
+
+/** Fast polling after a change: until a state generated after the apply shows nothing pending. */
+export function stillAwaiting(state: SchemeState, appliedAt: number): boolean {
+  return state.sync.pending.length > 0 || Date.parse(state.generated_at) <= appliedAt;
+}

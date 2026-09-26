@@ -220,11 +220,13 @@ class AsyncCommandDispatcher:
         return sum(len(keys) for keys in self.unsynced.values())
 
     def sync_status(self) -> dict[str, dict[str, list[str]]]:
-        """Keys awaiting ack and keys that failed, per device (for the UI)."""
-        devices = set(self._pending_acks) | set(self.unsynced)
+        """Keys not confirmed yet (still in the debounce queue or awaiting ack)
+        and keys that failed, per device (for the UI)."""
+        queued = {device: set(params) for device, params in self._device_store.items() if params}
+        devices = set(self._pending_acks) | set(self.unsynced) | set(queued)
         return {
             device: {
-                "pending": sorted(self._pending_acks.get(device, {})),
+                "pending": sorted(set(self._pending_acks.get(device, {})) | queued.get(device, set())),
                 "unsynced": sorted(self.unsynced.get(device, set())),
             }
             for device in sorted(devices)

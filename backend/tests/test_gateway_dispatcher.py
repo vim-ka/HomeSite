@@ -231,3 +231,10 @@ async def test_sync_status_lists_pending_and_unsynced(dispatcher, publisher):
 @pytest.mark.asyncio
 async def test_sync_status_empty(dispatcher):
     assert dispatcher.sync_status() == {}
+
+
+@pytest.mark.asyncio
+async def test_sync_status_includes_keys_still_in_debounce(dispatcher):
+    """A key waiting in the debounce queue is not confirmed yet — it must show as pending."""
+    await dispatcher.add_param("boiler", "heating_radiator_pump", "0")
+    assert dispatcher.sync_status() == {"boiler": {"pending": ["heating_radiator_pump"], "unsynced": []}}

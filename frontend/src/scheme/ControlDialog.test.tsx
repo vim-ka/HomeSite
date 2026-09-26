@@ -68,4 +68,41 @@ describe("ControlDialog", () => {
     renderDialog({ state });
     expect(screen.getByTitle("Ждём подтверждения устройства")).toBeInTheDocument();
   });
+
+  it("never claims ✓ when the gateway did not take the command", async () => {
+    vi.mocked(api.put).mockResolvedValue({ data: { success: true, delivery: "failed", unrouted: [] } });
+    renderDialog();
+    fireEvent.click(screen.getByLabelText("Автоматический режим"));
+    fireEvent.click(screen.getByRole("button", { name: "Применить" }));
+    expect(await screen.findByTitle("Не отправлено на устройство")).toBeInTheDocument();
+    expect(screen.queryByTitle("Подтверждено устройством")).toBeNull();
+  });
+
+  it("shows ✓ only after the key was seen pending and then cleared", async () => {
+    const state = makeState();
+    const { rerender } = render(
+      <MemoryRouter>
+        <ControlDialog kind="boiler" state={state} userRole="operator" onClose={() => {}} onApplied={() => {}} />
+      </MemoryRouter>,
+    );
+    fireEvent.click(screen.getByLabelText("Автоматический режим"));
+    fireEvent.click(screen.getByRole("button", { name: "Применить" }));
+    await screen.findByTitle("Отправляется");
+    const rerenderWith = (pending: string[]) => {
+      const next = makeState();
+      next.settings.heating_boiler_automode = "0";
+      next.sync.pending = pending;
+      rerender(
+        <MemoryRouter>
+          <ControlDialog kind="boiler" state={next} userRole="operator" onClose={() => {}} onApplied={() => {}} />
+        </MemoryRouter>,
+      );
+    };
+    rerenderWith([]);                              // stale poll before the gateway queued it
+    expect(screen.queryByTitle("Подтверждено устройством")).toBeNull();
+    rerenderWith(["heating_boiler_automode"]);
+    expect(screen.getByTitle("Ждём подтверждения устройства")).toBeInTheDocument();
+    rerenderWith([]);
+    expect(screen.getByTitle("Подтверждено устройством")).toBeInTheDocument();
+  });
 });

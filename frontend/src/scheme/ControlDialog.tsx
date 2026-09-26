@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { isAxiosError } from "axios";
 import api from "@/api/client";
@@ -13,10 +13,17 @@ const ROLE_LABELS: Partial<Record<RoleKey, string>> = {
   heating_pressure: "Давление контура", water_pressure: "Давление ХВС",
 };
 
-function SyncMark({ k, state, sent }: { k: string; state: SchemeState; sent: string[] }) {
+function SyncMark({ k, state, sent, seenPending, failed }: {
+  k: string; state: SchemeState; sent: string[]; seenPending: Set<string>; failed: boolean;
+}) {
+  const mine = sent.includes(k);
+  if (mine && failed) return <span title="Не отправлено на устройство" className="text-amber-600">⚠</span>;
   if (state.sync.pending.includes(k)) return <span title="Ждём подтверждения устройства">⏳</span>;
   if (state.sync.unsynced.includes(k)) return <span title="Не синхронизировано" className="text-amber-600">⚠</span>;
-  if (sent.includes(k)) return <span title="Подтверждено устройством" className="text-emerald-600">✓</span>;
+  // ✓ only once the gateway has listed the key as pending and then cleared it (acked);
+  // before that a poll may simply predate the command
+  if (mine && seenPending.has(k)) return <span title="Подтверждено устройством" className="text-emerald-600">✓</span>;
+  if (mine) return <span title="Отправляется">⏳</span>;
   return null;
 }
 
@@ -26,6 +33,12 @@ export function ControlDialog({ kind, role, state, userRole, onClose, onApplied 
 }) {
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [sent, setSent] = useState<string[]>([]);
+  const [deliveryFailed, setDeliveryFailed] = useState(false);
+  const [seenPending, setSeenPending] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    const now = sent.filter((k) => state.sync.pending.includes(k) && !seenPending.has(k));
+    if (now.length) setSeenPending((prev) => new Set([...prev, ...now]));
+  }, [state.sync.pending, sent, seenPending]);
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
@@ -44,7 +57,10 @@ export function ControlDialog({ kind, role, state, userRole, onClose, onApplied 
     const payload = Object.fromEntries(dirty.map((k) => [k, draft[k]!]));
     try {
       const { data } = await api.put("/settings", { settings: payload });
-      if (data?.delivery === "failed") setError("Сохранено, но шлюз недоступен — отправится при переподключении");
+      const failed = data?.delivery === "failed";
+      if (failed) setError("Сохранено, но шлюз недоступен — отправится при переподключении");
+      setDeliveryFailed(failed);
+      setSeenPending(new Set());
       setSent(dirty);
       setDraft({});
       onApplied(dirty);
@@ -92,7 +108,7 @@ export function ControlDialog({ kind, role, state, userRole, onClose, onApplied 
               ))}
             </div>
           )}
-          <SyncMark k={f.key} state={state} sent={sent} />
+          <SyncMark k={f.key} state={state} sent={sent} seenPending={seenPending} failed={deliveryFailed} />
         </div>
         {fieldErrors[f.key] && <div className="w-full text-right text-xs text-red-600">{fieldErrors[f.key]}</div>}
       </div>
