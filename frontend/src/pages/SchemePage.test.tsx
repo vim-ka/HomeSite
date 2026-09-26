@@ -1,12 +1,20 @@
 import { render, screen } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
+import { fireEvent, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import api from "@/api/client";
+import { ToastProvider } from "@/components/Toast";
 import { makeState } from "@/scheme/testing";
 import SchemePage from "./SchemePage";
 
-const mocked = vi.hoisted(() => ({ loading: false }));
+const mocked = vi.hoisted(() => ({ loading: false, role: "operator" }));
+vi.mock("@/api/client", () => ({ default: { put: vi.fn(), post: vi.fn(), get: vi.fn() } }));
+vi.mock("@/stores/authStore", () => ({
+  useAuthStore: (sel: (s: { user: { role: string } }) => unknown) => sel({ user: { role: mocked.role } }),
+}));
 vi.mock("@/scheme/useSchemeState", () => ({
+  SCHEME_QUERY_KEY: ["scheme-state"],
   useSchemeState: () =>
     mocked.loading ? { data: undefined, isLoading: true, refetch: vi.fn() } : { data: withAlarm(), isLoading: false, refetch: vi.fn() },
   useSchemeRefreshOnWs: () => {},
@@ -23,7 +31,7 @@ describe("SchemePage", () => {
   it("renders the scheme, alarms and unsynced counter", () => {
     render(
       <QueryClientProvider client={new QueryClient()}>
-        <MemoryRouter><SchemePage /></MemoryRouter>
+        <ToastProvider><MemoryRouter><SchemePage /></MemoryRouter></ToastProvider>
       </QueryClientProvider>,
     );
     expect(screen.getByRole("img", { name: "Схема котельной" })).toBeInTheDocument();
@@ -49,7 +57,7 @@ describe("SchemePage layout", () => {
       // a fresh element each time — React skips re-rendering an identical element
       const page = () => (
         <QueryClientProvider client={client}>
-          <MemoryRouter><SchemePage /></MemoryRouter>
+          <ToastProvider><MemoryRouter><SchemePage /></MemoryRouter></ToastProvider>
         </QueryClientProvider>
       );
       const { rerender } = render(page());
@@ -62,3 +70,42 @@ describe("SchemePage layout", () => {
     }
   });
 });
+
+describe("SchemePage quick toggle", () => {
+  const renderPage = () =>
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <ToastProvider><MemoryRouter><SchemePage /></MemoryRouter></ToastProvider>
+      </QueryClientProvider>,
+    );
+
+  it("left click switches the pump off and says so", async () => {
+    vi.mocked(api.put).mockResolvedValue({ data: { success: true, delivery: "queued", unrouted: [] } });
+    const { container } = renderPage();
+    fireEvent.click(container.querySelector("[data-element='rad_pump']")!);
+    expect(await screen.findByText("Насос радиаторов выключается")).toBeInTheDocument();
+    await waitFor(() => expect(api.put).toHaveBeenCalledWith("/settings", { settings: { heating_radiator_pump: "0" } }));
+  });
+
+  it("boiler power can't be toggled in auto mode", () => {
+    vi.mocked(api.put).mockClear();
+    const { container } = renderPage();
+    fireEvent.click(container.querySelector("[data-element='boiler']")!);
+    expect(screen.getByText(/авто-режиме/)).toBeInTheDocument();
+    expect(api.put).not.toHaveBeenCalled();
+  });
+
+  it("viewer gets a rights message instead of a command", () => {
+    vi.mocked(api.put).mockClear();
+    mocked.role = "viewer";
+    try {
+      const { container } = renderPage();
+      fireEvent.click(container.querySelector("[data-element='rad_pump']")!);
+      expect(screen.getByText("Недостаточно прав")).toBeInTheDocument();
+      expect(api.put).not.toHaveBeenCalled();
+    } finally {
+      mocked.role = "operator";
+    }
+  });
+});
+

@@ -17,7 +17,10 @@ export function makeState(over: Partial<SchemeState["controller"]> = {}): Scheme
     ) as SchemeState["values"],
     controller: { online: true, last_seen: "2026-01-20T12:00:00Z", relays: { ...relays, rad_pump: true },
                   flags: {}, targets: { boiler: 56, rad: 54, floor: 29, ihb: 55 }, ...over },
-    settings: { heating_boiler_automode: "1", heating_pressure_min: "1.0", heating_pressure_max: "2.0" },
+    settings: {
+      heating_boiler_automode: "1", heating_pressure_min: "1.0", heating_pressure_max: "2.0",
+      heating_radiator_pump: "1", heating_floorheating_pump: "0",
+    },
     sync: { pending: [], unsynced: [] },
     alarms: [], events: [], stale_minutes: 5,
   };

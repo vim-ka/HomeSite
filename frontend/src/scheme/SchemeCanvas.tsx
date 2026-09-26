@@ -1,7 +1,8 @@
-import type { KeyboardEvent, ReactNode } from "react";
-import { Boiler, FillValve, FloorLoops, Gauge, MixingValve, Pipe, Pump, Radiators, Separator, Tank, Tap, ValueTag } from "./elements";
+import { useRef, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
+import { Boiler, FillValve, FloorLoops, Gauge, MixingValve, Pipe, Pump, Radiators, Separator, Tank, Tap, ValueTag, Well } from "./elements";
 import { LAYOUTS, type LayoutName } from "./layouts";
 import { pipeColor } from "./pipeColor";
+import { TOGGLES } from "./toggles";
 import type { ElementKind, RoleKey, SchemeState } from "./types";
 
 const CIRCULATION = ["rad_pump", "floor_pump", "ihb_pump"] as const;
@@ -12,9 +13,15 @@ function valveDirection(open: boolean, close: boolean): "open" | "close" | null 
   return null;
 }
 
-export function SchemeCanvas({ state, layout, onOpen }: {
-  state: SchemeState; layout: LayoutName; onOpen: (kind: ElementKind, role?: RoleKey) => void;
+export function SchemeCanvas({ state, layout, onOpen, onToggle }: {
+  state: SchemeState;
+  layout: LayoutName;
+  onOpen: (kind: ElementKind, role?: RoleKey) => void;
+  /** Left click on an on/off element (desktop). Without it every click opens settings. */
+  onToggle?: (key: string, label: string) => void;
 }) {
+  // Touch has no right click: a tap opens settings, so a scroll tap never switches equipment
+  const lastPointer = useRef<string>("mouse");
   const L = LAYOUTS[layout];
   const { values: v, controller: c, settings: s } = state;
   const r = c.relays;
@@ -25,19 +32,30 @@ export function SchemeCanvas({ state, layout, onOpen }: {
   };
   const autofillState = c.flags.autofill_fault ? "fault" : r.af_open ? "opening" : r.af_close ? "closing" : "closed";
 
-  const hit = (id: string, kind: ElementKind, child: ReactNode, role?: RoleKey) => (
-    <g
-      data-element={id}
-      role="button"
-      tabIndex={0}
-      aria-label={id}
-      style={{ cursor: "pointer" }}
-      onClick={() => onOpen(kind, role)}
-      onKeyDown={(e: KeyboardEvent) => (e.key === "Enter" || e.key === " ") && onOpen(kind, role)}
-    >
-      {child}
-    </g>
-  );
+  const hit = (id: string, kind: ElementKind, child: ReactNode, role?: RoleKey) => {
+    const toggle = onToggle ? TOGGLES[id] : undefined;
+    const open = () => onOpen(kind, role);
+    const click = () => (toggle && lastPointer.current !== "touch" ? onToggle!(toggle.key, toggle.label) : open());
+    return (
+      <g
+        data-element={id}
+        role="button"
+        tabIndex={0}
+        aria-label={id}
+        style={{ cursor: "pointer" }}
+        onPointerDown={(e) => { lastPointer.current = e.pointerType || "mouse"; }}
+        onClick={click}
+        onContextMenu={(e: MouseEvent) => { e.preventDefault(); open(); }}
+        onKeyDown={(e: KeyboardEvent) => {
+          if (e.key === "Enter") open();
+          else if (e.key === " ") { e.preventDefault(); click(); }
+        }}
+      >
+        <title>{toggle ? `${toggle.label}: клик — вкл/выкл, правый клик — настройки` : "Настройки"}</title>
+        {child}
+      </g>
+    );
+  };
 
   return (
     <svg viewBox={`0 0 ${L.width} ${L.height}`} width="100%" role="img" aria-label="Схема котельной"
@@ -45,7 +63,11 @@ export function SchemeCanvas({ state, layout, onOpen }: {
       <g data-offline={String(!c.online)} opacity={c.online ? 1 : 0.45}>
         {L.pipes.map((p, i) => {
           const flowing = c.online && (p.flow === "any" ? CIRCULATION.some((k) => r[k]) : p.flow ? r[p.flow] : false);
-          return <Pipe key={i} points={p.points} color={pipeColor(p.role ? val(p.role) : null, p.kind)} flowing={flowing} />;
+          return (
+            <g key={i} data-pipe={p.id}>
+              <Pipe points={p.points} color={pipeColor(p.role ? val(p.role) : null, p.kind)} flowing={flowing} />
+            </g>
+          );
         })}
 
         {hit("radiators", "rad", <Radiators x={L.radiators[0]} y={L.radiators[1]} warmth={warmth("rad_supply")} />)}
@@ -54,13 +76,22 @@ export function SchemeCanvas({ state, layout, onOpen }: {
         {hit("floor", "floor", <FloorLoops x={L.floor[0]} y={L.floor[1]} warmth={warmth("floor_supply")} />)}
         {hit("floor_pump", "floor", <Pump x={L.floorPump[0]} y={L.floorPump[1]} running={r.floor_pump} r={11} />)}
         {hit("floor_valve", "floor", <MixingValve x={L.floorValve[0]} y={L.floorValve[1]} direction={valveDirection(r.floor_open, r.floor_close)} />)}
-        {hit("boiler", "boiler", <Boiler x={L.boiler[0]} y={L.boiler[1]} on={r.boiler} auto={s.heating_boiler_automode === "1"}
-                                         alarm={!!(c.flags.overtemp || c.flags.boiler_sensor_lost)} />)}
-        {hit("separator", "autofill", <Separator x={L.separator[0]} y={L.separator[1]} />)}
+        {hit("boiler", "boiler", (
+          <g transform={`translate(${L.boiler[0]} ${L.boiler[1]}) scale(${L.boilerScale ?? 1})`}>
+            <Boiler x={0} y={0} on={r.boiler} auto={s.heating_boiler_automode === "1"}
+                    alarm={!!(c.flags.overtemp || c.flags.boiler_sensor_lost)} />
+          </g>
+        ))}
+        {hit("separator", "autofill", <Separator x={L.separator[0]} y={L.separator[1]} collectorWidth={L.collectorWidth} />)}
         {hit("gauge", "autofill", <Gauge x={L.gauge[0]} y={L.gauge[1]} value={val("heating_pressure")}
                                          lo={Number(s.heating_pressure_min ?? NaN) || null} hi={Number(s.heating_pressure_max ?? NaN) || null} />)}
         {hit("autofill", "autofill", <FillValve x={L.autofill[0]} y={L.autofill[1]} state={autofillState} />)}
-        {hit("tank", "tank", <Tank x={L.tank[0]} y={L.tank[1]} fill={warmth("tank")} teh={r.teh} />)}
+        {hit("tank", "tank", (
+          <g transform={`translate(${L.tank[0]} ${L.tank[1]}) scale(${L.tankScale ?? 1})`}>
+            <Tank x={0} y={0} fill={warmth("tank")} teh={r.teh} />
+          </g>
+        ))}
+        {hit("well", "cold", <Well x={L.well[0]} y={L.well[1]} />)}
         {hit("ihb_pump", "tank", <Pump x={L.ihbPump[0]} y={L.ihbPump[1]} running={r.ihb_pump} r={11} />)}
         {hit("recirc_pump", "hot", <Pump x={L.recircPump[0]} y={L.recircPump[1]} running={r.water_hot_pump} r={9} />)}
         {hit("cold_pump", "cold", <Pump x={L.coldPump[0]} y={L.coldPump[1]} running={r.water_pump} r={9} />)}

@@ -139,7 +139,7 @@ export default function Layout() {
       <div className="flex flex-1 flex-col overflow-hidden">
         {/* Header */}
         <header className="flex h-14 items-center justify-between border-b border-gray-200 bg-white px-4 shadow-sm">
-          <span className="text-sm text-gray-500">{formattedDate}</span>
+          <span className="hidden text-sm text-gray-500 md:inline">{formattedDate}</span>
           <ServiceStatus />
           <div className="flex items-center gap-4">
             <LanguageToggle />

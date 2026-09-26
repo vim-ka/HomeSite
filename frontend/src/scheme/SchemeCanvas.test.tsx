@@ -51,3 +51,51 @@ describe("SchemeCanvas", () => {
     expect(container.querySelector("[data-element='autofill'] [data-state='fault']")).not.toBeNull();
   });
 });
+
+describe("SchemeCanvas clicks", () => {
+  it("left click on a pump toggles it, right click opens its settings", () => {
+    const onOpen = vi.fn();
+    const onToggle = vi.fn();
+    const { container } = render(<SchemeCanvas state={makeState()} layout="wide" onOpen={onOpen} onToggle={onToggle} />);
+    const pump = container.querySelector("[data-element='rad_pump']")!;
+    fireEvent.click(pump);
+    expect(onToggle).toHaveBeenCalledWith("heating_radiator_pump", "Насос радиаторов");
+    expect(onOpen).not.toHaveBeenCalled();
+    fireEvent.contextMenu(pump);
+    expect(onOpen).toHaveBeenCalledWith("rad", undefined);
+  });
+
+  it("a touch tap opens settings instead of toggling", () => {
+    const onOpen = vi.fn();
+    const onToggle = vi.fn();
+    const { container } = render(<SchemeCanvas state={makeState()} layout="wide" onOpen={onOpen} onToggle={onToggle} />);
+    const pump = container.querySelector("[data-element='rad_pump']")!;
+    fireEvent.pointerDown(pump, { pointerType: "touch" });
+    fireEvent.click(pump);
+    expect(onToggle).not.toHaveBeenCalled();
+    expect(onOpen).toHaveBeenCalledWith("rad", undefined);
+  });
+
+  it("elements without an on/off open settings on left click", () => {
+    const onOpen = vi.fn();
+    const onToggle = vi.fn();
+    const { container } = render(<SchemeCanvas state={makeState()} layout="wide" onOpen={onOpen} onToggle={onToggle} />);
+    fireEvent.click(container.querySelector("[data-element='tank']")!);
+    expect(onToggle).not.toHaveBeenCalled();
+    expect(onOpen).toHaveBeenCalledWith("tank", undefined);
+  });
+});
+
+describe("SchemeCanvas water supply", () => {
+  for (const layout of ["wide", "tall"] as const) {
+    it(`${layout}: well with the cold water pump, recirculation pump on the return loop`, () => {
+      const { container } = render(<SchemeCanvas state={makeState()} layout={layout} onOpen={() => {}} />);
+      expect(container.querySelector("[data-element='well']")).not.toBeNull();
+      expect(container.querySelector("[data-element='cold_pump']")).not.toBeNull();
+      expect(container.querySelector("[data-pipe='recirc_return']")).not.toBeNull();
+      expect(container.querySelector("[data-pipe='cold_to_tank']")).not.toBeNull();
+      expect(container.querySelector("[data-pipe='cold_to_fill']")).not.toBeNull();
+    });
+  }
+});
+
