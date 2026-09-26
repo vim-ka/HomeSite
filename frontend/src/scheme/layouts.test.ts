@@ -56,3 +56,20 @@ describe("radiator flow direction", () => {
     expect(L.tank[0] - collectorEnd).toBeGreaterThanOrEqual(90);
   });
 });
+
+describe("value tags", () => {
+  // tags are ~90×20; mirrored ones are anchored at their right end
+  for (const name of ["wide", "tall"] as const) {
+    it(`${name}: no two value tags overlap`, () => {
+      const L = LAYOUTS[name];
+      const boxes = Object.entries(L.tags).map(([k, [x, y]]) => ({ k, x0: L.mirrored ? x - 90 : x, y0: y }));
+      for (let i = 0; i < boxes.length; i++) {
+        for (let j = i + 1; j < boxes.length; j++) {
+          const a = boxes[i]!, b = boxes[j]!;
+          const overlap = Math.abs(a.x0 - b.x0) < 90 && Math.abs(a.y0 - b.y0) < 20;
+          expect(overlap, `${a.k} overlaps ${b.k}`).toBe(false);
+        }
+      }
+    });
+  }
+});

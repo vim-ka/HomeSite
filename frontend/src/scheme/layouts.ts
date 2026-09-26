@@ -37,15 +37,15 @@ export const BASE_LAYOUTS: Record<LayoutName, LayoutDef> = {
     ihbPump: [668, 300], recircPump: [885, 375], coldPump: [180, 470],
     tags: {
       boiler_supply: [225, 270], boiler_return: [225, 390], rad_supply: [505, 130], rad_return: [380, 140],
-      floor_supply: [505, 400], floor_return: [380, 420], tank: [728, 320], coil_return: [540, 400],
+      floor_supply: [505, 400], floor_return: [380, 420], tank: [728, 320], coil_return: [625, 390],
       hot_water: [872, 250], heating_pressure: [538, 332], cold_water: [142, 490], water_pressure: [142, 512],
     },
     labels: [
       { text: "Радиаторы", at: [430, 40], align: "middle" }, { text: "Тёплый пол", at: [584, 500] },
-      { text: "Бойлер ГВС", at: [720, 460] }, { text: "Подпитка", at: [296, 498] },
+      { text: "Бойлер ГВС", at: [760, 238], align: "middle" }, { text: "Подпитка", at: [296, 498] },
       { text: "Скважина", at: [72, 462] }, { text: "Рециркуляция", at: [820, 400] },
     ],
-    badges: { rad: [300, 22], floor: [584, 518], tank: [720, 478] },
+    badges: { rad: [300, 22], floor: [584, 518], tank: [720, 460] },
     pipes: [
       { kind: "supply", role: "boiler_supply", flow: "any", points: [[210, 300], [380, 300]] },
       { kind: "return", role: "boiler_return", flow: "any", points: [[380, 380], [210, 380]] },
@@ -83,9 +83,9 @@ export const BASE_LAYOUTS: Record<LayoutName, LayoutDef> = {
     ihbPump: [273, 270], recircPump: [346, 290], coldPump: [60, 556],
     boilerScale: 0.55, tankScale: 0.6, collectorWidth: 110,
     tags: {
-      boiler_supply: [8, 226], rad_supply: [208, 150], rad_return: [95, 150], floor_supply: [210, 380],
+      boiler_supply: [8, 226], rad_supply: [208, 150], rad_return: [95, 150], floor_supply: [210, 400],
       tank: [285, 372], heating_pressure: [30, 398], hot_water: [236, 196],
-      cold_water: [150, 575], water_pressure: [226, 575],
+      cold_water: [150, 575], water_pressure: [250, 575],
     },
     labels: [
       { text: "Радиаторы", at: [180, 54], align: "middle" }, { text: "Тёплый пол", at: [130, 540] },
