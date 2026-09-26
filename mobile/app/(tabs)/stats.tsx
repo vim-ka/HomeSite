@@ -15,6 +15,7 @@ import Card from "../../src/components/Card";
 import Section from "../../src/components/Section";
 import LineChart from "../../src/components/LineChart";
 import { useTheme } from "../../src/hooks/useTheme";
+import { parseServerTs } from "../../src/utils/time";
 
 type Period = "24h" | "7d" | "30d" | "90d";
 
@@ -40,7 +41,7 @@ interface ChartResponse {
 
 function formatLabel(raw: string, period: Period): string {
   try {
-    const d = new Date(raw.endsWith("Z") ? raw : raw + "Z");
+    const d = parseServerTs(raw);
     if (period === "24h") {
       return d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
     }

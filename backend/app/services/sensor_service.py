@@ -16,6 +16,10 @@ from app.schemas.sensor import (
 )
 
 
+STATS_CACHE_TTL = timedelta(minutes=2)
+_stats_cache: tuple[datetime, Stats24h] | None = None
+
+
 class SensorService:
     def __init__(self, sensor_repo: SensorRepository):
         self.sensor_repo = sensor_repo
@@ -55,7 +59,7 @@ class SensorService:
             for w in water_raw
         ]
 
-        stats = await self._calc_24h_stats()
+        stats = await self._cached_24h_stats()
 
         return DashboardResponse(
             climate=climate,
@@ -63,6 +67,17 @@ class SensorService:
             water_supply=water_supply,
             stats=stats,
         )
+
+    async def _cached_24h_stats(self) -> Stats24h:
+        """24h stats change slowly; recomputing them on every dashboard load
+        (triggered by each WS sensor_update) was the heaviest query we ran."""
+        global _stats_cache
+        now = datetime.now(UTC)
+        if _stats_cache is not None and now - _stats_cache[0] < STATS_CACHE_TTL:
+            return _stats_cache[1]
+        stats = await self._calc_24h_stats()
+        _stats_cache = (now, stats)
+        return stats
 
     async def _calc_24h_stats(self) -> Stats24h:
         """Compute 24h heating operation stats.

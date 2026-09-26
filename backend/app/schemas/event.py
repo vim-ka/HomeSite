@@ -2,10 +2,12 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
+from app.schemas.types import UTCDateTime
+
 
 class EventLogResponse(BaseModel):
     id: int
-    timestamp: datetime
+    timestamp: UTCDateTime
     level: str
     source: str
     method: str | None = None

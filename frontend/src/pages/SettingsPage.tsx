@@ -2854,6 +2854,19 @@ export default function SettingsPage() {
                     >
                       {t("settings.deviceRestart")}
                     </button>
+                    {device.heartbeat_data?.autofill_fault === true && (
+                      <button
+                        onClick={() => {
+                          if (confirm(t("settings.deviceAutofillResetConfirm"))) {
+                            deviceSettingsMutation.mutate({ device: device.mqtt_device_name, params: { autofill_reset: "1" } });
+                          }
+                        }}
+                        disabled={deviceSettingsMutation.isPending}
+                        className="px-3 py-1.5 bg-amber-50 text-amber-800 text-sm rounded-lg hover:bg-amber-100 disabled:opacity-50 transition-colors"
+                      >
+                        {t("settings.deviceAutofillReset")}
+                      </button>
+                    )}
                     {device.online && (
                       <button
                         onClick={() => doScan(device.mqtt_device_name)}

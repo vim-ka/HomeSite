@@ -1,16 +1,17 @@
 import axios from "axios";
 import { useAuthStore } from "../stores/authStore";
 
-// Default to localhost — user sets actual server URL in settings
+// Default: the nginx HTTPS endpoint (backend itself listens on 127.0.0.1 only).
+// User sets the actual server URL on the login screen / in settings.
 const api = axios.create({
-  baseURL: "http://192.168.1.100:8000/api/v1",
+  baseURL: "https://homesite.local/api/v1",
   headers: { "Content-Type": "application/json" },
   timeout: 10000,
 });
 
 // Separate instance for non-versioned paths (e.g. /health/*)
 export const apiRoot = axios.create({
-  baseURL: "http://192.168.1.100:8000",
+  baseURL: "https://homesite.local",
   headers: { "Content-Type": "application/json" },
   timeout: 10000,
 });

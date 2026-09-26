@@ -46,6 +46,9 @@ async def engine():
 @pytest_asyncio.fixture(autouse=True)
 async def _clean_tables(engine):
     """Drop and recreate all tables before each test for full isolation."""
+    import app.services.sensor_service as sensor_service
+
+    sensor_service._stats_cache = None
     yield
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)

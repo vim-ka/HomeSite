@@ -118,8 +118,8 @@ export default function WaterScreen() {
           <TempSlider
             label={t("waterSupply.tenDelay")}
             value={parseInt(s.watersupply_ihb_teh_heating_delay ?? "120")}
-            min={30}
-            max={300}
+            min={0}
+            max={240}
             step={10}
             unit={` ${t("common.min")}`}
             onValueChange={(v) => update("watersupply_ihb_teh_heating_delay", String(v))}

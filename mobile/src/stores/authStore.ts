@@ -21,7 +21,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   username: null,
   role: null,
   isLoggedIn: false,
-  serverUrl: "http://192.168.1.100:8000",
+  serverUrl: "https://homesite.local",
 
   setTokens: (access, refresh) => {
     SecureStore.setItemAsync("access_token", access);

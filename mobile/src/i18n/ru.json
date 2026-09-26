@@ -220,7 +220,7 @@
     "size": "Размер",
     "scheduleEnabled": "Расписание включено",
     "scheduleInterval": "Интервал",
-    "scheduleTime": "Время",
+    "scheduleTime": "Время (UTC)",
     "daily": "Ежедневно",
     "weekly": "Еженедельно",
     "tokenExpireMinutes": "Access-токен (мин)",

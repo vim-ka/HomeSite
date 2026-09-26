@@ -20,6 +20,7 @@ import { setBaseURL } from "../../src/api/client";
 import { useTheme } from "../../src/hooks/useTheme";
 import Card from "../../src/components/Card";
 import Section from "../../src/components/Section";
+import { parseServerTs } from "../../src/utils/time";
 
 interface EventItem {
   id: number;
@@ -196,7 +197,7 @@ export default function MoreScreen() {
             style={[styles.input, { borderColor: colors.gray[200], backgroundColor: colors.gray[50], color: colors.gray[800] }]}
             value={urlInput}
             onChangeText={setUrlInput}
-            placeholder="http://192.168.1.100:8000"
+            placeholder="https://homesite.local"
             placeholderTextColor={colors.gray[400]}
             autoCapitalize="none"
             keyboardType="url"
@@ -248,7 +249,7 @@ export default function MoreScreen() {
                     </View>
                     <Text style={[styles.eventUser, { color: colors.gray[500] }]}>{ev.username ?? "—"}</Text>
                     <Text style={[styles.eventTime, { color: colors.gray[400] }]}>
-                      {new Date(ev.timestamp).toLocaleString("ru-RU")}
+                      {parseServerTs(ev.timestamp).toLocaleString("ru-RU")}
                     </Text>
                   </View>
                   <Text style={[styles.eventMsg, { color: colors.gray[700] }]}>{ev.message}</Text>

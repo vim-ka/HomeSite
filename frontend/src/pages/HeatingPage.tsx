@@ -589,7 +589,7 @@ export default function HeatingPage() {
                 <TempSlider
                   value={num("heating_boiler_max_temp", "85")}
                   min={boilerAuto ? 60 : Math.max(60, num("heating_boiler_temp", "50"))}
-                  max={95}
+                  max={90}
                   onChange={(v) => set("heating_boiler_max_temp", v)}
                 />
               </SettingRow>
@@ -842,8 +842,8 @@ export default function HeatingPage() {
               <SettingRow label={t("heating.pressureMin")} hint={t("heating.hints.pressureMin")}>
                 <TempSlider
                   value={num("heating_pressure_min", "1.0") * 10}
-                  min={1}
-                  max={30}
+                  min={5}
+                  max={20}
                   unit=" бар"
                   onChange={(v) => {
                     if (v / 10 >= num("heating_pressure_max", "1.8")) return;
@@ -856,8 +856,8 @@ export default function HeatingPage() {
               <SettingRow label={t("heating.pressureMax")} hint={t("heating.hints.pressureMax")}>
                 <TempSlider
                   value={num("heating_pressure_max", "1.8") * 10}
-                  min={1}
-                  max={30}
+                  min={10}
+                  max={28}
                   unit=" бар"
                   onChange={(v) => {
                     if (v / 10 <= num("heating_pressure_min", "1.0")) return;

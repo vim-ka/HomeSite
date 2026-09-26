@@ -2,6 +2,8 @@ from datetime import datetime
 
 from pydantic import BaseModel
 
+from app.schemas.types import UTCDateTime
+
 
 class SensorResponse(BaseModel):
     id: int
@@ -10,7 +12,7 @@ class SensorResponse(BaseModel):
     mount_point: str
     place: str
     system: str
-    last_reading: datetime | None = None
+    last_reading: UTCDateTime | None = None
 
     model_config = {"from_attributes": True}
 
@@ -20,7 +22,7 @@ class SensorDataResponse(BaseModel):
     sensor_name: str
     datatype_name: str
     value: float
-    timestamp: datetime
+    timestamp: UTCDateTime
 
     model_config = {"from_attributes": True}
 

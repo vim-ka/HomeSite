@@ -64,13 +64,20 @@ systemctl daemon-reload
 
 # Generate self-signed TLS certificate (skip if already exists)
 SSL_DIR="/etc/ssl/homesite"
+# Include the VM's LAN addresses so clients connecting by IP (mobile app)
+# pass hostname verification once they trust this certificate
+HOST_IP_SANS=""
+for ip in $(hostname -I); do
+    [[ "$ip" == *:* ]] && continue  # skip IPv6
+    HOST_IP_SANS="${HOST_IP_SANS},IP:${ip}"
+done
 if [ ! -f "$SSL_DIR/cert.pem" ]; then
     mkdir -p "$SSL_DIR"
     openssl req -x509 -nodes -days 3650 -newkey rsa:2048 \
         -keyout "$SSL_DIR/key.pem" \
         -out    "$SSL_DIR/cert.pem" \
         -subj "/CN=homesite.local/O=HomeSite/C=RU" \
-        -addext "subjectAltName=DNS:homesite.local,IP:127.0.0.1"
+        -addext "subjectAltName=DNS:homesite.local,IP:127.0.0.1${HOST_IP_SANS}"
     chmod 600 "$SSL_DIR/key.pem"
     echo "Self-signed certificate generated: $SSL_DIR/cert.pem (valid 10 years)"
     echo ""

@@ -7,10 +7,22 @@ export function fmt(value: number | null | undefined, decimals = 1, fallback = "
 }
 
 /**
+ * Parse a server timestamp as UTC.
+ *
+ * Server timestamps are UTC but may arrive without a zone ("2026-04-19T09:22:17"
+ * or "2026-03-16 07:45:54" from SQLite); new Date() would read those as local time.
+ */
+export function parseServerTs(ts: string): Date {
+  let s = ts.trim().replace(" ", "T");
+  if (!/(Z|[+-]\d{2}:?\d{2})$/.test(s)) s += "Z";
+  return new Date(s);
+}
+
+/**
  * Format a timestamp string for display.
  */
 export function fmtTime(ts: string): string {
-  return new Date(ts).toLocaleString("ru-RU", {
+  return parseServerTs(ts).toLocaleString("ru-RU", {
     day: "2-digit",
     month: "2-digit",
     year: "2-digit",

@@ -1,33 +1,67 @@
 import { useRef, useCallback } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { isAxiosError } from "axios";
 import api from "@/api/client";
 import { useToast } from "@/components/Toast";
+
+interface SettingsUpdateResponse {
+  success: boolean;
+  delivery?: "queued" | "failed" | "none";
+  unrouted?: string[];
+  error?: string | null;
+}
+
+function describeError(err: unknown): string {
+  if (isAxiosError(err)) {
+    if (err.response?.status === 403) return "Недостаточно прав для изменения этого параметра";
+    const detail = err.response?.data?.detail;
+    if (detail?.errors) {
+      return "Недопустимое значение: " + Object.entries(detail.errors).map(([k, v]) => `${k} — ${v}`).join("; ");
+    }
+  }
+  return "Ошибка сохранения";
+}
 
 export function useSettingUpdate(debounceMs = 300) {
   const queryClient = useQueryClient();
   const timerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  // Changes collected during the debounce window — all of them are sent,
+  // not only the last one (the optimistic cache already shows all of them)
+  const pendingRef = useRef<Record<string, string>>({});
   const toast = useToast();
 
   const mutation = useMutation({
     mutationFn: async (settings: Record<string, string>) => {
-      await api.put("/settings", { settings });
-      return settings;
+      const { data } = await api.put<SettingsUpdateResponse>("/settings", { settings });
+      return data;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["dashboard"] });
-      toast.success("Сохранено");
+      if (data?.delivery === "failed") {
+        toast.error("Сохранено, но не отправлено на устройство — шлюз недоступен. Отправится при переподключении.");
+      } else if (data?.unrouted?.length) {
+        toast.error(`Сохранено, но нет устройства для: ${data.unrouted.join(", ")}`);
+      } else {
+        toast.success("Сохранено");
+      }
       // Trigger health refresh — command is in debounce queue immediately
       setTimeout(() => window.dispatchEvent(new Event("health-refresh")), 500);
     },
-    onError: () => {
+    onError: (err) => {
       queryClient.invalidateQueries({ queryKey: ["settings"] });
-      toast.error("Ошибка сохранения");
+      toast.error(describeError(err));
     },
   });
 
   // Keep a stable ref to mutate so the update callback doesn't go stale
   const mutateRef = useRef(mutation.mutate);
   mutateRef.current = mutation.mutate;
+
+  const flush = useCallback(() => {
+    const batch = pendingRef.current;
+    pendingRef.current = {};
+    if (Object.keys(batch).length > 0) mutateRef.current(batch);
+  }, []);
 
   const update = useCallback(
     (settings: Record<string, string>, immediate = false) => {
@@ -37,17 +71,16 @@ export function useSettingUpdate(debounceMs = 300) {
         (old) => (old ? { ...old, ...settings } : settings),
       );
 
+      pendingRef.current = { ...pendingRef.current, ...settings };
       if (timerRef.current) clearTimeout(timerRef.current);
 
       if (immediate) {
-        mutateRef.current(settings);
+        flush();
       } else {
-        timerRef.current = setTimeout(() => {
-          mutateRef.current(settings);
-        }, debounceMs);
+        timerRef.current = setTimeout(flush, debounceMs);
       }
     },
-    [queryClient, debounceMs],
+    [queryClient, debounceMs, flush],
   );
 
   return { update, ...mutation };
