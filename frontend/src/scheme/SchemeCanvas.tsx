@@ -2,7 +2,7 @@ import { useRef, type KeyboardEvent, type MouseEvent, type ReactNode } from "rea
 import { Boiler, FillValve, FloorLoops, Gauge, MixingValve, Pipe, Pump, Radiators, Separator, Tank, Tap, ValueTag, Well } from "./elements";
 import { LAYOUTS, type LayoutName } from "./layouts";
 import { pipeColor } from "./pipeColor";
-import { TOGGLES } from "./toggles";
+import { isOn, TOGGLES } from "./toggles";
 import type { ElementKind, RoleKey, SchemeState } from "./types";
 
 const CIRCULATION = ["rad_pump", "floor_pump", "ihb_pump"] as const;
@@ -18,7 +18,7 @@ export function SchemeCanvas({ state, layout, onOpen, onToggle }: {
   layout: LayoutName;
   onOpen: (kind: ElementKind, role?: RoleKey) => void;
   /** Left click on an on/off element (desktop). Without it every click opens settings. */
-  onToggle?: (key: string, label: string) => void;
+  onToggle?: (key: string, label: string, next: "0" | "1") => void;
 }) {
   // Touch has no right click: a tap opens settings, so a scroll tap never switches equipment
   const lastPointer = useRef<string>("mouse");
@@ -34,11 +34,17 @@ export function SchemeCanvas({ state, layout, onOpen, onToggle }: {
 
   const hit = (id: string, kind: ElementKind, child: ReactNode, role?: RoleKey) => {
     const toggle = onToggle ? TOGGLES[id] : undefined;
+    const on = toggle ? isOn(toggle, s, r) : undefined;
     const open = () => onOpen(kind, role);
-    const click = () => (toggle && lastPointer.current !== "touch" ? onToggle!(toggle.key, toggle.label) : open());
+    const click = () =>
+      toggle && lastPointer.current !== "touch" ? onToggle!(toggle.key, toggle.label, on ? "0" : "1") : open();
+    // switched off in the settings → drawn faded (the boiler's power is governed by auto mode, keep it)
+    const faded = toggle !== undefined && !on && toggle.key !== "heating_boiler_power";
     return (
       <g
         data-element={id}
+        data-enabled={on === undefined ? undefined : String(on)}
+        opacity={faded ? 0.45 : undefined}
         role="button"
         tabIndex={0}
         aria-label={id}
@@ -51,7 +57,11 @@ export function SchemeCanvas({ state, layout, onOpen, onToggle }: {
           else if (e.key === " ") { e.preventDefault(); click(); }
         }}
       >
-        <title>{toggle ? `${toggle.label}: клик — вкл/выкл, правый клик — настройки` : "Настройки"}</title>
+        <title>
+          {toggle
+            ? `${toggle.label}: ${on ? "включено" : "выключено"}. Клик — ${on ? "выключить" : "включить"}, правый клик — настройки`
+            : "Настройки"}
+        </title>
         {child}
       </g>
     );

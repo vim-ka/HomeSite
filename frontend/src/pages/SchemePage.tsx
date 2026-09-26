@@ -26,7 +26,10 @@ export default function SchemePage() {
   const toast = useToast();
   const queryClient = useQueryClient();
 
-  const quickToggle = async (key: string, label: string) => {
+  // one command per switch at a time: a double click must not send ON and OFF concurrently
+  const inFlight = useRef(new Set<string>());
+
+  const quickToggle = async (key: string, label: string, next: "0" | "1") => {
     if (!data) return;
     if (!canEdit(role, key)) {
       toast.error("Недостаточно прав");
@@ -37,21 +40,28 @@ export default function SchemePage() {
       toast.error(lock);
       return;
     }
-    const next = data.settings[key] === "1" ? "0" : "1";
-    toast.success(`${label} ${next === "1" ? "включается" : "выключается"}`);
-    // optimistic: a second click right away must toggle back, not repeat the same command
+    if (inFlight.current.has(key)) return;
+    inFlight.current.add(key);
+    // a poll already in flight must not overwrite the optimistic value
+    await queryClient.cancelQueries({ queryKey: SCHEME_QUERY_KEY });
+    const previous = queryClient.getQueryData<SchemeState>(SCHEME_QUERY_KEY);
     queryClient.setQueryData<SchemeState>(SCHEME_QUERY_KEY, (old) =>
       old ? { ...old, settings: { ...old.settings, [key]: next } } : old,
     );
     try {
       const { data: res } = await api.put("/settings", { settings: { [key]: next } });
+      toast.success(`${label} ${next === "1" ? "включается" : "выключается"}`);
       if (res?.delivery === "failed") toast.error("Шлюз недоступен — команда уйдёт при переподключении");
       setAppliedAt(Date.now());
     } catch {
+      if (previous) queryClient.setQueryData(SCHEME_QUERY_KEY, previous);
       toast.error(`${label}: не удалось отправить команду`);
+    } finally {
+      inFlight.current.delete(key);
+      refetch();
     }
-    refetch();
   };
+
 
   // Callback ref: the container only exists after the data has loaded (spinner
   // first), so a mount-time effect would never see it and stay on "wide"

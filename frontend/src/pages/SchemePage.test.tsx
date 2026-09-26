@@ -15,6 +15,7 @@ vi.mock("@/stores/authStore", () => ({
 }));
 vi.mock("@/scheme/useSchemeState", () => ({
   SCHEME_QUERY_KEY: ["scheme-state"],
+  stillAwaiting: () => false,
   useSchemeState: () =>
     mocked.loading ? { data: undefined, isLoading: true, refetch: vi.fn() } : { data: withAlarm(), isLoading: false, refetch: vi.fn() },
   useSchemeRefreshOnWs: () => {},
@@ -106,6 +107,40 @@ describe("SchemePage quick toggle", () => {
     } finally {
       mocked.role = "operator";
     }
+  });
+});
+
+describe("SchemePage quick toggle safety", () => {
+  it("a double click sends one command and the toast waits for the server", async () => {
+    let resolve!: (v: unknown) => void;
+    vi.mocked(api.put).mockReset().mockImplementation(() => new Promise((r) => { resolve = r; }));
+    const client = new QueryClient();
+    const cancel = vi.spyOn(client, "cancelQueries");
+    const { container } = render(
+      <QueryClientProvider client={client}>
+        <ToastProvider><MemoryRouter><SchemePage /></MemoryRouter></ToastProvider>
+      </QueryClientProvider>,
+    );
+    const pump = container.querySelector("[data-element='rad_pump']")!;
+    fireEvent.click(pump);
+    fireEvent.click(pump);
+    await waitFor(() => expect(api.put).toHaveBeenCalledTimes(1));
+    expect(cancel).toHaveBeenCalled();
+    expect(screen.queryByText("Насос радиаторов выключается")).toBeNull();
+    resolve({ data: { success: true, delivery: "queued", unrouted: [] } });
+    expect(await screen.findByText("Насос радиаторов выключается")).toBeInTheDocument();
+  });
+
+  it("a failed command gives an error, not a success toast", async () => {
+    vi.mocked(api.put).mockReset().mockRejectedValue(new Error("500"));
+    const { container } = render(
+      <QueryClientProvider client={new QueryClient()}>
+        <ToastProvider><MemoryRouter><SchemePage /></MemoryRouter></ToastProvider>
+      </QueryClientProvider>,
+    );
+    fireEvent.click(container.querySelector("[data-element='rad_pump']")!);
+    expect(await screen.findByText("Насос радиаторов: не удалось отправить команду")).toBeInTheDocument();
+    expect(screen.queryByText("Насос радиаторов выключается")).toBeNull();
   });
 });
 

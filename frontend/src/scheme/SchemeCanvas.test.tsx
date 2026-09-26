@@ -59,7 +59,7 @@ describe("SchemeCanvas clicks", () => {
     const { container } = render(<SchemeCanvas state={makeState()} layout="wide" onOpen={onOpen} onToggle={onToggle} />);
     const pump = container.querySelector("[data-element='rad_pump']")!;
     fireEvent.click(pump);
-    expect(onToggle).toHaveBeenCalledWith("heating_radiator_pump", "Насос радиаторов");
+    expect(onToggle).toHaveBeenCalledWith("heating_radiator_pump", "Насос радиаторов", "0");
     expect(onOpen).not.toHaveBeenCalled();
     fireEvent.contextMenu(pump);
     expect(onOpen).toHaveBeenCalledWith("rad", undefined);
@@ -97,5 +97,28 @@ describe("SchemeCanvas water supply", () => {
       expect(container.querySelector("[data-pipe='cold_to_fill']")).not.toBeNull();
     });
   }
+});
+
+describe("SchemeCanvas on/off state", () => {
+  it("shows when autofill or a pump is switched off in the settings, and names the click action", () => {
+    const state = makeState();
+    state.settings.heating_autofill_enabled = "0";
+    state.settings.heating_radiator_pump = "1";
+    const { container } = render(<SchemeCanvas state={state} layout="wide" onOpen={() => {}} onToggle={() => {}} />);
+    const fill = container.querySelector("[data-element='autofill']")!;
+    expect(fill.getAttribute("data-enabled")).toBe("false");
+    expect(fill.querySelector("title")?.textContent).toMatch(/клик — включить/i);
+    const pump = container.querySelector("[data-element='rad_pump']")!;
+    expect(pump.getAttribute("data-enabled")).toBe("true");
+    expect(pump.querySelector("title")?.textContent).toMatch(/клик — выключить/i);
+  });
+
+  it("toggles by the relay when the setting is unknown", () => {
+    const onToggle = vi.fn();
+    const state = makeState();
+    delete state.settings.heating_radiator_pump;   // relay rad_pump is on in the fixture
+    const { container } = render(<SchemeCanvas state={state} layout="wide" onOpen={() => {}} onToggle={onToggle} />);
+    expect(container.querySelector("[data-element='rad_pump'] title")?.textContent).toMatch(/клик — выключить/i);
+  });
 });
 
