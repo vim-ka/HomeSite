@@ -7,6 +7,7 @@ from app.api.v1.catalog import router as catalog_router
 from app.api.v1.charts import router as chart_router
 from app.api.v1.events import router as event_router
 from app.api.v1.internal import router as internal_router
+from app.api.v1.scheme import router as scheme_router
 from app.api.v1.sensors import router as sensor_router
 from app.api.v1.settings import router as settings_router
 from app.api.v1.ws import router as ws_router
@@ -16,6 +17,7 @@ api_v1_router = APIRouter(prefix="/api/v1")
 api_v1_router.include_router(auth_router, prefix="/auth", tags=["auth"])
 api_v1_router.include_router(catalog_router, prefix="/catalog", tags=["catalog"])
 api_v1_router.include_router(sensor_router, prefix="/sensors", tags=["sensors"])
+api_v1_router.include_router(scheme_router, prefix="/scheme", tags=["scheme"])
 # Charts and events expose history, usernames and settings changes — login required
 api_v1_router.include_router(
     chart_router, prefix="/charts", tags=["charts"], dependencies=[Depends(get_current_user)]
