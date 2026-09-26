@@ -272,6 +272,23 @@ void BoilerLogic::update(const TempMap& temps, float heatingPressure, float wate
     updateAlarms(temps, heatingPressure);
 }
 
+float BoilerLogic::circuitTarget(bool wbm, float pzaTarget, float manual, bool scheduleActive, float delta) {
+    float t = wbm ? pzaTarget : manual;
+    if (t < 0) t = manual;  // PZA fallback (no fresh outdoor data)
+    if (scheduleActive) t += delta;
+    return t < MIN_SUPPLY_TARGET ? MIN_SUPPLY_TARGET : t;
+}
+
+float BoilerLogic::radiatorTarget() const {
+    return circuitTarget(_pza->isRadiatorWBM(), _pza->getRadiatorTarget(), _radTempSet,
+                         _scheduleRadActive, _radScheduleDelta);
+}
+
+float BoilerLogic::floorTarget() const {
+    return circuitTarget(_pza->isFloorWBM(), _pza->getFloorTarget(), _floorTempSet,
+                         _scheduleFloorActive, _floorScheduleDelta);
+}
+
 float BoilerLogic::ihbTarget() const {
     return (_almActive && _almTemp > _ihbTempSet) ? _almTemp : _ihbTempSet;
 }
@@ -321,19 +338,13 @@ void BoilerLogic::updateBoiler(const TempMap& temps) {
         // Auto target = max setpoint across active circuits
         float target = 0;
 
-        // Radiator circuit
+        // Radiator / floor circuits — same targets the 3-way valves regulate to
         if (_radPumpCmd) {
-            float t = _pza->isRadiatorWBM() ? _pza->getRadiatorTarget() : _radTempSet;
-            if (t < 0) t = _radTempSet;  // PZA fallback (no outdoor data)
-            if (_scheduleRadActive) t += _radScheduleDelta;
+            float t = radiatorTarget();
             if (t > target) target = t;
         }
-
-        // Floor circuit
         if (_floorPumpCmd) {
-            float t = _pza->isFloorWBM() ? _pza->getFloorTarget() : _floorTempSet;
-            if (t < 0) t = _floorTempSet;  // PZA fallback
-            if (_scheduleFloorActive) t += _floorScheduleDelta;
+            float t = floorTarget();
             if (t > target) target = t;
         }
 
@@ -620,19 +631,14 @@ void BoilerLogic::driveValve(ValveState& vs, RelayChannel openRelay,
 }
 
 void BoilerLogic::updateValves(const TempMap& temps) {
-    // Radiator valve: PZA target (auto) or manual setpoint
-    float radTarget = _pza->isRadiatorWBM() ? _pza->getRadiatorTarget() : _radTempSet;
-    float radActual = getTemp(temps, "tsrad_s");
-
+    // Valves regulate the supply to the circuit target INCLUDING the night
+    // schedule delta. (Before, the delta only lowered the boiler auto target:
+    // the valves kept day temperature, and with the boiler in manual mode the
+    // night setback did nothing at all.)
     driveValve(_radValve, RELAY_RAD_VALVE_OPEN, RELAY_RAD_VALVE_CLOSE,
-               "RAD", radTarget, radActual);
-
-    // Floor valve: PZA target (auto) or manual setpoint
-    float floorTarget = _pza->isFloorWBM() ? _pza->getFloorTarget() : _floorTempSet;
-    float floorActual = getTemp(temps, "tsfloor_s");
-
+               "RAD", radiatorTarget(), getTemp(temps, "tsrad_s"));
     driveValve(_floorValve, RELAY_FLOOR_VALVE_OPEN, RELAY_FLOOR_VALVE_CLOSE,
-               "FLOOR", floorTarget, floorActual);
+               "FLOOR", floorTarget(), getTemp(temps, "tsfloor_s"));
 }
 
 // ── Alarm lamps ───────────────────────────────────────────────
@@ -715,6 +721,9 @@ void BoilerLogic::fillHeartbeat(JsonDocument& doc) {
     doc["rad_valve_driving"] = _radValve.driveMs > 0;
     doc["floor_valve_driving"] = _floorValve.driveMs > 0;
     doc["ihb_target"] = ihbTarget();
+    // Effective circuit targets (PZA or manual, with night delta) — what the valves regulate to
+    doc["rad_target"] = round(radiatorTarget() * 10) / 10.0;
+    doc["floor_target"] = round(floorTarget() * 10) / 10.0;
     doc["autofill_fault"] = _autofillFault;
     doc["boiler_sensor_lost"] = _boilerSensorLost;
     doc["overtemp"] = _overtemp;

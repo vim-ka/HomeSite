@@ -159,11 +159,18 @@ private:
     bool _scheduleRadActive = false;
     bool _scheduleFloorActive = false;
     float _boilerAutoTarget = 0;   // computed auto target (for heartbeat reporting)
+    static constexpr float MIN_SUPPLY_TARGET = 20.0;  // night delta never drives below room level
 
     // --- Private methods ---
     void loadSettingsFromNVS();
     void applySetting(const String& key, const String& value);
     float ihbTarget() const;
+    // Effective supply target of a circuit: PZA curve (or manual setpoint when
+    // PZA is off / has no outdoor data) plus the night schedule delta.
+    // Shared by the boiler auto target and the 3-way valves.
+    float radiatorTarget() const;
+    float floorTarget() const;
+    static float circuitTarget(bool wbm, float pzaTarget, float manual, bool scheduleActive, float delta);
     void closeAutofill(unsigned long now);
     void tripAutofillTimeout(unsigned long now);
     void finishValvePulse(ValveState& vs, RelayChannel openRelay, RelayChannel closeRelay, const char* label);

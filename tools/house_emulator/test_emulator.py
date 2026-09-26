@@ -24,15 +24,17 @@ def make(settings: dict | None = None, **plant_kw) -> Simulation:
 
 
 def test_heated_house_stays_comfortable_in_winter():
+    """Warm during the day; the default −10/−5 °C night setback cools it moderately."""
     sim = make()
-    temps = []
-    for _ in range(24):
+    day, night = [], []
+    for _ in range(36):
         sim.advance(3600)
-        temps.append(sim.plant.t_house)
+        (night if sim.controller.schedule_rad else day).append(sim.plant.t_house)
         rooms = sim.plant.room_local
         assert rooms["clm_street_th"] < 5
         assert -5 < rooms["clm_garage_th"] < 10
-    assert 20.0 < min(temps) and max(temps) < 24.0
+    assert max(day) < 24.0 and min(day) > 19.5
+    assert min(night) > 19.0
     hum = sim.plant.room_humidity(sim.now, sim.plant.room_local)
     assert 18 < hum["clm_sleep_th"] < 45  # dry winter air indoors
 
@@ -111,3 +113,20 @@ def test_command_handling_acks_and_restart(monkeypatch):
     assert ("boiler_unit/ack", {"heating_boiler_temp": "ok", "heating_pressure_min": "invalid_value", "restart": "ok"}) in sent
     assert emu.sim.controller.t == 0  # rebooted → uptime restarts, gateway will resync
     assert emu.sim.controller.settings["heating_boiler_temp"] == "60"
+
+
+def test_night_setback_lowers_valve_targets_in_manual_boiler_mode():
+    """Night delta must reach the mixing valves, not only the boiler auto target."""
+    sim = Simulation(Plant(seed=5), now=datetime(2026, 1, 20, 21, 0).astimezone())  # Tuesday
+    for k, v in {**MANUAL, "heating_radiator_schedule_enabled": "1", "heating_radiator_schedule_days": "1,2,3,4,5",
+                 "heating_radiator_schedule_delta": "-10", "heating_radiator_schedule_start": "23:00",
+                 "heating_radiator_schedule_end": "06:00"}.items():
+        assert sim.controller.on_setting(k, v) == "ok"
+    sim.warmup(2)
+    day = sim.plant.pipes["tsrad_s"]
+    assert abs(day - 50) < 2
+    sim.advance(3 * 3600)  # → 00:00, inside the 23:00–06:00 window
+    assert sim.controller.schedule_rad
+    assert sim.controller.radiator_target() == 40
+    assert abs(sim.plant.pipes["tsrad_s"] - 40) < 2.5
+    assert sim.controller.heartbeat(None, None)["rad_target"] == 40

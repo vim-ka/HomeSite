@@ -25,6 +25,7 @@ VALVE_MAX_ERROR = 10.0
 VALVE_MIN_PULSE_S = 1.0
 VALVE_MAX_PULSE_S = 15.0
 SENSOR_LOSS_CYCLES = 3
+MIN_SUPPLY_TARGET = 20.0
 OUTDOOR_TTL_S = 15 * 60
 
 # PZA curves — same as backend app/services/pza.py and firmware pza_controller.cpp
@@ -163,6 +164,22 @@ class Controller:
             return -1
         return interpolate(FLOOR_CURVES[int(self.f("heating_floorheating_curve")) - 1], self.outdoor)
 
+    def _circuit_target(self, prefix: str, pza: float, schedule: bool) -> float:
+        manual = self.f(f"{prefix}_temp")
+        t = pza if self.b(f"{prefix}_wbm") else manual
+        if t < 0:
+            t = manual
+        if schedule:
+            t += self.f(f"{prefix}_schedule_delta")
+        return max(MIN_SUPPLY_TARGET, t)
+
+    def radiator_target(self) -> float:
+        """PZA or manual + night delta — used by the boiler target AND the valve."""
+        return self._circuit_target("heating_radiator", self.rad_pza_target(), self.schedule_rad)
+
+    def floor_target(self) -> float:
+        return self._circuit_target("heating_floorheating", self.floor_pza_target(), self.schedule_floor)
+
     def ihb_target(self) -> float:
         ihb, alm = self.f("watersupply_ihb_temp"), self.f("watersupply_alm_temp")
         return alm if self.alm_active and alm > ihb else ihb
@@ -243,19 +260,9 @@ class Controller:
             return  # brief dropout — interlock handles a sustained loss
         target = 0.0
         if self.b("heating_radiator_pump"):
-            t = self.rad_pza_target() if self.b("heating_radiator_wbm") else self.f("heating_radiator_temp")
-            if t < 0:
-                t = self.f("heating_radiator_temp")
-            if self.schedule_rad:
-                t += self.f("heating_radiator_schedule_delta")
-            target = max(target, t)
+            target = max(target, self.radiator_target())
         if self.b("heating_floorheating_pump"):
-            t = self.floor_pza_target() if self.b("heating_floorheating_wbm") else self.f("heating_floorheating_temp")
-            if t < 0:
-                t = self.f("heating_floorheating_temp")
-            if self.schedule_floor:
-                t += self.f("heating_floorheating_schedule_delta")
-            target = max(target, t)
+            target = max(target, self.floor_target())
         if self.b("watersupply_ihb_automode") or self.b("watersupply_ihb_pump"):
             target = max(target, self.ihb_target())
         if target <= 0:
@@ -366,10 +373,8 @@ class Controller:
         vs.drive_start, vs.drive_s, vs.opening = self.t, pulse, opening
 
     def _update_valves(self, temps: dict[str, float]) -> None:
-        rad_target = self.rad_pza_target() if self.b("heating_radiator_wbm") else self.f("heating_radiator_temp")
-        self._drive_valve(self.rad_valve, "rad_open", "rad_close", rad_target, temps.get("tsrad_s"))
-        floor_target = self.floor_pza_target() if self.b("heating_floorheating_wbm") else self.f("heating_floorheating_temp")
-        self._drive_valve(self.floor_valve, "floor_open", "floor_close", floor_target, temps.get("tsfloor_s"))
+        self._drive_valve(self.rad_valve, "rad_open", "rad_close", self.radiator_target(), temps.get("tsrad_s"))
+        self._drive_valve(self.floor_valve, "floor_open", "floor_close", self.floor_target(), temps.get("tsfloor_s"))
 
     def _apply_interlocks(self, temps: dict[str, float]) -> None:
         bt = temps.get("tsboiler_s")
@@ -426,10 +431,6 @@ class Controller:
         }
         if self.outdoor_fresh():
             hb["outdoor"] = round(self.outdoor, 1)
-            if (rt := self.rad_pza_target()) >= 0:
-                hb["rad_target"] = round(rt, 1)
-            if (ft := self.floor_pza_target()) >= 0:
-                hb["floor_target"] = round(ft, 1)
         if prs_heat is not None:
             hb["prs_heat"] = round(prs_heat, 2)
         if prs_water is not None:
@@ -450,6 +451,8 @@ class Controller:
             "rad_valve_driving": self.rad_valve.drive_s > 0,
             "floor_valve_driving": self.floor_valve.drive_s > 0,
             "ihb_target": self.ihb_target(),
+            "rad_target": round(self.radiator_target(), 1),
+            "floor_target": round(self.floor_target(), 1),
             "autofill_fault": self.autofill_fault,
             "boiler_sensor_lost": self.boiler_sensor_lost,
             "overtemp": self.overtemp,

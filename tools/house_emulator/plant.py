@@ -2,11 +2,12 @@
 
 Lumped-parameter model, units: kW, kJ/K, °C, bar, seconds. Tuned so that at
 −12 °C outside with radiators at 50 °C and floor heating at 30 °C the house
-settles around 22 °C — "winter, the house is already warm".
+settles around 22 °C — "winter, the house is already warm". A −10/−5 °C night
+setback on the supply lets it cool by ~1.5–2 °C overnight.
 
 What is modelled:
 - weather: winter base temperature, diurnal swing, slow random drift (fronts)
-- house: one thermal mass (τ ≈ 40 h) + per-room offsets and local events
+- house: one thermal mass (τ ≈ 64 h) + per-room offsets and local events
   (cooking, fireplace, sun, PC in the study), unheated garage
 - boiler: water mass, burner modulating to its panel setpoint while the
   controller relay is on
@@ -32,7 +33,7 @@ RELAYS = [
 ]
 
 # --- Model constants ---------------------------------------------------------
-HOUSE_C = 36_000.0        # kJ/K  (≈10 kWh/K)
+HOUSE_C = 54_000.0        # kJ/K  (≈15 kWh/K, τ ≈ 64 h — masonry house)
 HOUSE_UA = 0.235          # kW/K  envelope + ventilation
 HOUSE_GAINS = 0.4         # kW    people, appliances
 GARAGE_C = 8_000.0
