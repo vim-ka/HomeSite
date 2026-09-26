@@ -117,7 +117,8 @@
 - ХВС/ГВС — датчики `tswatersupply_c` / `tswatersupply_h`;
 - давление — привязанный датчик `prs` (если есть), иначе `prs_heat` / `prs_water` из heartbeat;
 - улица — `SensorRepository.get_outdoor_temp()`; дом — среднее свежих климатических датчиков (system 3)
-  кроме уличного и неотапливаемых (константа `UNHEATED_SENSORS = {"clm_garage_th"}` рядом с привязками);
+  кроме уличного, котельной (техническое помещение) и неотапливаемых
+  (константа `UNHEATED_SENSORS = {"clm_garage_th"}` рядом с привязками);
   котельная — датчик `clm_boiler_th`;
 - реле — битовая маска `relays` по порядку `RelayChannel` прошивки.
 
