@@ -41,9 +41,9 @@ sudo systemctl status homesite-backend homesite-gateway | grep Active
 # (опционально) disable, чтобы не стартовали после перезагрузки
 sudo systemctl disable homesite-backend homesite-gateway
 
-# Бэкап SQLite
-cp /opt/homesite/backend/sensors.db \
-   /opt/homesite/backend/sensors.db.pre-pg-$(date +%F)
+# Бэкап SQLite (через backup API — cp не захватывает данные из -wal)
+/opt/homesite/venv/bin/python -c 'import sqlite3,sys; s=sqlite3.connect(sys.argv[1]); d=sqlite3.connect(sys.argv[2]); s.backup(d)' \
+   /opt/homesite/data/homesite.db /opt/homesite/data/homesite.db.pre-pg-$(date +%F)
 ```
 
 ## 3. Создать схему в пустом Postgres через Alembic
@@ -61,7 +61,7 @@ DATABASE_URL="postgresql+asyncpg://homesite:ПАРОЛЬ@localhost/homesite" \
 ```bash
 cd /opt/homesite/backend
 /opt/homesite/venv/bin/python -m scripts.migrate_sqlite_to_pg \
-  --source "sqlite+aiosqlite:///./sensors.db" \
+  --source "sqlite+aiosqlite:////opt/homesite/data/homesite.db" \
   --target "postgresql+asyncpg://homesite:ПАРОЛЬ@localhost/homesite" \
   --dry-run
 ```
@@ -73,7 +73,7 @@ cd /opt/homesite/backend
 ```bash
 cd /opt/homesite/backend
 /opt/homesite/venv/bin/python -m scripts.migrate_sqlite_to_pg \
-  --source "sqlite+aiosqlite:///./sensors.db" \
+  --source "sqlite+aiosqlite:////opt/homesite/data/homesite.db" \
   --target "postgresql+asyncpg://homesite:ПАРОЛЬ@localhost/homesite"
 ```
 
@@ -117,12 +117,12 @@ journalctl -u homesite-backend -f   # смотреть на ошибки кон�
 
 ## 8. Откат
 
-Если что-то пошло не так — старая `sensors.db` не тронута (скрипт только читает из неё):
+Если что-то пошло не так — старая `homesite.db` не тронута (скрипт только читает из неё):
 
 ```bash
 sudo systemctl stop homesite-backend homesite-gateway
 sudo nano /opt/homesite/.env
-# DATABASE_URL=sqlite+aiosqlite:///./sensors.db
+# DATABASE_URL=sqlite+aiosqlite:////opt/homesite/data/homesite.db
 sudo systemctl start homesite-backend homesite-gateway
 ```
 
@@ -131,8 +131,8 @@ sudo systemctl start homesite-backend homesite-gateway
 Когда убедишься, что Postgres стабилен:
 
 ```bash
-rm /opt/homesite/backend/sensors.db.pre-pg-*
-# Сам sensors.db лучше оставить ещё неделю на всякий случай.
+rm /opt/homesite/data/homesite.db.pre-pg-*
+# Сам homesite.db лучше оставить ещё неделю на всякий случай.
 ```
 
 ---

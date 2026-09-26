@@ -126,8 +126,14 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     app.state.health_monitor = monitor
     monitor_task = asyncio.create_task(monitor.run())
 
+    # Executes the backup schedule configured in Settings (backup_* keys)
+    from app.services.backup_service import run_backup_scheduler
+
+    backup_task = asyncio.create_task(run_backup_scheduler(AsyncSessionLocal))
+
     yield
 
+    backup_task.cancel()
     monitor_task.cancel()
     await engine.dispose()
     logger.info("application_shutdown")

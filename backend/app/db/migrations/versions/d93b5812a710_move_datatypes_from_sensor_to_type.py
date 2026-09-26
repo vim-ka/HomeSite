@@ -24,9 +24,7 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     conn = op.get_bind()
-    existing = {row[0] for row in conn.execute(
-        sa.text("SELECT name FROM sqlite_master WHERE type='table'")
-    )}
+    existing = set(sa.inspect(conn).get_table_names())
 
     if "sensor_type_datatype_link" not in existing:
         op.create_table(
@@ -42,10 +40,13 @@ def upgrade() -> None:
     if "sensor_datatype_link" in existing:
         conn.execute(sa.text(
             """
-            INSERT OR IGNORE INTO sensor_type_datatype_link (sensor_type_id, datatype_id)
+            INSERT INTO sensor_type_datatype_link (sensor_type_id, datatype_id)
             SELECT DISTINCT s.sensor_type_id, sdl.datatype_id
               FROM sensor_datatype_link sdl
               JOIN sensors s ON s.id = sdl.sensor_id
+             WHERE NOT EXISTS (
+                   SELECT 1 FROM sensor_type_datatype_link x
+                    WHERE x.sensor_type_id = s.sensor_type_id AND x.datatype_id = sdl.datatype_id)
             """
         ))
         op.drop_table("sensor_datatype_link")
@@ -53,9 +54,7 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     conn = op.get_bind()
-    existing = {row[0] for row in conn.execute(
-        sa.text("SELECT name FROM sqlite_master WHERE type='table'")
-    )}
+    existing = set(sa.inspect(conn).get_table_names())
 
     if "sensor_datatype_link" not in existing:
         op.create_table(
@@ -71,10 +70,13 @@ def downgrade() -> None:
     if "sensor_type_datatype_link" in existing:
         conn.execute(sa.text(
             """
-            INSERT OR IGNORE INTO sensor_datatype_link (sensor_id, datatype_id)
+            INSERT INTO sensor_datatype_link (sensor_id, datatype_id)
             SELECT s.id, stdl.datatype_id
               FROM sensor_type_datatype_link stdl
               JOIN sensors s ON s.sensor_type_id = stdl.sensor_type_id
+             WHERE NOT EXISTS (
+                   SELECT 1 FROM sensor_datatype_link x
+                    WHERE x.sensor_id = s.id AND x.datatype_id = stdl.datatype_id)
             """
         ))
         op.drop_table("sensor_type_datatype_link")

@@ -1,7 +1,7 @@
 """drop_dead_heating_circuit_columns
 
 Revision ID: ad7302268373
-Revises:
+Revises: 0a1b2c3d4e5f
 Create Date: 2026-03-08 21:12:42.981992
 
 """
@@ -13,7 +13,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision: str = 'ad7302268373'
-down_revision: Union[str, None] = None
+down_revision: Union[str, None] = "0a1b2c3d4e5f"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
@@ -29,7 +29,10 @@ COLUMNS_TO_DROP = [
 
 def upgrade() -> None:
     conn = op.get_bind()
-    existing = {row[1] for row in conn.execute(sa.text("PRAGMA table_info(heating_circuits)"))}
+    inspector = sa.inspect(conn)
+    if "heating_circuits" not in inspector.get_table_names():
+        return
+    existing = {col["name"] for col in inspector.get_columns("heating_circuits")}
     cols_to_drop = [col for col in COLUMNS_TO_DROP if col in existing]
     if not cols_to_drop:
         return

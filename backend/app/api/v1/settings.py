@@ -200,12 +200,19 @@ async def update_database(
     db: AsyncSession = Depends(get_db),
 ):
     """Save new database URL after validating connection. Requires app restart. Admin only."""
+    fields = [payload.path, payload.host, payload.dbname, payload.user, payload.password]
+    if any(ch in f for f in fields for ch in "\r\n\0"):
+        raise HTTPException(status_code=422, detail="Control characters are not allowed")
+
     if payload.type == "sqlite":
         new_url = f"sqlite+aiosqlite:///{payload.path}"
     else:
+        # Escape credentials: '@', ':' or '/' in a password would break the URL
+        from urllib.parse import quote
+
         new_url = (
-            f"postgresql+asyncpg://{payload.user}:{payload.password}"
-            f"@{payload.host}:{payload.port}/{payload.dbname}"
+            f"postgresql+asyncpg://{quote(payload.user, safe='')}:{quote(payload.password, safe='')}"
+            f"@{payload.host}:{payload.port}/{quote(payload.dbname, safe='')}"
         )
 
     # Validate connection before saving, and check whether the target DB
@@ -238,7 +245,7 @@ async def update_database(
     finally:
         await test_engine.dispose()
 
-    env_path = ".env"
+    env_path = get_app_settings().resolved_env_file
     lines: list[str] = []
     found = False
     try:
@@ -267,6 +274,7 @@ async def update_database(
         "success": True,
         "restart_required": True,
         "target_is_empty": target_is_empty,
+        "env_file": str(env_path),
     }
 
 
@@ -331,7 +339,10 @@ async def update_backup_schedule(
     db: AsyncSession = Depends(get_db),
 ):
     """Update backup schedule. Admin only."""
-    result = await service.update_schedule(payload.enabled, payload.interval, payload.time)
+    try:
+        result = await service.update_schedule(payload.enabled, payload.interval, payload.time)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
     db.add(EventLog(
         level="INFO", source="settings", method="PUT", path="/api/v1/settings/backup-schedule",
         message=f"Расписание бэкапов: enabled={payload.enabled}, {payload.interval} {payload.time}",

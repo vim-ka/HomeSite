@@ -19,9 +19,7 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     conn = op.get_bind()
-    existing = {row[0] for row in conn.execute(
-        sa.text("SELECT name FROM sqlite_master WHERE type='table'")
-    )}
+    existing = set(sa.inspect(conn).get_table_names())
     if "sensor_offsets" in existing:
         return
 
