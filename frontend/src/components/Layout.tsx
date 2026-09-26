@@ -3,6 +3,7 @@ import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
   LayoutDashboard,
+  Workflow,
   Flame,
   Droplets,
   BarChart3,
@@ -22,6 +23,7 @@ import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
   { to: "/dashboard", key: "dashboard", icon: LayoutDashboard },
+  { to: "/scheme", key: "scheme", icon: Workflow },
   { to: "/heating", key: "heating", icon: Flame },
   { to: "/water-supply", key: "waterSupply", icon: Droplets },
   { to: "/statistics", key: "statistics", icon: BarChart3 },

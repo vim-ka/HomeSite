@@ -5,6 +5,7 @@
   },
   "nav": {
     "dashboard": "Dashboard",
+    "scheme": "Scheme",
     "heating": "Heating",
     "waterSupply": "Water supply",
     "statistics": "Statistics",

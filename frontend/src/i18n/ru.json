@@ -5,6 +5,7 @@
   },
   "nav": {
     "dashboard": "Панель",
+    "scheme": "Схема",
     "heating": "Отопление",
     "waterSupply": "Водоснабжение",
     "statistics": "Статистика",

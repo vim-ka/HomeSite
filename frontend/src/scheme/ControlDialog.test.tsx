@@ -3,7 +3,7 @@ import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import api from "@/api/client";
 import { ControlDialog } from "./ControlDialog";
-import { makeState } from "./SchemeCanvas.test";
+import { makeState } from "./testing";
 
 vi.mock("@/api/client", () => ({ default: { put: vi.fn(), post: vi.fn() } }));
 

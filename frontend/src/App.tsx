@@ -3,6 +3,7 @@ import Layout from "@/components/Layout";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import LoginPage from "@/pages/LoginPage";
 import DashboardPage from "@/pages/DashboardPage";
+import SchemePage from "@/pages/SchemePage";
 import HeatingPage from "@/pages/HeatingPage";
 import WaterSupplyPage from "@/pages/WaterSupplyPage";
 import StatisticsPage from "@/pages/StatisticsPage";
@@ -24,6 +25,7 @@ export default function App() {
       >
         <Route index element={<Navigate to="/dashboard" replace />} />
         <Route path="dashboard" element={<DashboardPage />} />
+        <Route path="scheme" element={<SchemePage />} />
         <Route path="heating" element={<HeatingPage />} />
         <Route path="water-supply" element={<WaterSupplyPage />} />
         <Route path="statistics" element={<StatisticsPage />} />
