@@ -51,6 +51,8 @@ String pressureWaterName;
 
 // --- Ack: collect keys to acknowledge ---
 JsonDocument ackDoc;
+// Set by onCommand: report the new state right after commands are processed
+bool heartbeatSoon = false;
 
 void sendAck() {
     if (ackDoc.size() == 0) return;
@@ -83,6 +85,7 @@ void onCommand(const String& key, const String& value) {
 
     // Track for ack
     ackDoc[key] = "ok";
+    heartbeatSoon = true;
 
     // System commands
     if (key == "reset_config") {
@@ -568,4 +571,12 @@ void loop() {
 
     // Send ack for any pending commands (batched)
     sendAck();
+
+    // After commands: apply them in a control cycle now and report the new
+    // relay state immediately (the scheme page would otherwise lag up to 30 s)
+    if (heartbeatSoon && mqtt.isConnected()) {
+        heartbeatSoon = false;
+        lastReadTime = 0;                                         // control cycle on the next loop
+        lastHeartbeat = millis() - HEARTBEAT_INTERVAL_MS + 1000;  // heartbeat ~1 s later
+    }
 }

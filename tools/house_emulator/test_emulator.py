@@ -130,3 +130,24 @@ def test_night_setback_lowers_valve_targets_in_manual_boiler_mode():
     assert sim.controller.radiator_target() == 40
     assert abs(sim.plant.pipes["tsrad_s"] - 40) < 2.5
     assert sim.controller.heartbeat(None, None)["rad_target"] == 40
+
+
+def test_heartbeat_sent_right_after_command(monkeypatch):
+    import argparse
+
+    from house_emulator.__main__ import Emulator
+
+    args = argparse.Namespace(
+        prefix="home/devices/", node="boiler_unit", rf_node="rf-gateway", speed=1, seed=1, outdoor=-12,
+        leak=0.3, boiler_panel=75, prs_heating="prs_heating", prs_water="prs_water", local_outdoor=False,
+        quiet=True,
+    )
+    emu = Emulator(args)
+    topics = []
+
+    async def fake_publish(topic, payload, qos=0):
+        topics.append(topic)
+
+    monkeypatch.setattr(emu, "publish", fake_publish)
+    asyncio.run(emu.on_boiler_command({"heating_radiator_pump": "0"}))
+    assert topics.index("boiler_unit/ack") < topics.index("boiler_unit/heartbeat")

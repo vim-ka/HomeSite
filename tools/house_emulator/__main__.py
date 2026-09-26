@@ -100,17 +100,20 @@ class Emulator:
             if self.args.prs_water and (p := self.sim.water_pressure_reading()) is not None:
                 await self.publish(self.args.prs_water, {"prs": p})
 
+    async def publish_heartbeats(self) -> None:
+        hb = self.sim.controller.heartbeat(
+            self.sim.heating_pressure_reading() if self.args.prs_heating else None,
+            self.sim.water_pressure_reading() if self.args.prs_water else None,
+        )
+        await self.publish(f"{self.node}/heartbeat", hb)
+        await self.publish(f"{self.rf_node}/heartbeat", {
+            "uptime": int(self.rf_uptime), "free_heap": 151_000, "frames_ok": self.rf_frames,
+            "frames_unknown": self.rf_frames // 40, "seen": len(CLIMATE), "raw_debug": False,
+        })
+
     async def heartbeat_loop(self) -> None:
         while self.running:
-            hb = self.sim.controller.heartbeat(
-                self.sim.heating_pressure_reading() if self.args.prs_heating else None,
-                self.sim.water_pressure_reading() if self.args.prs_water else None,
-            )
-            await self.publish(f"{self.node}/heartbeat", hb)
-            await self.publish(f"{self.rf_node}/heartbeat", {
-                "uptime": int(self.rf_uptime), "free_heap": 151_000, "frames_ok": self.rf_frames,
-                "frames_unknown": self.rf_frames // 40, "seen": len(CLIMATE), "raw_debug": False,
-            })
+            await self.publish_heartbeats()
             await asyncio.sleep(HEARTBEAT_S)
 
     async def rf_loop(self) -> None:
@@ -193,6 +196,12 @@ class Emulator:
                     self.say(f"[{self.node}]   rejected: {ack[key]}")
         if ack:
             await self.publish(f"{self.node}/ack", ack, qos=1)
+        # Like the firmware: report the new relay state right away, not in ≤30 s
+        if not restart:
+            self.sim.controller.update(
+                self.sim.now, self.sim.boiler_readings(), self.sim.heating_pressure_reading() or 0.0
+            )
+            await self.publish_heartbeats()
         if restart:
             await asyncio.sleep(0.5)
             c.reboot()
