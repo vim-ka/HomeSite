@@ -219,6 +219,17 @@ class AsyncCommandDispatcher:
         """Total keys that failed after all retries."""
         return sum(len(keys) for keys in self.unsynced.values())
 
+    def sync_status(self) -> dict[str, dict[str, list[str]]]:
+        """Keys awaiting ack and keys that failed, per device (for the UI)."""
+        devices = set(self._pending_acks) | set(self.unsynced)
+        return {
+            device: {
+                "pending": sorted(self._pending_acks.get(device, {})),
+                "unsynced": sorted(self.unsynced.get(device, set())),
+            }
+            for device in sorted(devices)
+        }
+
     async def pending_for(self, device_id: str) -> dict[str, Any]:
         async with self._lock:
             return dict(self._device_store.get(device_id, {}))

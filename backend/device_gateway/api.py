@@ -126,6 +126,7 @@ def create_gateway_api(
             "queued_commands": dispatcher.queued_count,
             "pending_commands": dispatcher.awaiting_ack_count,
             "unsynced_commands": dispatcher.unsynced_count,
+            "sync": dispatcher.sync_status(),
             "last_publish_error": dispatcher.last_publish_error,
         }
 

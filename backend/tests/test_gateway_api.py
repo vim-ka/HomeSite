@@ -110,3 +110,13 @@ async def test_post_command_no_secret(api_app):
             json={"device_id": "boiler", "params": {"tmp": "55"}},
         )
     assert resp.status_code == 422  # Missing required header
+
+
+@pytest.mark.asyncio
+async def test_health_reports_sync_lists(api_app, dispatcher):
+    await dispatcher.add_param("boiler", "heating_boiler_temp", "60")
+    await dispatcher.flush_all()
+    transport = ASGITransport(app=api_app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        data = (await client.get("/health")).json()
+    assert data["sync"] == {"boiler": {"pending": ["heating_boiler_temp"], "unsynced": []}}

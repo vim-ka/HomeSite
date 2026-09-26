@@ -214,3 +214,20 @@ async def test_ok_ack_confirms(dispatcher, publisher):
     assert await dispatcher.handle_ack("boiler", {"heating_boiler_temp": "ok"}) == []
     assert dispatcher.awaiting_ack_count == 0
     assert dispatcher.unsynced == {}
+
+
+@pytest.mark.asyncio
+async def test_sync_status_lists_pending_and_unsynced(dispatcher, publisher):
+    await dispatcher.add_param("boiler", "heating_boiler_temp", "60")
+    await dispatcher.add_param("boiler", "heating_radiator_curve", "3")
+    await dispatcher.flush_all()
+    await dispatcher.handle_ack("boiler", {"heating_radiator_curve": "invalid_value"})
+
+    assert dispatcher.sync_status() == {
+        "boiler": {"pending": ["heating_boiler_temp"], "unsynced": ["heating_radiator_curve"]}
+    }
+
+
+@pytest.mark.asyncio
+async def test_sync_status_empty(dispatcher):
+    assert dispatcher.sync_status() == {}
