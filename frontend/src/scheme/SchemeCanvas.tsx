@@ -82,7 +82,9 @@ export function SchemeCanvas({ state, layout, onOpen, onToggle }: {
                     alarm={!!(c.flags.overtemp || c.flags.boiler_sensor_lost)} />
           </g>
         ))}
-        {hit("separator", "autofill", <Separator x={L.separator[0]} y={L.separator[1]} collectorWidth={L.collectorWidth} />)}
+        {hit("separator", "autofill", (
+          <Separator x={L.separator[0]} y={L.separator[1]} collectorWidth={L.collectorWidth} side={L.mirrored ? "left" : "right"} />
+        ))}
         {hit("gauge", "autofill", <Gauge x={L.gauge[0]} y={L.gauge[1]} value={val("heating_pressure")}
                                          lo={Number(s.heating_pressure_min ?? NaN) || null} hi={Number(s.heating_pressure_max ?? NaN) || null} />)}
         {hit("autofill", "autofill", <FillValve x={L.autofill[0]} y={L.autofill[1]} state={autofillState} />)}
@@ -95,7 +97,9 @@ export function SchemeCanvas({ state, layout, onOpen, onToggle }: {
         {hit("ihb_pump", "tank", <Pump x={L.ihbPump[0]} y={L.ihbPump[1]} running={r.ihb_pump} r={11} />)}
         {hit("recirc_pump", "hot", <Pump x={L.recircPump[0]} y={L.recircPump[1]} running={r.water_hot_pump} r={9} />)}
         {hit("cold_pump", "cold", <Pump x={L.coldPump[0]} y={L.coldPump[1]} running={r.water_pump} r={9} />)}
-        {hit("tap", "hot", <Tap x={L.tap[0]} y={L.tap[1]} />)}
+        {hit("tap", "hot", L.mirrored
+          ? <g transform={`translate(${L.tap[0] + 24} ${L.tap[1]}) scale(-1 1)`}><Tap x={0} y={0} /></g>
+          : <Tap x={L.tap[0]} y={L.tap[1]} />)}
 
         {Object.entries(L.tags).map(([role, [x, y]]) => {
           const key = role as RoleKey;
@@ -105,13 +109,15 @@ export function SchemeCanvas({ state, layout, onOpen, onToggle }: {
           return (
             <g key={role}>
               {hit(`tag_${role}`, "sensor",
-                <ValueTag x={x} y={y} reading={v[key]} unit={pressure ? " бар" : "°"} digits={pressure ? 2 : 1} target={target} />, key)}
+                <ValueTag x={x} y={y} reading={v[key]} unit={pressure ? " бар" : "°"} digits={pressure ? 2 : 1} target={target}
+                          anchor={L.mirrored ? "end" : "start"} />, key)}
             </g>
           );
         })}
 
         {L.labels.map((l) => (
-          <text key={l.text} x={l.at[0]} y={l.at[1]} fontSize={12} fontWeight={700} fill="var(--scheme-text)">{l.text}</text>
+          <text key={l.text} x={l.at[0]} y={l.at[1]} fontSize={12} fontWeight={700} fill="var(--scheme-text)"
+                textAnchor={l.align ?? (L.mirrored ? "end" : "start")}>{l.text}</text>
         ))}
 
         {/* State badges: night setback, DHW priority (pump held off while the tank heats), anti-legionella */}
@@ -123,11 +129,11 @@ export function SchemeCanvas({ state, layout, onOpen, onToggle }: {
             s[`${prefix}_pump`] === "1" && !pumpRelay && c.flags.ihb_heating && "Приоритет ГВС",
           ].filter(Boolean) as string[];
           return badges.length ? (
-            <text key={k} data-badges={k} x={L.badges[k][0]} y={L.badges[k][1]} fontSize={11} fill="#7c3aed">{badges.join(" · ")}</text>
+            <text key={k} data-badges={k} x={L.badges[k][0]} y={L.badges[k][1]} fontSize={11} fill="#7c3aed" textAnchor={L.mirrored ? "end" : "start"}>{badges.join(" · ")}</text>
           ) : null;
         })}
         {c.flags.alm_active && (
-          <text data-badges="tank" x={L.badges.tank[0]} y={L.badges.tank[1]} fontSize={11} fill="#7c3aed">Анти-легионелла</text>
+          <text data-badges="tank" x={L.badges.tank[0]} y={L.badges.tank[1]} fontSize={11} fill="#7c3aed" textAnchor={L.mirrored ? "end" : "start"}>Анти-легионелла</text>
         )}
       </g>
     </svg>

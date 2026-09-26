@@ -49,6 +49,15 @@ docker compose up -d
 
 **Health monitoring**: `HealthMonitor` background task (single source of truth) → cached state read by `/health/*` endpoints → frontend polls via `useServiceHealth` hook
 
+**Scheme page** (`/scheme`): SCADA-style mnemonic of the boiler room. Backend `GET /api/v1/scheme/state`
+(`app/services/scheme_service.py`) aggregates sensors by role (circuit mount points), controller heartbeat
+(relays, flags, targets), gateway sync lists and alarms. Frontend `src/scheme/*`: pure SVG elements,
+two layouts (`layouts.ts`: wide ≥ 900 px / tall, both mirrored by `mirrorLayout` — boiler on the right),
+left click on a pump/boiler/autofill toggles it (`toggles.ts`), right click / touch opens the control
+dialog that applies changed keys via `PUT /settings`. Admin-only keys in `scheme/permissions.ts` must
+mirror `setting_rules.py` (enforced by a test). E2E check: `python3 tools/scheme_screenshots.py <password>`
+against the dev stand (`bash tools/dev_stack.sh`).
+
 **Settings**: All runtime config stored in `config_kv` table (single source of truth). `.env` only for infrastructure (JWT secret, DB URL, CORS). Gateway reads MQTT settings from `config_kv` at startup and on `/reload-mqtt`.
 
 ## Key Patterns
