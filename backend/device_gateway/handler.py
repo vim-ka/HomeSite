@@ -57,6 +57,9 @@ class MQTTHandler:
         self._scan_events: dict[str, asyncio.Event] = {}
         self._http: httpx.AsyncClient | None = None
         self._background: set[asyncio.Task] = set()
+        # PZA outdoor forwarding: (sensor name, target mqtt device) or None.
+        # Lets a controller without its own street sensor follow the weather curve.
+        self.outdoor_forward: tuple[str, str] | None = None
 
     @property
     def is_connected(self) -> bool:
@@ -253,6 +256,18 @@ class MQTTHandler:
         # Notify backend about the update
         if updated_params:
             self._spawn(self._notify_backend(device_name, device_id, data))
+            self._forward_outdoor(device_name, data)
+
+    def _forward_outdoor(self, device_name: str, data: dict) -> None:
+        if self.outdoor_forward is None or "tmp" not in data:
+            return
+        sensor, target = self.outdoor_forward
+        client = self.active_client
+        if device_name != sensor or client is None:
+            return
+        payload = json.dumps({"outdoor_temp": str(data["tmp"])})
+        # Telemetry, not a setting: no dispatcher, no ack, not retained
+        self._spawn(client.publish(f"{self.topic_prefix}{target}/cmd", payload, qos=0, retain=False))
 
     def _track_boot(self, device_name: str, uptime: object) -> None:
         """Fire on_device_boot when a device reboots or is first seen since gateway start."""

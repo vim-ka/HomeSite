@@ -29,7 +29,11 @@ async def load_config_from_db(database_url: str, prefix: str | None = None) -> d
 async def load_mqtt_from_db(database_url: str) -> dict[str, str]:
     """Read mqtt_* and gateway config keys from config_kv."""
     all_kv = await load_config_from_db(database_url)
-    return {k: v for k, v in all_kv.items() if k.startswith("mqtt_") or k in ("ack_timeout_seconds", "heartbeat_timeout_seconds")}
+    return {
+        k: v for k, v in all_kv.items()
+        if k.startswith("mqtt_") or k.startswith("pza_outdoor_")
+        or k in ("ack_timeout_seconds", "heartbeat_timeout_seconds")
+    }
 
 
 async def load_device_prefixes(database_url: str) -> list[tuple[str, str]]:

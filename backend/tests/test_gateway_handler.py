@@ -202,3 +202,29 @@ async def test_resync_routes_only_device_keys(engine, db_session):
     assert await d.pending_for("boiler_unit") == {"heating_boiler_temp": "60", "heating_boiler_power": "0"}
     assert await d.pending_for("water_unit") == {}
     await d.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_outdoor_temp_forwarded_to_controller(engine):
+    import asyncio
+    from sqlalchemy.ext.asyncio import async_sessionmaker
+
+    class Client:
+        def __init__(self):
+            self.sent = []
+
+        async def publish(self, topic, payload, qos=0, retain=False):
+            self.sent.append((topic, json.loads(payload), retain))
+
+    handler = MQTTHandler(GatewaySettings(), async_sessionmaker(engine, expire_on_commit=False))
+    handler._connected = True
+    handler._active_client = Client()
+    handler.outdoor_forward = ("clm_street_th", "boiler_unit")
+
+    handler._forward_outdoor("clm_kitchen_th", {"tmp": "21.0"})
+    handler._forward_outdoor("clm_street_th", {"tmp": "-7.5", "hmt": "80"})
+    await asyncio.sleep(0)
+    assert handler._active_client.sent == [
+        ("home/devices/boiler_unit/cmd", {"outdoor_temp": "-7.5"}, False)
+    ]
+    await handler.close()

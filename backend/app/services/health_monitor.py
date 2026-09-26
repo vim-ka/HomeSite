@@ -4,7 +4,7 @@ Caches state in memory, writes EventLog on changes. Health endpoints read cached
 """
 
 import asyncio
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 
 import httpx
@@ -22,6 +22,13 @@ logger = get_logger(__name__)
 
 DEFAULT_POLL_INTERVAL = 30  # seconds
 DEFAULT_STALE_MINUTES = 5
+
+# Safety flags reported in the boiler controller heartbeat → event text
+DEVICE_ALARM_FLAGS = {
+    "autofill_fault": "Автоподпитка заблокирована после аварийного таймаута (возможна утечка)",
+    "boiler_sensor_lost": "Потерян датчик температуры котла — котёл отключён",
+    "overtemp": "Контроллер отключил котёл по перегреву",
+}
 
 
 @dataclass
@@ -69,6 +76,7 @@ class HealthMonitor:
         self._prev_pending_names: set[str] = set()
         self._pressure_alert_sensor_ids: set[int] = set()
         self._boiler_overheat: bool = False
+        self._device_alarms: set[tuple[str, str]] = set()
         self._initialized = False
 
     async def run(self) -> None:
@@ -76,8 +84,13 @@ class HealthMonitor:
         while True:
             try:
                 await self._check()
+            except asyncio.CancelledError:
+                raise
             except Exception as e:
-                logger.error("health_monitor_error", error=str(e))
+                logger.exception("health_monitor_error", error=str(e))
+                # Don't keep serving the last "all good" snapshot: the failing
+                # part is almost always the DB (session / config query)
+                self.state = replace(self.state, database=False)
             await asyncio.sleep(self._poll_interval)
 
     @property
@@ -92,6 +105,7 @@ class HealthMonitor:
             config_keys = [
                 "sensor_stale_minutes", "health_poll_seconds", "gateway_timeout_seconds",
                 "heating_pressure_min", "heating_pressure_max", "heating_boiler_max_temp",
+                "heartbeat_timeout_seconds",
             ]
             result = await session.execute(
                 select(ConfigKV.key, ConfigKV.value).where(ConfigKV.key.in_(config_keys))
@@ -117,7 +131,7 @@ class HealthMonitor:
                 pass
 
             # --- Service checks ---
-            services = await self._check_services(session, gateway_timeout)
+            services, gateway_health = await self._check_services(session, gateway_timeout)
             for name, ok in services.items():
                 prev = self._prev_services.get(name)
                 if prev is not None and prev != ok:
@@ -203,12 +217,41 @@ class HealthMonitor:
                 except ValueError:
                     pass
 
-                await self._check_pressure_ranges(
-                    session, pressure_min, pressure_max, stale_threshold, events
-                )
-                await self._check_boiler_overtemp(
-                    session, boiler_max_temp, stale_threshold, events
-                )
+                # Each check isolated: one failure must not disable the others
+                for check in (
+                    self._check_pressure_ranges(session, pressure_min, pressure_max, stale_threshold, events),
+                    self._check_boiler_overtemp(session, boiler_max_temp, stale_threshold, events),
+                ):
+                    try:
+                        await check
+                    except Exception as e:
+                        logger.exception("health_range_check_error", error=str(e))
+
+            # --- Device (actuator) checks via heartbeats from gateway ---
+            pending_commands = 0
+            unsynced_commands = 0
+            device_online = 0
+
+            result = await session.execute(select(func.count()).select_from(Actuator))
+            device_total = result.scalar() or 0
+
+            if gateway_health is not None:
+                try:
+                    hb_timeout = int(kv.get("heartbeat_timeout_seconds", "60"))
+                except ValueError:
+                    hb_timeout = 60
+                pending_commands = gateway_health.get("pending_commands", 0)
+                unsynced_commands = gateway_health.get("unsynced_commands", 0)
+                heartbeats = gateway_health.get("heartbeats", {}) or {}
+                for _device, hb_info in heartbeats.items():
+                    try:
+                        ts_str = hb_info["timestamp"] if isinstance(hb_info, dict) else hb_info
+                        ts = datetime.fromisoformat(ts_str)
+                        if (now - ts).total_seconds() < hb_timeout:
+                            device_online += 1
+                    except (ValueError, TypeError, KeyError):
+                        pass
+                self._check_device_alarms(heartbeats, events)
 
             # --- Write events ---
             if events:
@@ -217,37 +260,6 @@ class HealthMonitor:
                 await session.commit()
                 for e in events:
                     logger.info("health_event", level=e.level, message=e.message)
-
-            # --- Device (actuator) checks via heartbeats from gateway ---
-            device_total = 0
-            device_online = 0
-            pending_commands = 0
-            unsynced_commands = 0
-
-            result = await session.execute(select(func.count()).select_from(Actuator))
-            device_total = result.scalar() or 0
-
-            # Get heartbeat data from gateway /health response
-            if services.get("gateway"):
-                try:
-                    hb_timeout = int(kv.get("heartbeat_timeout_seconds", "60"))
-                    async with httpx.AsyncClient(base_url=self.gateway_url, timeout=gateway_timeout) as client:
-                        resp = await client.get("/health")
-                        if resp.status_code == 200:
-                            data = resp.json()
-                            pending_commands = data.get("pending_commands", 0)
-                            unsynced_commands = data.get("unsynced_commands", 0)
-                            heartbeats = data.get("heartbeats", {})
-                            for _device, hb_info in heartbeats.items():
-                                try:
-                                    ts_str = hb_info["timestamp"] if isinstance(hb_info, dict) else hb_info
-                                    ts = datetime.fromisoformat(ts_str)
-                                    if (now - ts).total_seconds() < hb_timeout:
-                                        device_online += 1
-                                except (ValueError, TypeError, KeyError):
-                                    pass
-                except Exception:
-                    pass
 
             # --- Update cached state ---
             self.state = HealthState(
@@ -267,6 +279,30 @@ class HealthMonitor:
             )
 
             self._initialized = True
+
+    def _check_device_alarms(self, heartbeats: dict, events: list[EventLog]) -> None:
+        """Turn controller safety flags (heartbeat) into ERROR/INFO events on change."""
+        current: set[tuple[str, str]] = set()
+        for device, hb_info in heartbeats.items():
+            data = hb_info.get("data", {}) if isinstance(hb_info, dict) else {}
+            if not isinstance(data, dict):
+                continue
+            for flag in DEVICE_ALARM_FLAGS:
+                if data.get(flag) is True:
+                    current.add((device, flag))
+        if self._initialized:
+            for device, flag in sorted(current - self._device_alarms):
+                events.append(EventLog(
+                    level="ERROR", source="health_monitor",
+                    message=f"{device}: {DEVICE_ALARM_FLAGS[flag]}",
+                ))
+            for device, flag in sorted(self._device_alarms - current):
+                if device in heartbeats:  # cleared, not just offline
+                    events.append(EventLog(
+                        level="INFO", source="health_monitor",
+                        message=f"{device}: снято — {DEVICE_ALARM_FLAGS[flag]}",
+                    ))
+        self._device_alarms = current
 
     async def _check_pressure_ranges(
         self,
@@ -321,6 +357,9 @@ class HealthMonitor:
         mp_result = await session.execute(
             select(HeatingCircuit.supply_mount_point_id)
             .where(HeatingCircuit.config_prefix == "heating_boiler")
+            .where(HeatingCircuit.supply_mount_point_id.is_not(None))
+            .order_by(HeatingCircuit.id)
+            .limit(1)
         )
         supply_mp_id = mp_result.scalar_one_or_none()
         if supply_mp_id is None:
@@ -328,7 +367,7 @@ class HealthMonitor:
 
         # Find temperature reading for any sensor at that mount point
         temp_dt_result = await session.execute(
-            select(SensorDataType.id).where(SensorDataType.code == "tmp")
+            select(SensorDataType.id).where(SensorDataType.code == "tmp").limit(1)
         )
         tmp_dt_id = temp_dt_result.scalar_one_or_none()
         if tmp_dt_id is None:
@@ -362,26 +401,27 @@ class HealthMonitor:
                 message=f"Температура котла в норме: {name} = {temp:.1f}°C",
             ))
 
-    async def _check_services(self, session: AsyncSession, gateway_timeout: float = 3.0) -> dict[str, bool]:
+    async def _check_services(
+        self, session: AsyncSession, gateway_timeout: float = 3.0
+    ) -> tuple[dict[str, bool], dict | None]:
+        """Returns service flags and the gateway /health payload (None if unreachable)."""
         db_ok = True
         try:
             await session.execute(text("SELECT 1"))
         except Exception:
             db_ok = False
 
-        gw_ok = False
-        mqtt_ok = False
+        gw_health: dict | None = None
         try:
             async with httpx.AsyncClient(base_url=self.gateway_url, timeout=gateway_timeout) as client:
                 resp = await client.get("/health")
                 if resp.status_code == 200:
-                    gw_ok = True
-                    mqtt_ok = resp.json().get("mqtt_connected", False)
+                    gw_health = resp.json()
         except Exception:
             pass
 
         return {
             "database": db_ok,
-            "gateway": gw_ok,
-            "mqtt": mqtt_ok,
-        }
+            "gateway": gw_health is not None,
+            "mqtt": bool(gw_health and gw_health.get("mqtt_connected", False)),
+        }, gw_health

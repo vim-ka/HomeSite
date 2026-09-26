@@ -111,6 +111,11 @@ async def main() -> None:
                 db_kv = await load_mqtt_from_db(settings.database_url)
                 ack_timeout = int(db_kv.get("ack_timeout_seconds", "30"))
                 hb_timeout = int(db_kv.get("heartbeat_timeout_seconds", "60"))
+                outdoor_sensor = db_kv.get("pza_outdoor_sensor", "").strip()
+                outdoor_device = db_kv.get("pza_outdoor_device", "").strip()
+                handler.outdoor_forward = (
+                    (outdoor_sensor, outdoor_device) if outdoor_sensor and outdoor_device else None
+                )
 
                 dispatcher._ack_timeout = ack_timeout
 

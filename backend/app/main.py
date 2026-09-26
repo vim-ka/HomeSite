@@ -209,6 +209,8 @@ def create_app() -> FastAPI:
             "gateway": s.gateway,
             "mqtt": s.mqtt,
             "poll_seconds": s.poll_seconds,
+            # Lets the UI flag a monitor that stopped updating
+            "updated_at": s.updated_at.isoformat(),
         }
 
     # Sensor health — reads from HealthMonitor cache
