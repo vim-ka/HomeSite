@@ -28,8 +28,12 @@ public:
     void setFloorWBM(bool enabled) { _floorWBM = enabled; }
     void setFloorCurve(int curve) { _floorCurve = constrain(curve, 1, PZA_NUM_CURVES); }
 
-    // Set current outdoor temperature (call on each sensor read)
-    void setOutdoorTemp(float temp) { _outdoorTemp = temp; _hasOutdoor = true; }
+    // Set current outdoor temperature (call on each sensor read / outdoor_temp command)
+    void setOutdoorTemp(float temp) { _outdoorTemp = temp; _hasOutdoor = true; _outdoorAt = millis(); }
+
+    // Outdoor reading expires: a dead street sensor must not freeze the curve at
+    // its last value (+5 while it is -20) — targets fall back to manual setpoints
+    static constexpr unsigned long OUTDOOR_TTL_MS = 15UL * 60UL * 1000UL;
 
     // Get target supply temperature (returns -1 if WBM disabled or no outdoor data)
     float getRadiatorTarget();
@@ -40,7 +44,7 @@ public:
     bool isFloorWBM() { return _floorWBM; }
     int radiatorCurve() { return _radCurve; }
     int floorCurve() { return _floorCurve; }
-    bool hasOutdoorTemp() { return _hasOutdoor; }
+    bool hasOutdoorTemp() { return _hasOutdoor && (millis() - _outdoorAt < OUTDOOR_TTL_MS); }
     float outdoorTemp() { return _outdoorTemp; }
 
 private:
@@ -53,6 +57,7 @@ private:
 
     float _outdoorTemp = 0;
     bool _hasOutdoor = false;
+    unsigned long _outdoorAt = 0;
 
     static const float _outdoorPoints[PZA_POINTS];
     static const PZACurve _radiatorCurves[PZA_NUM_CURVES];

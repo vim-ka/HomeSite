@@ -78,7 +78,8 @@ void WifiPortal::_handleRoot() {
     page.replace("{{MQTT_HOST}}", _config->mqttHost());
     page.replace("{{MQTT_PORT}}", String(_config->mqttPort()));
     page.replace("{{MQTT_USER}}", _config->mqttUser());
-    page.replace("{{MQTT_PASS}}", _config->mqttPass());
+    // Never render stored secrets into the (open) portal page
+    page.replace("{{MQTT_PASS}}", "");
     page.replace("{{INTERVAL}}", String(_config->readIntervalMs() / 1000));
     page.replace("{{TIMEZONE}}", _config->timezone());
 
@@ -98,18 +99,21 @@ void WifiPortal::_handleRoot() {
 }
 
 void WifiPortal::_handleSave() {
-    // WiFi
-    _config->setWifi(
-        _server->arg("ssid"),
-        _server->arg("wifi_pass")
-    );
+    // WiFi — empty password field keeps the stored one for the same network
+    String wifiPass = _server->arg("wifi_pass");
+    if (wifiPass.length() == 0 && _server->arg("ssid") == _config->wifiSsid()) {
+        wifiPass = _config->wifiPass();
+    }
+    _config->setWifi(_server->arg("ssid"), wifiPass);
 
-    // MQTT
+    // MQTT — the page never shows the stored password; empty keeps it
+    String mqttPass = _server->arg("mqtt_pass");
+    if (mqttPass.length() == 0) mqttPass = _config->mqttPass();
     _config->setMqtt(
         _server->arg("mqtt_host"),
         _server->arg("mqtt_port").toInt(),
         _server->arg("mqtt_user"),
-        _server->arg("mqtt_pass")
+        mqttPass
     );
 
     // Node

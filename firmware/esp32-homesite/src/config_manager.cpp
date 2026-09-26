@@ -179,10 +179,45 @@ void ConfigManager::setTimezone(const String& tz) {
 
 // -- Boiler settings (separate NVS namespace, persist across reboots) --
 
-String ConfigManager::getSetting(const String& key, const String& defaultVal) {
-    return _settings.getString(key.c_str(), defaultVal);
+// NVS key names are limited to 15 characters, while config_kv keys are 16-37
+// characters long ("heating_boiler_automode"...). Using them directly made every
+// write fail with KEY_TOO_LONG. Keys are stored under "k" + FNV-1a-32 hex (9 chars).
+String ConfigManager::settingNvsKey(const String& key) {
+    uint32_t h = 2166136261u;
+    for (size_t i = 0; i < key.length(); i++) {
+        h ^= (uint8_t)key[i];
+        h *= 16777619u;
+    }
+    char buf[10];
+    snprintf(buf, sizeof(buf), "k%08x", (unsigned)h);
+    return String(buf);
 }
 
-void ConfigManager::setSetting(const String& key, const String& value) {
-    _settings.putString(key.c_str(), value);
+String ConfigManager::getSetting(const String& key, const String& defaultVal) {
+    String nvsKey = settingNvsKey(key);
+    if (!_settings.isKey(nvsKey.c_str())) return defaultVal;
+    return _settings.getString(nvsKey.c_str(), defaultVal);
+}
+
+bool ConfigManager::setSetting(const String& key, const String& value) {
+    String nvsKey = settingNvsKey(key);
+    // Skip unchanged values: a full resync after every reboot must not wear the flash
+    if (_settings.isKey(nvsKey.c_str()) && _settings.getString(nvsKey.c_str(), "") == value) {
+        return true;
+    }
+    size_t written = _settings.putString(nvsKey.c_str(), value);
+    if (written == 0 && value.length() > 0) {
+        Serial.print("NVS: write failed for ");
+        Serial.println(key);
+        return false;
+    }
+    return true;
+}
+
+bool ConfigManager::getFlag(const char* nvsKey) {
+    return _settings.getBool(nvsKey, false);
+}
+
+void ConfigManager::setFlag(const char* nvsKey, bool value) {
+    _settings.putBool(nvsKey, value);
 }

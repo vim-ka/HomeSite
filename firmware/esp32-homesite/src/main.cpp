@@ -38,8 +38,12 @@ unsigned long lastWifiReconnect = 0;
 unsigned long resetBtnStart = 0;
 bool resetBtnActive = false;
 
-// Outdoor sensor name for PZA (receives temp from climate ESP32 via MQTT)
+// Outdoor sensor for PZA: read locally when wired to this unit; otherwise the
+// gateway may forward it via the "outdoor_temp" command (local reading wins).
 String outdoorSensorName = "clm_street_thp";
+unsigned long lastLocalOutdoorMs = 0;
+bool haveLocalOutdoor = false;
+static constexpr unsigned long LOCAL_OUTDOOR_PRIORITY_MS = 60000;
 
 // Pressure sensor names for MQTT publishing
 String pressureHeatingName;
@@ -59,6 +63,18 @@ void sendAck() {
     ackDoc.clear();
 }
 
+// Ack first, then restart: the gateway waits for an ack and would otherwise
+// retry the command (and restart the device again).
+void restartAfterAck() {
+    sendAck();
+    unsigned long start = millis();
+    while (millis() - start < 500) {
+        mqtt.loop();
+        delay(10);
+    }
+    ESP.restart();
+}
+
 void onCommand(const String& key, const String& value) {
     Serial.print("CMD: ");
     Serial.print(key);
@@ -71,19 +87,35 @@ void onCommand(const String& key, const String& value) {
     // System commands
     if (key == "reset_config") {
         config.clear();
-        ESP.restart();
+        restartAfterAck();
         return;
     }
     if (key == "restart") {
-        ESP.restart();
+        restartAfterAck();
+        return;
+    }
+    if (key == "autofill_reset") {
+        boilerLogic.resetAutofillFault();
+        return;
+    }
+    if (key == "outdoor_temp") {
+        ackDoc.remove(key);  // periodic telemetry forward, not a setting
+        char* end = nullptr;
+        float t = strtof(value.c_str(), &end);
+        bool localFresh = haveLocalOutdoor && millis() - lastLocalOutdoorMs < LOCAL_OUTDOOR_PRIORITY_MS;
+        if (end && *end == '\0' && t > -60 && t < 60 && !localFresh) {
+            pza.setOutdoorTemp(t);
+        }
         return;
     }
     if (key == "interval") {
         uint32_t ms = value.toInt() * 1000;
-        if (ms >= 5000) {
+        if (ms >= 5000 && ms <= 600000) {
             config.setReadInterval(ms);
             Serial.print("Interval updated: ");
             Serial.println(ms);
+        } else {
+            ackDoc[key] = "invalid_value";
         }
         return;
     }
@@ -266,8 +298,8 @@ void onCommand(const String& key, const String& value) {
         return;
     }
 
-    // All boiler/heating/water settings go to BoilerLogic
-    boilerLogic.onSettingChanged(key, value);
+    // All boiler/heating/water settings go to BoilerLogic (validated + persisted)
+    ackDoc[key] = boilerLogic.onSettingChanged(key, value);
 }
 
 void checkResetButton() {
@@ -366,11 +398,11 @@ void setup() {
         return;
     }
 
-    // Normal mode — connect WiFi
+    // Normal mode — connect WiFi. After a power cut the router often boots
+    // slower than us: never fall back to the AP portal here, run the control
+    // loop offline and keep retrying WiFi in loop().
     if (!connectWiFi()) {
-        Serial.println("WiFi failed — starting AP portal");
-        portal.start(config, sensors);
-        return;
+        Serial.println("WiFi not available — running offline, will keep retrying");
     }
 
     // Load sensor mappings
@@ -415,7 +447,7 @@ void setup() {
 void loop() {
     esp_task_wdt_reset();
 
-    // AP mode — serve web portal
+    // AP mode — serve web portal (only when unconfigured / forced by button)
     if (portal.isActive()) {
         portal.handleClient();
         return;
@@ -424,26 +456,27 @@ void loop() {
     // Check reset button
     checkResetButton();
 
-    // Reconnect WiFi if lost (non-blocking)
-    if (WiFi.status() != WL_CONNECTED) {
+    unsigned long now = millis();
+
+    // Network is optional: boiler control below runs with or without it
+    bool wifiUp = WiFi.status() == WL_CONNECTED;
+    if (!wifiUp) {
         digitalWrite(LED_PIN, LOW);
-        unsigned long now2 = millis();
-        if (now2 - lastWifiReconnect >= 5000) {
-            lastWifiReconnect = now2;
+        if (now - lastWifiReconnect >= 5000) {
+            lastWifiReconnect = now;
             Serial.println("WiFi lost, reconnecting...");
             WiFi.reconnect();
         }
-        return;
+    } else {
+        mqtt.ensureConnected();
+        mqtt.loop();
     }
 
-    // MQTT
-    mqtt.ensureConnected();
-    mqtt.loop();
-
-    unsigned long now = millis();
+    // Valve pulses / autofill timers need sub-second resolution
+    boilerLogic.tick();
 
     // Heartbeat every 30s
-    if (now - lastHeartbeat >= HEARTBEAT_INTERVAL_MS) {
+    if (wifiUp && now - lastHeartbeat >= HEARTBEAT_INTERVAL_MS) {
         lastHeartbeat = now;
         sendHeartbeat();
     }
@@ -463,6 +496,8 @@ void loop() {
             // Update outdoor temp for PZA
             if (r.name == outdoorSensorName && r.paramKey == "tmp") {
                 pza.setOutdoorTemp(r.value);
+                haveLocalOutdoor = true;
+                lastLocalOutdoorMs = now;
             }
         }
 
@@ -489,44 +524,46 @@ void loop() {
             Serial.println("C");
         }
 
-        // Group readings by sensor name
-        std::map<String, std::vector<std::pair<String, float>>> grouped;
-        for (auto& r : readings) {
-            grouped[r.name].push_back({r.paramKey, r.value});
-        }
-
-        // Publish temperature sensor readings
-        for (auto& [name, params] : grouped) {
-            mqtt.publishGrouped(name, params);
-            Serial.print("Published ");
-            Serial.print(name);
-            Serial.print(": ");
-            for (auto& p : params) {
-                Serial.print(p.first + "=" + String(p.second, 1) + " ");
+        if (mqtt.isConnected()) {
+            // Group readings by sensor name
+            std::map<String, std::vector<std::pair<String, float>>> grouped;
+            for (auto& r : readings) {
+                grouped[r.name].push_back({r.paramKey, r.value});
             }
-            Serial.println();
-        }
 
-        // Publish pressure as separate sensor readings
-        if (pressureHeatingName.length() > 0) {
-            mqtt.publish(pressureHeatingName, "prs", heatPrs);
-            Serial.print("Published ");
-            Serial.print(pressureHeatingName);
-            Serial.print(": prs=");
-            Serial.println(heatPrs, 2);
-        }
-        if (pressureWaterName.length() > 0) {
-            mqtt.publish(pressureWaterName, "prs", waterPrs);
-            Serial.print("Published ");
-            Serial.print(pressureWaterName);
-            Serial.print(": prs=");
-            Serial.println(waterPrs, 2);
-        }
+            // Publish temperature sensor readings
+            for (auto& [name, params] : grouped) {
+                mqtt.publishGrouped(name, params);
+                Serial.print("Published ");
+                Serial.print(name);
+                Serial.print(": ");
+                for (auto& p : params) {
+                    Serial.print(p.first + "=" + String(p.second, 1) + " ");
+                }
+                Serial.println();
+            }
 
-        // Blink LED
-        digitalWrite(LED_PIN, LOW);
-        delay(50);
-        digitalWrite(LED_PIN, HIGH);
+            // Publish pressure as separate sensor readings
+            if (pressureHeatingName.length() > 0) {
+                mqtt.publish(pressureHeatingName, "prs", heatPrs);
+                Serial.print("Published ");
+                Serial.print(pressureHeatingName);
+                Serial.print(": prs=");
+                Serial.println(heatPrs, 2);
+            }
+            if (pressureWaterName.length() > 0) {
+                mqtt.publish(pressureWaterName, "prs", waterPrs);
+                Serial.print("Published ");
+                Serial.print(pressureWaterName);
+                Serial.print(": prs=");
+                Serial.println(waterPrs, 2);
+            }
+
+            // Blink LED
+            digitalWrite(LED_PIN, LOW);
+            delay(50);
+            digitalWrite(LED_PIN, HIGH);
+        }
     }
 
     // Send ack for any pending commands (batched)

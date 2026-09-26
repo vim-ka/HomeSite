@@ -14,6 +14,9 @@
  * Called every sensor-read cycle with current temperatures.
  * Manages: boiler automode, pump control, off_ihb priority,
  * autofill valve, night schedules, TEH, anti-legionella.
+ *
+ * Safety interlocks (overtemp, manual OFF, lost boiler sensor, autofill
+ * lockout) are applied last in every cycle, so no mode can override them.
  */
 
 // Sensor name → latest temperature (populated from MQTT readings in main loop)
@@ -24,11 +27,21 @@ public:
     void begin(RelayController* relays, PZAController* pza,
                PressureReader* pressure, NtpTime* ntp, ConfigManager* config);
 
-    /// Process a setting received from MQTT command
-    void onSettingChanged(const String& key, const String& value);
+    /// Validate, persist and apply a setting received via MQTT.
+    /// Returns the ack status: "ok", "unknown_key", "invalid_value" or "persist_failed".
+    const char* onSettingChanged(const String& key, const String& value);
 
     /// Main control cycle — call after reading sensors
     void update(const TempMap& temps, float heatingPressure, float waterPressure);
+
+    /// Fast timer tick — call on every loop() iteration. Ends valve pulses and
+    /// autofill phases on time instead of at the next sensor-read cycle.
+    void tick();
+
+    /// Clear the autofill lockout set after a safety timeout (leak suspected)
+    void resetAutofillFault();
+
+    bool isStarted() const { return _relays != nullptr; }
 
     /// Add status fields to heartbeat JSON
     void fillHeartbeat(JsonDocument& doc);
@@ -68,7 +81,7 @@ private:
     // TEH
     bool _tehAutomode = true;
     bool _tehPowerCmd = false;
-    int _tehDelay = 120;           // seconds
+    int _tehDelay = 120;           // minutes (UI and config_kv use minutes)
     unsigned long _tehDelayStart = 0;
     bool _tehDelayActive = false;
 
@@ -84,6 +97,9 @@ private:
     bool _autofillActive = false;
     bool _autofillClosing = false;
     unsigned long _autofillCloseStart = 0;
+    // Latched after AUTOFILL_MAX_MS without reaching pressure (leak?). Persisted,
+    // cleared only by the autofill_reset command.
+    bool _autofillFault = false;
     static constexpr unsigned long AUTOFILL_MAX_MS = 120000;     // 2 min safety max open
     static constexpr unsigned long AUTOFILL_VALVE_TRAVEL_MS = 15000; // 15s full travel
     static constexpr float AUTOFILL_HYSTERESIS = 0.1;           // bar
@@ -132,20 +148,26 @@ private:
     bool _warningActive = false;
     bool _criticalActive = false;
 
+    // Safety state
+    static constexpr uint8_t SENSOR_LOSS_CYCLES = 3;  // consecutive reads without tsboiler_s
+    uint8_t _boilerSensorMissing = 0;
+    bool _boilerSensorLost = false;
+    bool _overtemp = false;
+
     // Runtime state
     bool _ihbHeating = false;      // БКН is actively heating
     bool _scheduleRadActive = false;
     bool _scheduleFloorActive = false;
     float _boilerAutoTarget = 0;   // computed auto target (for heartbeat reporting)
 
-    // NVS write debounce
-    std::map<String, String> _pendingNvs;
-    unsigned long _lastNvsFlush = 0;
-    static constexpr unsigned long NVS_FLUSH_INTERVAL_MS = 5000;
-    void flushPendingNvs();
-
     // --- Private methods ---
     void loadSettingsFromNVS();
+    void applySetting(const String& key, const String& value);
+    float ihbTarget() const;
+    void closeAutofill(unsigned long now);
+    void tripAutofillTimeout(unsigned long now);
+    void finishValvePulse(ValveState& vs, RelayChannel openRelay, RelayChannel closeRelay, const char* label);
+    void applyInterlocks(const TempMap& temps);
     void driveValve(ValveState& vs, RelayChannel openRelay, RelayChannel closeRelay,
                     const char* label, float target, float actual);
     void updateBoiler(const TempMap& temps);

@@ -10,11 +10,11 @@ label{font-size:13px;color:#444}button{padding:10px 16px;margin-top:12px}</style
 <h2>HomeSite RF Gateway</h2>
 <form method=POST action=/save>
 <label>WiFi SSID</label><input name=ssid value="%SSID%" required>
-<label>WiFi Password</label><input name=pass type=password value="%PASS%">
+<label>WiFi Password</label><input name=pass type=password placeholder="leave empty to keep current">
 <label>MQTT Host</label><input name=mqtt_host value="%MH%" required>
 <label>MQTT Port</label><input name=mqtt_port value="%MP%">
 <label>MQTT User</label><input name=mqtt_user value="%MU%">
-<label>MQTT Password</label><input name=mqtt_pass type=password value="%MQP%">
+<label>MQTT Password</label><input name=mqtt_pass type=password placeholder="leave empty to keep current">
 <label>Node Name</label><input name=node value="%NODE%" required>
 <label>Timezone (TZ POSIX)</label><input name=tz value="%TZ%">
 <button>Save &amp; Reboot</button>
@@ -24,11 +24,10 @@ label{font-size:13px;color:#444}button{padding:10px 16px;margin-top:12px}</style
 static String fillTemplate(const String& tpl, ConfigManager& c) {
     String s = tpl;
     s.replace("%SSID%", c.wifiSsid());
-    s.replace("%PASS%", c.wifiPass());
     s.replace("%MH%",   c.mqttHost());
     s.replace("%MP%",   String(c.mqttPort()));
     s.replace("%MU%",   c.mqttUser());
-    s.replace("%MQP%",  c.mqttPass());
+    // Stored passwords are never rendered into the open portal page
     s.replace("%NODE%", c.nodeName());
     s.replace("%TZ%",   c.timezone());
     return s;
@@ -65,12 +64,17 @@ void WifiPortal::_handleRoot() {
 }
 
 void WifiPortal::_handleSave() {
-    _config->setWifi(_server->arg("ssid"), _server->arg("pass"));
+    // Empty password fields keep the stored values (page never shows them)
+    String wifiPass = _server->arg("pass");
+    if (wifiPass.length() == 0 && _server->arg("ssid") == _config->wifiSsid()) wifiPass = _config->wifiPass();
+    String mqttPass = _server->arg("mqtt_pass");
+    if (mqttPass.length() == 0) mqttPass = _config->mqttPass();
+    _config->setWifi(_server->arg("ssid"), wifiPass);
     _config->setMqtt(
         _server->arg("mqtt_host"),
         _server->arg("mqtt_port").toInt() ?: 1883,
         _server->arg("mqtt_user"),
-        _server->arg("mqtt_pass"));
+        mqttPass);
     _config->setNodeName(_server->arg("node"));
     if (_server->arg("tz").length() > 0) _config->setTimezone(_server->arg("tz"));
     _server->send(200, "text/html", "<h3>Saved. Rebooting...</h3>");

@@ -12,6 +12,8 @@ void MqttClient::begin(ConfigManager& config) {
     _applyServer(config.mqttHost(), config.mqttPort());
     _mqttClient.setCallback(_staticCallback);
     _mqttClient.setBufferSize(1024);
+    // connect() blocks the control loop; keep a dead broker from stalling it for long
+    _mqttClient.setSocketTimeout(3);
 }
 
 void MqttClient::setCommandCallback(CommandCallback cb) {
@@ -94,7 +96,8 @@ void MqttClient::publishRaw(const String& topic, const String& payload, bool ret
 
 void MqttClient::publishReliable(const String& topic, const String& payload) {
     if (!_mqttClient.connected()) return;
-    // QoS 1 via beginPublish/endPublish for ack and scan results
+    // PubSubClient can only publish QoS 0 — this streams larger payloads
+    // (ack / scan results). Lost acks are covered by the gateway's retries.
     _mqttClient.beginPublish(topic.c_str(), payload.length(), false);
     _mqttClient.print(payload);
     _mqttClient.endPublish();
