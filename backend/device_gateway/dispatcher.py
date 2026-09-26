@@ -28,11 +28,23 @@ class PendingCommand:
 
 
 class AsyncCommandDispatcher:
-    def __init__(self, publisher: CommandPublisher, debounce_seconds: float = 5.0):
+    def __init__(
+        self,
+        publisher: CommandPublisher,
+        debounce_seconds: float = 5.0,
+        max_wait_seconds: float = 15.0,
+        retry_delay_seconds: float = 5.0,
+    ):
         self.publisher = publisher
         self.debounce_seconds = debounce_seconds
+        # Upper bound for debounce: a steady stream of changes must not postpone sending forever
+        self.max_wait_seconds = max(max_wait_seconds, debounce_seconds)
+        self.retry_delay_seconds = retry_delay_seconds
         self._device_store: dict[str, dict[str, Any]] = {}
-        self._flush_task: asyncio.Task | None = None
+        self._batch_started: float | None = None
+        # Debounce is a plain timer: cancelling it can never interrupt a flush that is already running
+        self._flush_timer: asyncio.TimerHandle | None = None
+        self._flush_tasks: set[asyncio.Task] = set()
         self._lock = asyncio.Lock()
 
         # Tracks sent commands awaiting ack: {device_id: {key: PendingCommand}}
@@ -41,6 +53,9 @@ class AsyncCommandDispatcher:
 
         # Keys that failed after all retries: {device_id: set(keys)}
         self.unsynced: dict[str, set[str]] = {}
+
+        # Last publish failure (None when the last publish succeeded)
+        self.last_publish_error: str | None = None
 
     async def add_param(self, device_id: str, key: str, value: Any) -> None:
         """Queue a parameter for a device. Resets the debounce timer."""
@@ -56,40 +71,72 @@ class AsyncCommandDispatcher:
             if not self.unsynced[device_id]:
                 del self.unsynced[device_id]
 
-    def _schedule_flush(self) -> None:
-        if self._flush_task and not self._flush_task.done():
-            self._flush_task.cancel()
-        self._flush_task = asyncio.create_task(self._delayed_flush())
+    def _schedule_flush(self, delay: float | None = None) -> None:
+        loop = asyncio.get_running_loop()
+        now = loop.time()
+        if self._batch_started is None:
+            self._batch_started = now
+        if delay is None:
+            deadline = self._batch_started + self.max_wait_seconds
+            delay = max(0.0, min(self.debounce_seconds, deadline - now))
+        if self._flush_timer is not None:
+            self._flush_timer.cancel()
+        self._flush_timer = loop.call_later(delay, self._start_flush)
 
-    async def _delayed_flush(self) -> None:
-        await asyncio.sleep(self.debounce_seconds)
-        await self.flush_all()
+    def _start_flush(self) -> None:
+        self._flush_timer = None
+        task = asyncio.create_task(self.flush_all())
+        self._flush_tasks.add(task)
+        task.add_done_callback(self._flush_tasks.discard)
 
     async def flush_all(self) -> None:
-        """Flush all queued commands — one grouped MQTT message per device."""
+        """Flush all queued commands — one grouped MQTT message per device.
+
+        If publishing fails, the device's params go back to the queue (newer
+        values queued meanwhile win) and a retry is scheduled.
+        """
         async with self._lock:
             items = self._device_store.copy()
             self._device_store.clear()
+            self._batch_started = None
 
-        now = datetime.now(UTC)
+        failed: dict[str, dict[str, str]] = {}
         for device_id, params in items.items():
+            str_params = {k: str(v) for k, v in params.items()}
             try:
-                str_params = {k: str(v) for k, v in params.items()}
                 await self.publisher.publish_grouped(device_id, str_params)
-
-                async with self._ack_lock:
-                    if device_id not in self._pending_acks:
-                        self._pending_acks[device_id] = {}
-                    for key, value in str_params.items():
-                        self._pending_acks[device_id][key] = PendingCommand(
-                            value=value, sent_at=now
-                        )
-
             except Exception as e:
                 logger.error("dispatch_publish_error", device_id=device_id, error=str(e))
+                self.last_publish_error = str(e) or type(e).__name__
+                failed[device_id] = str_params
+                continue
 
-    async def handle_ack(self, device_name: str, acked_keys: dict[str, str]) -> None:
-        """Process ack from device — remove keys from pending and unsynced."""
+            self.last_publish_error = None
+            now = datetime.now(UTC)
+            async with self._ack_lock:
+                if device_id not in self._pending_acks:
+                    self._pending_acks[device_id] = {}
+                for key, value in str_params.items():
+                    self._pending_acks[device_id][key] = PendingCommand(value=value, sent_at=now)
+
+        if failed:
+            async with self._lock:
+                for device_id, params in failed.items():
+                    store = self._device_store.setdefault(device_id, {})
+                    for key, value in params.items():
+                        store.setdefault(key, value)
+                self._schedule_flush(self.retry_delay_seconds)
+
+    async def handle_ack(self, device_name: str, acked_keys: dict[str, str]) -> list[tuple[str, str]]:
+        """Process ack from device.
+
+        Value "ok" confirms the key. Any other value (e.g. "invalid_value",
+        "unknown_key", "persist_failed") means the device rejected it: the key
+        is marked unsynced right away instead of being retried.
+        Returns the rejected (key, reason) pairs.
+        """
+        rejected = [(k, str(v)) for k, v in acked_keys.items() if str(v) != "ok"]
+
         async with self._ack_lock:
             pending = self._pending_acks.get(device_name, {})
             for key in acked_keys:
@@ -97,14 +144,18 @@ class AsyncCommandDispatcher:
             if not pending:
                 self._pending_acks.pop(device_name, None)
 
-        # Clear unsync flags for acked keys
         if device_name in self.unsynced:
             for key in acked_keys:
                 self.unsynced[device_name].discard(key)
             if not self.unsynced[device_name]:
                 del self.unsynced[device_name]
+        for key, _reason in rejected:
+            self.unsynced.setdefault(device_name, set()).add(key)
 
+        if rejected:
+            logger.warning("ack_rejected", device=device_name, rejected=rejected)
         logger.info("ack_received", device=device_name, keys=list(acked_keys.keys()))
+        return rejected
 
     async def check_ack_timeouts(self) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
         """Check for commands that were not acknowledged within timeout.
@@ -149,6 +200,7 @@ class AsyncCommandDispatcher:
                 retried.extend((device_id, k) for k in params)
             except Exception as e:
                 logger.error("retry_publish_error", device_id=device_id, error=str(e))
+                self.last_publish_error = str(e) or type(e).__name__
 
         return retried, failed
 
@@ -172,6 +224,13 @@ class AsyncCommandDispatcher:
             return dict(self._device_store.get(device_id, {}))
 
     async def shutdown(self) -> None:
-        if self._flush_task and not self._flush_task.done():
-            self._flush_task.cancel()
+        if self._flush_timer is not None:
+            self._flush_timer.cancel()
+            self._flush_timer = None
+        if self._flush_tasks:
+            await asyncio.gather(*self._flush_tasks, return_exceptions=True)
         await self.flush_all()
+        if self._flush_timer is not None:
+            # flush failed and scheduled a retry — nobody will run it after shutdown
+            self._flush_timer.cancel()
+            self._flush_timer = None

@@ -41,7 +41,9 @@ class GatewaySettings(BaseSettings):
     # Database (same DB as backend — gateway writes sensor data directly)
     database_url: str = "sqlite+aiosqlite:///./sensors.db"
 
-    # Internal API
+    # Internal API — loopback only by default: it accepts device commands
+    # (override with GATEWAY_API_HOST=0.0.0.0 when backend runs on another host/container)
+    gateway_api_host: str = "127.0.0.1"
     gateway_api_port: int = 8001
     internal_api_secret: str = "CHANGE-ME-internal-secret"
 

@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 
 import aiomqtt
@@ -18,6 +19,9 @@ import structlog
 
 logger = structlog.get_logger(__name__)
 
+# Backend notifications are fire-and-forget; beyond this many in flight new ones are dropped
+MAX_PENDING_NOTIFICATIONS = 100
+
 
 class MQTTHandler:
     """Async MQTT handler with auto-reconnect.
@@ -29,22 +33,43 @@ class MQTTHandler:
     - Notify backend of updates via HTTP callback
     """
 
-    def __init__(self, settings: GatewaySettings, session_factory: async_sessionmaker[AsyncSession], dispatcher=None):
+    def __init__(
+        self,
+        settings: GatewaySettings,
+        session_factory: async_sessionmaker[AsyncSession],
+        dispatcher=None,
+        on_device_boot: Callable[[str], Awaitable[object]] | None = None,
+    ):
         self.settings = settings
         self.session_factory = session_factory
         self._connected = False
         self._reconnect_requested = False
         self._active_client: aiomqtt.Client | None = None
         self._dispatcher = dispatcher
+        # Called when a device reboots or is seen for the first time since gateway start
+        self._on_device_boot = on_device_boot
         # Heartbeat tracking: device_name → {timestamp, data}
         self.heartbeats: dict[str, dict] = {}
+        # Last reported uptime per device — a decrease means the device rebooted
+        self._last_uptime: dict[str, float | None] = {}
         # Scan results: device_name → sensor list (set by /sensors topic)
         self._scan_results: dict[str, list[dict]] = {}
         self._scan_events: dict[str, asyncio.Event] = {}
+        self._http: httpx.AsyncClient | None = None
+        self._background: set[asyncio.Task] = set()
 
     @property
     def is_connected(self) -> bool:
         return self._connected
+
+    @property
+    def active_client(self) -> aiomqtt.Client | None:
+        """Live MQTT connection, shared with CommandPublisher."""
+        return self._active_client if self._connected else None
+
+    @property
+    def topic_prefix(self) -> str:
+        return self.settings.mqtt_topic_prefix
 
     def reload_settings(self, new_settings: GatewaySettings) -> None:
         """Update MQTT settings and trigger reconnect."""
@@ -61,8 +86,6 @@ class MQTTHandler:
 
     async def run(self) -> None:
         """Main loop — connects to broker, processes messages, auto-reconnects on failure."""
-        import asyncio
-
         while True:
             try:
                 self._reconnect_requested = False
@@ -92,22 +115,26 @@ class MQTTHandler:
         async with aiomqtt.Client(**connect_kwargs) as client:
             self._active_client = client
             self._connected = True
-            logger.info(
-                "mqtt_connected",
-                host=self.settings.mqtt_broker_host,
-                port=self.settings.mqtt_broker_port,
-            )
-            await client.subscribe(self.settings.mqtt_topic_prefix + "#")
+            try:
+                logger.info(
+                    "mqtt_connected",
+                    host=self.settings.mqtt_broker_host,
+                    port=self.settings.mqtt_broker_port,
+                )
+                await client.subscribe(self.settings.mqtt_topic_prefix + "#")
 
-            async for message in client.messages:
-                try:
-                    await self._handle_message(message)
-                except Exception as e:
-                    logger.error(
-                        "mqtt_message_error",
-                        topic=str(message.topic),
-                        error=str(e),
-                    )
+                async for message in client.messages:
+                    try:
+                        await self._handle_message(message)
+                    except Exception as e:
+                        logger.error(
+                            "mqtt_message_error",
+                            topic=str(message.topic),
+                            error=str(e),
+                        )
+            finally:
+                self._connected = False
+                self._active_client = None
 
     async def _handle_message(self, message: aiomqtt.Message) -> None:
         """Parse topic, extract device name, upsert sensor values."""
@@ -133,10 +160,17 @@ class MQTTHandler:
                 payload_raw = payload_raw.decode()
             try:
                 ack_data = json.loads(payload_raw)
-                if isinstance(ack_data, dict) and self._dispatcher:
-                    await self._dispatcher.handle_ack(device_name, ack_data)
-            except Exception:
-                pass
+            except (json.JSONDecodeError, TypeError):
+                logger.warning("mqtt_invalid_ack", device=device_name)
+                return
+            if isinstance(ack_data, dict) and self._dispatcher:
+                rejected = await self._dispatcher.handle_ack(device_name, ack_data)
+                if rejected:
+                    await self._log_event(
+                        "ERROR",
+                        f"Device '{device_name}' rejected settings: "
+                        + ", ".join(f"{k} ({r})" for k, r in rejected),
+                    )
             return
 
         # Handle scan result: home/devices/{name}/sensors → OneWire scan response
@@ -161,7 +195,7 @@ class MQTTHandler:
             payload_raw = message.payload
             if isinstance(payload_raw, (bytes, bytearray)):
                 payload_raw = payload_raw.decode(errors="replace")
-            await self._notify_rf_debug(device_name, payload_raw)
+            self._spawn(self._notify_rf_debug(device_name, payload_raw))
             return
 
         # Handle heartbeat: home/devices/{name}/heartbeat → track device alive + payload
@@ -174,10 +208,13 @@ class MQTTHandler:
                 hb_data = json.loads(hb_payload)
             except (json.JSONDecodeError, TypeError):
                 pass
+            if not isinstance(hb_data, dict):
+                hb_data = {}
             self.heartbeats[device_name] = {
                 "timestamp": datetime.now(UTC),
                 "data": hb_data,
             }
+            self._track_boot(device_name, hb_data.get("uptime"))
             return
 
         payload = message.payload
@@ -215,7 +252,58 @@ class MQTTHandler:
 
         # Notify backend about the update
         if updated_params:
-            await self._notify_backend(device_name, device_id, data)
+            self._spawn(self._notify_backend(device_name, device_id, data))
+
+    def _track_boot(self, device_name: str, uptime: object) -> None:
+        """Fire on_device_boot when a device reboots or is first seen since gateway start."""
+        try:
+            uptime_s = float(uptime)  # type: ignore[arg-type]
+        except (TypeError, ValueError):
+            uptime_s = None
+        first_seen = device_name not in self._last_uptime
+        previous = self._last_uptime.get(device_name)
+        self._last_uptime[device_name] = uptime_s if uptime_s is not None else (previous or 0.0)
+        rebooted = previous is not None and uptime_s is not None and uptime_s < previous
+        if (first_seen or rebooted) and self._on_device_boot is not None:
+            logger.info("device_boot_detected", device=device_name, rebooted=rebooted)
+            self._spawn(self._on_device_boot(device_name))
+
+    def _spawn(self, coro: Awaitable[object]) -> None:
+        """Run a coroutine in the background without blocking the MQTT loop."""
+        if len(self._background) >= MAX_PENDING_NOTIFICATIONS:
+            logger.warning("background_queue_full_dropping")
+            coro.close()  # type: ignore[attr-defined]
+            return
+        task = asyncio.ensure_future(coro)
+        self._background.add(task)
+        task.add_done_callback(self._background_done)
+
+    def _background_done(self, task: asyncio.Task) -> None:
+        self._background.discard(task)
+        if not task.cancelled() and task.exception() is not None:
+            logger.error("background_task_error", error=str(task.exception()))
+
+    def _client(self) -> httpx.AsyncClient:
+        if self._http is None:
+            self._http = httpx.AsyncClient(timeout=3.0)
+        return self._http
+
+    async def close(self) -> None:
+        for task in list(self._background):
+            task.cancel()
+        if self._http is not None:
+            await self._http.aclose()
+            self._http = None
+
+    async def _log_event(self, level: str, message: str) -> None:
+        from app.models.event import EventLog
+
+        try:
+            async with self.session_factory() as session:
+                session.add(EventLog(level=level, source="gateway", message=message))
+                await session.commit()
+        except Exception as e:
+            logger.error("event_log_write_error", error=str(e))
 
     async def _register_pending(self, session: AsyncSession, device_name: str, data: dict) -> None:
         """Record an unknown device in pending_sensors for user review."""
@@ -311,16 +399,15 @@ class MQTTHandler:
     ) -> None:
         """Notify the backend about a sensor update via HTTP callback."""
         try:
-            async with httpx.AsyncClient(timeout=3.0) as client:
-                await client.post(
-                    f"{self.settings.backend_url}/api/v1/internal/sensor-update",
-                    json={
-                        "device_name": device_name,
-                        "sensor_id": sensor_id,
-                        "data": data,
-                    },
-                    headers={"X-Internal-Secret": self.settings.internal_api_secret},
-                )
+            await self._client().post(
+                f"{self.settings.backend_url}/api/v1/internal/sensor-update",
+                json={
+                    "device_name": device_name,
+                    "sensor_id": sensor_id,
+                    "data": data,
+                },
+                headers={"X-Internal-Secret": self.settings.internal_api_secret},
+            )
         except httpx.ConnectError:
             pass  # Backend may not be running — this is non-critical
         except Exception as e:
@@ -329,22 +416,28 @@ class MQTTHandler:
     async def _notify_rf_debug(self, device_name: str, payload: str) -> None:
         """Forward raw RF frame from rtl_433_ESP to backend for WS fan-out."""
         try:
-            async with httpx.AsyncClient(timeout=3.0) as client:
-                await client.post(
-                    f"{self.settings.backend_url}/api/v1/internal/rf-debug",
-                    json={"device_name": device_name, "payload": payload},
-                    headers={"X-Internal-Secret": self.settings.internal_api_secret},
-                )
+            await self._client().post(
+                f"{self.settings.backend_url}/api/v1/internal/rf-debug",
+                json={"device_name": device_name, "payload": payload},
+                headers={"X-Internal-Secret": self.settings.internal_api_secret},
+            )
         except httpx.ConnectError:
             pass
         except Exception as e:
             logger.warning("backend_notify_rf_debug_error", error=str(e))
 
+    def begin_scan(self, device_name: str) -> None:
+        """Register interest in a scan result. Call BEFORE publishing scan_sensors,
+        otherwise a fast reply can arrive before anyone is waiting and get lost."""
+        self._scan_results.pop(device_name, None)
+        self._scan_events[device_name] = asyncio.Event()
+
     async def wait_for_scan(self, device_name: str, timeout: float = 10.0) -> list[dict] | None:
         """Wait for scan result from device. Returns sensor list or None on timeout."""
-        event = asyncio.Event()
-        self._scan_events[device_name] = event
-        self._scan_results.pop(device_name, None)
+        event = self._scan_events.get(device_name)
+        if event is None:
+            self.begin_scan(device_name)
+            event = self._scan_events[device_name]
         try:
             await asyncio.wait_for(event.wait(), timeout=timeout)
             return self._scan_results.get(device_name)

@@ -13,6 +13,7 @@ from device_gateway.config import get_gateway_settings
 from device_gateway.dispatcher import AsyncCommandDispatcher, MAX_RETRIES
 from device_gateway.handler import MQTTHandler
 from device_gateway.publisher import CommandPublisher
+from device_gateway.sync import resync_device
 
 
 def setup_logging(level: str) -> None:
@@ -53,11 +54,17 @@ async def main() -> None:
     session_factory = async_sessionmaker(engine, expire_on_commit=False)
 
     # MQTT publisher + dispatcher
-    publisher = CommandPublisher(settings)
+    publisher = CommandPublisher()
     dispatcher = AsyncCommandDispatcher(publisher, debounce_seconds=settings.debounce_seconds)
 
-    # MQTT handler (subscriber) — receives sensor data, acks, heartbeats
-    handler = MQTTHandler(settings, session_factory, dispatcher=dispatcher)
+    async def on_device_boot(device_name: str) -> None:
+        # Commands are not retained — re-send the device's desired state from config_kv
+        await resync_device(dispatcher, settings.database_url, device_name)
+
+    # MQTT handler (subscriber) — receives sensor data, acks, heartbeats.
+    # The publisher sends through the handler's connection (shared reconnect).
+    handler = MQTTHandler(settings, session_factory, dispatcher=dispatcher, on_device_boot=on_device_boot)
+    publisher.attach(handler)
 
     # Internal API
     api_app = create_gateway_api(
@@ -71,7 +78,7 @@ async def main() -> None:
     # Run MQTT handler and API server concurrently
     api_config = uvicorn.Config(
         api_app,
-        host="0.0.0.0",
+        host=settings.gateway_api_host,
         port=settings.gateway_api_port,
         log_level=settings.log_level.lower(),
     )
@@ -97,8 +104,6 @@ async def main() -> None:
                 ack_timeout = int(db_kv.get("ack_timeout_seconds", "30"))
                 hb_timeout = int(db_kv.get("heartbeat_timeout_seconds", "60"))
 
-                # Update dispatcher ack timeout
-                from device_gateway.dispatcher import ACK_TIMEOUT_SECONDS
                 dispatcher._ack_timeout = ack_timeout
 
                 events = []
@@ -131,12 +136,11 @@ async def main() -> None:
                         await session.commit()
 
             except Exception as e:
-                logger.error("watchdog_error", error=str(e))
+                logger.exception("watchdog_error", error=str(e))
 
             await asyncio.sleep(15)
 
     try:
-        await publisher.connect()
         await asyncio.gather(
             handler.run(),
             api_server.serve(),
@@ -146,7 +150,7 @@ async def main() -> None:
         logger.info("gateway_shutdown_requested")
     finally:
         await dispatcher.shutdown()
-        await publisher.disconnect()
+        await handler.close()
         await engine.dispose()
         logger.info("gateway_stopped")
 
