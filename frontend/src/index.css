@@ -36,12 +36,17 @@
 
   /* Borders */
   html.dark .border-gray-200 { border-color: #374151 !important; }
-  html.dark .border-gray-100 { border-color: #1f2937 !important; }
+  /* was #1f2937 = the card background itself, so every gray-100 divider vanished */
+  html.dark .border-gray-100 { border-color: #2f3a4a !important; }
 
   /* Hover states */
   html.dark .hover\:bg-gray-50:hover { background-color: #374151 !important; }
   html.dark .hover\:bg-gray-100:hover { background-color: #374151 !important; }
   html.dark .hover\:bg-gray-200\/60:hover { background-color: rgba(55, 65, 81, 0.6) !important; }
+  html.dark .hover\:bg-gray-200:hover { background-color: #4b5563 !important; }
+
+  /* Neutral chips / pills (e.g. unselected PZA curve buttons) */
+  html.dark .bg-gray-100 { background-color: #374151 !important; }
 
   /* Inputs */
   html.dark input,

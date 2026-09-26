@@ -225,7 +225,7 @@ function PZAChart({
       </div>
       <ResponsiveContainer width="100%" height={220}>
         <LineChart data={chartData} margin={{ top: 18, right: 12, left: 0, bottom: 10 }}>
-          <CartesianGrid strokeDasharray="3 3" />
+          <CartesianGrid strokeDasharray="3 3" stroke="#94a3b8" strokeOpacity={0.3} />
           <XAxis
             dataKey="outdoor"
             type="number"
@@ -260,9 +260,9 @@ function PZAChart({
           {markerX != null && currentSupply != null && (
             <ReferenceLine
               x={markerX}
-              stroke="#64748b"
+              stroke="#94a3b8"
               strokeDasharray="4 3"
-              label={{ value: `${fmt(outdoorTemp)}°`, position: "top", fontSize: 11, fill: "#475569" }}
+              label={{ value: `${fmt(outdoorTemp)}°`, position: "top", fontSize: 11, fill: "#94a3b8" }}
             />
           )}
           {markerX != null && currentSupply != null && (
@@ -275,7 +275,7 @@ function PZAChart({
           )}
           {/* Actual supply (sensor) as a ring, target on the curve as a dot drawn on top */}
           {markerX != null && actualSupply != null && (
-            <ReferenceDot x={markerX} y={actualSupply} r={7} fill="none" stroke="#0f172a" strokeWidth={1.5} />
+            <ReferenceDot x={markerX} y={actualSupply} r={7} fill="none" stroke="#94a3b8" strokeWidth={2} />
           )}
           {markerX != null && currentSupply != null && (
             <ReferenceDot x={markerX} y={currentSupply} r={4} fill={selectedColor} stroke="#fff" strokeWidth={1.5} />
