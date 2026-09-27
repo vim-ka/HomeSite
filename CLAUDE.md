@@ -54,6 +54,9 @@ docker compose up -d
 safety flags, circuits and DHW tank not heating, tank overheat, anti-legionella result) → `AlarmTracker`
 (per-alarm raise delay, hysteresis in the rules) → raise/clear events in the log + `state.active_alarms`,
 which `/scheme/state` returns as `alarms`. Add a new alarm as a rule with a test in `tests/test_alarm_rules.py`.
+`/api/v1/alarms` (list), `POST /alarms/ack` and `POST /alarms/buzzer-mute` (operator/admin); the frontend shows
+unacknowledged alarms in a banner on every page (`AlarmBanner`) and counts them on the bell. Acknowledgements
+live in memory (a backend restart shows active alarms as new again).
 
 **Scheme page** (`/scheme`): SCADA-style mnemonic of the boiler room. Backend `GET /api/v1/scheme/state`
 (`app/services/scheme_service.py`) aggregates sensors by role (circuit mount points), controller heartbeat

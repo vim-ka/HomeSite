@@ -41,6 +41,9 @@ public:
     /// Clear the autofill lockout set after a safety timeout (leak suspected)
     void resetAutofillFault();
 
+    /// Silence the critical lamp + buzzer for the causes active now; a new cause sounds again
+    void muteBuzzer();
+
     bool isStarted() const { return _relays != nullptr; }
 
     /// Add status fields to heartbeat JSON
@@ -171,9 +174,16 @@ private:
     ValveState _radValve;
     ValveState _floorValve;
 
-    // Alarm lamps
+    // Alarm lamps. The critical lamp (+ buzzer) shows causes not muted by the user.
     bool _warningActive = false;
     bool _criticalActive = false;
+    uint16_t _criticalCauses = 0;
+    uint16_t _mutedCauses = 0;
+    enum : uint16_t {
+        CRIT_PRESSURE_ZERO = 1 << 0, CRIT_PRESSURE = 1 << 1, CRIT_BOILER_MAX = 1 << 2, CRIT_IHB_SENSOR = 1 << 3,
+        CRIT_BOILER_SENSOR = 1 << 4, CRIT_OVERTEMP = 1 << 5, CRIT_AUTOFILL = 1 << 6, CRIT_FROST = 1 << 7,
+        CRIT_NO_HEAT = 1 << 8,
+    };
 
     // Safety state
     static constexpr uint8_t SENSOR_LOSS_CYCLES = 3;  // consecutive reads without tsboiler_s

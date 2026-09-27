@@ -212,3 +212,24 @@ def test_anti_legionella_that_never_got_hot_enough_is_reported():
     t = run_at(c, datetime(2026, 1, 20, 3, 0), 61, tank=55)
     run_at(c, t, 2, tank=55)                  # window over
     assert c.alm_last == "failed" and not c.alm_active
+
+
+# ---------------------------------------------------------------- buzzer mute
+def test_buzzer_mute_silences_until_a_new_critical_cause():
+    c = make()
+    c.autofill_fault = True
+    run(c, 20, WARM)
+    assert c.critical and c.relays["lamp_critical"]
+    c.buzzer_mute()
+    run(c, 20, WARM)
+    assert c.critical and not c.relays["lamp_critical"]
+    assert c.heartbeat(1.5, None)["buzzer_muted"] is True
+    run(c, 20, WARM, pressure=0.0)                   # a NEW critical cause
+    assert c.relays["lamp_critical"]
+    c.buzzer_mute()
+    c.autofill_fault = False
+    run(c, 20, WARM, pressure=1.5)                   # everything clear: the mute is forgotten
+    assert not c.critical
+    c.autofill_fault = True
+    run(c, 20, WARM)
+    assert c.relays["lamp_critical"]

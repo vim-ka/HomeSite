@@ -199,3 +199,19 @@ def test_tracker_active_list_is_most_severe_first():
     t = AlarmTracker()
     t.update([Alarm("a", "WARNING", "w"), Alarm("b", "ERROR", "e")], NOW)
     assert [a["code"] for a in t.active_list()] == ["b", "a"]
+
+
+def test_tracker_acknowledgement_and_its_reset_on_escalation():
+    t = AlarmTracker()
+    t.update([Alarm("room:Кухня", "WARNING", "Прохладно")], NOW)
+    [item] = t.active_list()
+    assert item["acked"] is False and item["since"] == NOW.isoformat()
+    assert t.ack("room:Кухня") is True and t.active_list()[0]["acked"] is True
+    assert t.ack("no:such") is False
+    t.update([Alarm("room:Кухня", "WARNING", "Прохладно")], NOW + timedelta(minutes=1))
+    assert t.active_list()[0]["acked"] is True           # same alarm: stays acknowledged
+    t.update([Alarm("room:Кухня", "ERROR", "Холодно")], NOW + timedelta(minutes=2))
+    assert t.active_list()[0]["acked"] is False          # got worse: needs attention again
+    t.update([], NOW + timedelta(minutes=3))
+    t.update([Alarm("room:Кухня", "WARNING", "Прохладно")], NOW + timedelta(minutes=4))
+    assert t.active_list()[0]["acked"] is False          # a new occurrence is not acknowledged

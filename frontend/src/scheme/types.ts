@@ -24,7 +24,7 @@ export interface ControllerState {
   targets: { boiler: number | null; rad: number | null; floor: number | null; ihb: number | null };
 }
 
-export interface SchemeAlarm { level: "ERROR" | "WARNING"; code: string; text: string }
+export interface SchemeAlarm { level: "ERROR" | "WARNING"; code: string; text: string; since?: string | null; acked?: boolean }
 export interface SchemeEvent { ts: string | null; level: string; text: string }
 
 export interface SchemeState {

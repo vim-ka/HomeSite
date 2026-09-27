@@ -43,7 +43,7 @@ UNHEATED_SENSORS = {"clm_garage_th"}
 BOILER_ROOM_SENSOR = "clm_boiler_th"
 FLAG_KEYS = [
     "warning", "critical", "alm_active", "schedule_rad", "schedule_floor", "ihb_heating",
-    "autofill_active", "autofill_closing", "boiler_auto", *CONTROLLER_FLAGS,
+    "autofill_active", "autofill_closing", "boiler_auto", "buzzer_muted", *CONTROLLER_FLAGS,
 ]
 ALL_ROLES = [r for pair in CIRCUIT_ROLES.values() for r in pair] + [
     "cold_water", "hot_water", "heating_pressure", "water_pressure", "outdoor", "indoor_avg", "boiler_room",

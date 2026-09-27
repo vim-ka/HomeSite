@@ -190,6 +190,8 @@ class AlarmTracker:
     def __init__(self) -> None:
         self.active: dict[str, Alarm] = {}
         self._pending: dict[str, datetime] = {}
+        self._since: dict[str, datetime] = {}
+        self._acked: set[str] = set()   # acknowledged by a person; reset when the alarm gets worse or clears
 
     def update(self, alarms: Iterable[Alarm], now: datetime,
                hold_prefixes: tuple[str, ...] = ()) -> tuple[list[Alarm], list[Alarm]]:
@@ -200,19 +202,32 @@ class AlarmTracker:
                 old = self.active[code]
                 if LEVEL_RANK[a.level] > LEVEL_RANK[old.level]:
                     raised.append(a)          # escalation is news
+                    self._acked.discard(code)
                 self.active[code] = a         # keep the text current (values change)
                 continue
             since = self._pending.setdefault(code, now)
             if (now - since).total_seconds() >= a.delay_s:
                 self._pending.pop(code)
                 self.active[code] = a
+                self._since[code] = now
                 raised.append(a)
         for code in [c for c in self._pending if c not in seen]:
             self._pending.pop(code)
         cleared = [self.active.pop(code) for code in list(self.active)
                    if code not in seen and not code.startswith(hold_prefixes or ("\0",))]
+        for a in cleared:
+            self._since.pop(a.code, None)
+            self._acked.discard(a.code)
         return raised, cleared
+
+    def ack(self, code: str) -> bool:
+        if code not in self.active:
+            return False
+        self._acked.add(code)
+        return True
 
     def active_list(self) -> list[dict]:
         items = sorted(self.active.values(), key=lambda a: (-LEVEL_RANK[a.level], a.code))
-        return [{"code": a.code, "level": a.level, "text": a.text} for a in items]
+        return [{"code": a.code, "level": a.level, "text": a.text,
+                 "since": self._since[a.code].isoformat() if a.code in self._since else None,
+                 "acked": a.code in self._acked} for a in items]

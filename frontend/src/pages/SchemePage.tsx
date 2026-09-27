@@ -111,11 +111,11 @@ export default function SchemePage() {
           <div data-panel="overlay" className="absolute overflow-y-auto rounded-lg"
                style={{ left: pct(panel.at[0], L.width), top: pct(panel.at[1], L.height),
                         width: pct(panel.width, L.width), maxHeight: pct(panel.height, L.height) }}>
-            <AlarmPanel state={data} collapsible={false} />
+            <AlarmPanel state={data} collapsible={false} canAct={role === "admin" || role === "operator"} />
           </div>
         )}
       </div>
-      {!panel && <AlarmPanel state={data} collapsible={layout === "tall"} />}
+      {!panel && <AlarmPanel state={data} collapsible={layout === "tall"} canAct={role === "admin" || role === "operator"} />}
       {dialog && (
         <ControlDialog kind={dialog.kind} role={dialog.role} state={data} userRole={role}
                        onClose={() => setDialog(null)}

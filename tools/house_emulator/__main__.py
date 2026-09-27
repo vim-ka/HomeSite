@@ -162,6 +162,9 @@ class Emulator:
             elif key == "autofill_reset":
                 c.reset_autofill_fault()
                 ack[key] = "ok"
+            elif key == "buzzer_mute":
+                c.buzzer_mute()
+                ack[key] = "ok"
             elif key == "outdoor_temp":
                 with contextlib.suppress(ValueError):
                     if not self.sim.local_outdoor:

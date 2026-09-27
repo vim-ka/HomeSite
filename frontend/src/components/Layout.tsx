@@ -16,6 +16,7 @@ import {
 import { useAuthStore } from "@/stores/authStore";
 import { useWebSocket } from "@/hooks/useWebSocket";
 import AlertBell from "@/components/AlertBell";
+import AlarmBanner from "@/components/AlarmBanner";
 import ThemeToggle from "@/components/ThemeToggle";
 import LanguageToggle from "@/components/LanguageToggle";
 import ServiceStatus from "@/components/ServiceStatus";
@@ -160,6 +161,7 @@ export default function Layout() {
 
         {/* Page content */}
         <main className="flex-1 overflow-y-auto p-6">
+          <AlarmBanner />
           <Outlet />
         </main>
       </div>

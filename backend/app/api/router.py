@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends
 
 from app.api.deps import get_current_user
 
+from app.api.v1.alarms import router as alarms_router
 from app.api.v1.auth import router as auth_router
 from app.api.v1.catalog import router as catalog_router
 from app.api.v1.charts import router as chart_router
@@ -15,6 +16,7 @@ from app.api.v1.ws import router as ws_router
 api_v1_router = APIRouter(prefix="/api/v1")
 
 api_v1_router.include_router(auth_router, prefix="/auth", tags=["auth"])
+api_v1_router.include_router(alarms_router, prefix="/alarms", tags=["alarms"])
 api_v1_router.include_router(catalog_router, prefix="/catalog", tags=["catalog"])
 api_v1_router.include_router(sensor_router, prefix="/sensors", tags=["sensors"])
 api_v1_router.include_router(scheme_router, prefix="/scheme", tags=["scheme"])

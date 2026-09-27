@@ -225,6 +225,12 @@ void BoilerLogic::applySetting(const String& key, const String& value) {
     else if (key == "heating_floorheating_curve") _pza->setFloorCurve(value.toInt());
 }
 
+void BoilerLogic::muteBuzzer() {
+    _mutedCauses = _criticalCauses;
+    _relays->set(RELAY_LAMP_CRITICAL, false);
+    Serial.println("ALARM: buzzer muted");
+}
+
 void BoilerLogic::resetAutofillFault() {
     _autofillFault = false;
     _config->setFlag(AUTOFILL_FAULT_FLAG, false);
@@ -817,18 +823,18 @@ void BoilerLogic::updateAlarms(const TempMap& temps, float heatingPressure) {
     bool prevCritical = _criticalActive;
 
     _warningActive = false;
-    _criticalActive = false;
+    uint16_t causes = 0;  // critical causes; a buzzer mute covers exactly the causes active then
 
     // Pressure: ~0 on a configured sensor is critical (empty system or broken wire)
     if (_pressureZero) {
-        _criticalActive = true;
+        causes |= CRIT_PRESSURE_ZERO;
     } else if (!isnan(heatingPressure)) {
         if (heatingPressure < _pressureMin || heatingPressure > _pressureMax) {
             _warningActive = true;
         }
         // Critical: pressure far out of range (±0.3 bar beyond limits)
         if (heatingPressure < _pressureMin - 0.3 || heatingPressure > _pressureMax + 0.3) {
-            _criticalActive = true;
+            causes |= CRIT_PRESSURE;
         }
     }
 
@@ -838,7 +844,7 @@ void BoilerLogic::updateAlarms(const TempMap& temps, float heatingPressure) {
             _warningActive = true;  // approaching max (the auto cycle tops out at max - 5)
         }
         if (boilerTemp >= _boilerMaxTemp) {
-            _criticalActive = true;  // at or above max
+            causes |= CRIT_BOILER_MAX;  // at or above max
         }
     }
 
@@ -855,23 +861,28 @@ void BoilerLogic::updateAlarms(const TempMap& temps, float heatingPressure) {
 
     // IHB sensor loss in automode is critical — pump is forced OFF, DHW not regulated
     if (_ihbAutomode && getTemp(temps, "tsihb_s") == TEMP_INVALID) {
-        _criticalActive = true;
+        causes |= CRIT_IHB_SENSOR;
     }
 
     // Boiler forced off by interlock / autofill locked out after timeout
-    if (_boilerSensorLost || _overtemp || _autofillFault || _frostProtect) {
-        _criticalActive = true;
-    }
+    if (_boilerSensorLost) causes |= CRIT_BOILER_SENSOR;
+    if (_overtemp) causes |= CRIT_OVERTEMP;
+    if (_autofillFault) causes |= CRIT_AUTOFILL;
+    if (_frostProtect) causes |= CRIT_FROST;
     if (_boilerNoHeat) {
-        if (_pza->hasOutdoorTemp() && _pza->outdoorTemp() < 0) _criticalActive = true;
+        if (_pza->hasOutdoorTemp() && _pza->outdoorTemp() < 0) causes |= CRIT_NO_HEAT;
         else _warningActive = true;
     }
     if (_wellDry || _ihbSensorLost) {
         _warningActive = true;
     }
 
+    _criticalCauses = causes;
+    _criticalActive = causes != 0;
+    if (!_criticalActive) _mutedCauses = 0;  // all clear: the next alarm sounds again
+
     _relays->set(RELAY_LAMP_WARNING, _warningActive);
-    _relays->set(RELAY_LAMP_CRITICAL, _criticalActive);
+    _relays->set(RELAY_LAMP_CRITICAL, (causes & ~_mutedCauses) != 0);
 
     // Log state changes
     if (_warningActive && !prevWarning) Serial.println("ALARM: WARNING active");
@@ -910,6 +921,7 @@ void BoilerLogic::fillHeartbeat(JsonDocument& doc) {
     doc["ihb_sensor_lost"] = _ihbSensorLost;
     doc["well_dry"] = _wellDry;
     doc["alm_no_time"] = _almNoTime;
+    doc["buzzer_muted"] = _criticalActive && !_relays->get(RELAY_LAMP_CRITICAL);
     if (_almLast[0] != '\0') doc["alm_last"] = _almLast;
 }
 

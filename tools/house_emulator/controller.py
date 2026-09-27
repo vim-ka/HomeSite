@@ -135,6 +135,8 @@ class Controller:
     alm_in_window: bool = False
     alm_last: str = ""                  # "", "ok", "failed" — result of the last window
     reset_reason: str = "poweron"
+    critical_causes: set[str] = field(default_factory=set)
+    muted_causes: set[str] = field(default_factory=set)
 
     autofill_active: bool = False
     autofill_closing: bool = False
@@ -548,20 +550,23 @@ class Controller:
                 self.relays["boiler"] = True
 
     def _update_alarms(self, temps: dict[str, float], pressure: float | None) -> None:
+        """Lamps. Critical = a set of named causes, so a buzzer mute covers exactly the causes seen then."""
         bt = temps.get("tsboiler_s")
         p_min, p_max = self.f("heating_pressure_min"), self.f("heating_pressure_max")
         max_temp = self.f("heating_boiler_max_temp")
-        warning = critical = False
+        warning = False
+        causes: set[str] = set()
         if pressure is not None and pressure < PRESSURE_ZERO_BAR:
-            critical = True
+            causes.add("pressure_zero")
         elif pressure is not None:
             if pressure < p_min or pressure > p_max:
                 warning = True
             if pressure < p_min - 0.3 or pressure > p_max + 0.3:
-                critical = True
+                causes.add("pressure")
         if bt is not None:
             warning |= bt >= max_temp - 2   # the auto cycle tops out at max - 5; this is the real approach
-            critical |= bt >= max_temp
+            if bt >= max_temp:
+                causes.add("boiler_max")
         else:
             warning = True
         if (self.b("heating_radiator_pump") and temps.get("tsrad_s") is None) or (
@@ -569,18 +574,30 @@ class Controller:
         ):
             warning = True
         if self.b("watersupply_ihb_automode") and temps.get("tsihb_s") is None:
-            critical = True
-        if self.boiler_sensor_lost or self.overtemp or self.autofill_fault or self.frost_protect:
-            critical = True
+            causes.add("ihb_sensor")
+        for name in ("boiler_sensor_lost", "overtemp", "autofill_fault", "frost_protect"):
+            if getattr(self, name):
+                causes.add(name)
         if self.boiler_no_heat:
             if self.outdoor_fresh() and self.outdoor < 0:
-                critical = True
+                causes.add("boiler_no_heat")
             else:
                 warning = True
         if self.well_dry or self.ihb_sensor_lost:
             warning = True
+        critical = bool(causes)
+        if not critical:
+            self.muted_causes = set()        # all clear: the next alarm sounds again
+        self.critical_causes = causes
         self.warning, self.critical = warning, critical
-        self.relays["lamp_warning"], self.relays["lamp_critical"] = warning, critical
+        self.relays["lamp_warning"] = warning
+        self.relays["lamp_critical"] = bool(causes - self.muted_causes)
+
+    def buzzer_mute(self) -> None:
+        """Silence the alarm lamp + buzzer for the causes active now; a new cause sounds again."""
+        self.muted_causes = set(self.critical_causes)
+        self.relays["lamp_critical"] = False
+        self._log("ALARM: buzzer muted")
 
     # -------------------------------------------------------------- heartbeat
     def heartbeat(self, prs_heat: float | None, prs_water: float | None) -> dict:
@@ -627,6 +644,7 @@ class Controller:
             "well_dry": self.well_dry,
             "alm_no_time": False,             # the emulator always knows the time
             "reset_reason": self.reset_reason,
+            "buzzer_muted": self.critical and not self.relays["lamp_critical"],
         })
         if self.alm_last:
             hb["alm_last"] = self.alm_last

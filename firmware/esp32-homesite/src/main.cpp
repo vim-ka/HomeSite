@@ -119,6 +119,10 @@ void onCommand(const String& key, const String& value) {
         boilerLogic.resetAutofillFault();
         return;
     }
+    if (key == "buzzer_mute") {
+        boilerLogic.muteBuzzer();
+        return;
+    }
     if (key == "outdoor_temp") {
         ackDoc.remove(key);  // periodic telemetry forward, not a setting
         char* end = nullptr;
