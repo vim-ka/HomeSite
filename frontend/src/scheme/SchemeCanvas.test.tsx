@@ -335,3 +335,13 @@ describe("SchemeCanvas autofill mode", () => {
     }
   });
 });
+
+describe("SchemeCanvas ПЗА circuits", () => {
+  it("the circuit pump tooltip says it's in ПЗА mode and offers only the right click", () => {
+    const state = makeState();
+    state.settings.heating_radiator_wbm = "1";
+    const { container } = render(<SchemeCanvas state={state} layout="wide" onOpen={() => {}} onToggle={() => {}} />);
+    expect(container.querySelector("[data-element='rad_pump'] title")!.textContent)
+      .toBe("Насос радиаторов: режим ПЗА. Правый клик — настройки");
+  });
+});

@@ -2,7 +2,7 @@ import { useRef, type KeyboardEvent, type MouseEvent, type ReactNode } from "rea
 import { Boiler, FillValve, FloorLoops, Gauge, MixingValve, Pipe, Pump, Radiators, Separator, Tank, Tap, Teh, ValueTag, Well } from "./elements";
 import { LAYOUTS, type LayoutName } from "./layouts";
 import { pipeColor } from "./pipeColor";
-import { dhwPriority, isAuto, isOn, TOGGLES } from "./toggles";
+import { autoMode, dhwPriority, isAuto, isOn, TOGGLES } from "./toggles";
 import { manualHints } from "./hints";
 import { elementName } from "./names";
 import type { ElementKind, RoleKey, SchemeState } from "./types";
@@ -63,7 +63,10 @@ export function SchemeCanvas({ state, layout, onOpen, onToggle, busyKeys = [] }:
     const toggle = onToggle ? TOGGLES[id] : undefined;
     const on = toggle ? isOn(toggle, s, r) : undefined;
     const auto = toggle ? isAuto(toggle, s) : false;
-    const idle = toggle?.relay && (on || auto) && c.online && !r[toggle.relay] ? ", сейчас в ожидании" : "";
+    const mode = toggle ? autoMode(toggle) : null;
+    // a mode that runs the element (auto) may keep it waiting; ПЗА leaves on/off to the command
+    const idle = toggle?.relay && (on || (auto && mode!.runs)) && c.online && !r[toggle.relay] ? ", сейчас в ожидании"
+      : auto && !mode!.runs && !on ? ", выключен" : "";
     const open = () => onOpen(kind, role);
     // only a mouse click switches equipment; touch and stylus taps open the settings
     const click = () =>
@@ -91,7 +94,7 @@ export function SchemeCanvas({ state, layout, onOpen, onToggle, busyKeys = [] }:
       >
         <title>
           {!toggle ? "Настройки"
-            : auto ? `${toggle.label}: авто-режим${idle}. Правый клик — настройки`
+            : auto ? `${toggle.label}: ${mode!.state}${idle}. Правый клик — настройки`
             : `${toggle.label}: ${on ? "включено" : "выключено"}${idle}. Клик — ${on ? "выключить" : "включить"}, правый клик — настройки`}
         </title>
         {child}

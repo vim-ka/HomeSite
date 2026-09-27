@@ -8,12 +8,22 @@ export interface ToggleDef {
   relay?: RelayName;
   /** setting that hands the element to the controller: then a quick click would be ignored */
   autoKey?: string;
+  /** how that mode is called; `runs: false` — the mode doesn't switch the element itself (ПЗА only sets the temperature) */
+  autoMode?: { lock: string; state: string; runs?: boolean };
+}
+
+const AUTO = { lock: "в авто-режиме", state: "авто-режим", runs: true };
+const PZA = { lock: "в режиме ПЗА", state: "режим ПЗА", runs: false };
+
+/** Name and behaviour of the element's automatic mode. */
+export function autoMode(def: ToggleDef): { lock: string; state: string; runs: boolean } {
+  return { ...AUTO, ...def.autoMode };
 }
 
 /** Scheme element id → setting it switches. */
 export const TOGGLES: Record<string, ToggleDef> = {
-  rad_pump: { key: "heating_radiator_pump", label: "Насос радиаторов", relay: "rad_pump" },
-  floor_pump: { key: "heating_floorheating_pump", label: "Насос тёплого пола", relay: "floor_pump" },
+  rad_pump: { key: "heating_radiator_pump", label: "Насос радиаторов", relay: "rad_pump", autoKey: "heating_radiator_wbm", autoMode: PZA },
+  floor_pump: { key: "heating_floorheating_pump", label: "Насос тёплого пола", relay: "floor_pump", autoKey: "heating_floorheating_wbm", autoMode: PZA },
   ihb_pump: { key: "watersupply_ihb_pump", label: "Насос бойлера", relay: "ihb_pump", autoKey: "watersupply_ihb_automode" },
   recirc_pump: { key: "watersupply_pump_hot", label: "Рециркуляция ГВС", relay: "water_hot_pump" },
   cold_pump: { key: "watersupply_pump", label: "Насос ХВС", relay: "water_pump" },
@@ -39,7 +49,7 @@ export function toggleLock(
   key: string, settings: Record<string, string>, next?: "0" | "1", controller?: SchemeState["controller"],
 ): string | null {
   const def = Object.values(TOGGLES).find((t) => t.key === key);
-  if (def?.autoKey && settings[def.autoKey] === "1") return `${def.label} в авто-режиме — управление по правому клику`;
+  if (def?.autoKey && settings[def.autoKey] === "1") return `${def.label} ${autoMode(def).lock} — управление по правому клику`;
   if (next === "1" && controller && def && dhwPriority(key, settings, controller)) {
     return `${def.label} не включится — приоритет ГВС: сейчас греется бойлер`;
   }

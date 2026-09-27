@@ -28,3 +28,18 @@ describe("toggleLock: DHW priority", () => {
     expect(toggleLock("heating_floorheating_pump", { heating_floorheating_off_ihb: "1" }, "1", makeState().controller)).toBeNull();
   });
 });
+
+describe("toggleLock: weather-compensated (ПЗА) circuits", () => {
+  it("a circuit pump in ПЗА mode is not switched by a quick click, either way", () => {
+    expect(toggleLock("heating_radiator_pump", { heating_radiator_wbm: "1" }, "0")).toBe(
+      "Насос радиаторов в режиме ПЗА — управление по правому клику");
+    expect(toggleLock("heating_floorheating_pump", { heating_floorheating_wbm: "1" }, "1")).toBe(
+      "Насос тёплого пола в режиме ПЗА — управление по правому клику");
+    expect(toggleLock("heating_radiator_pump", { heating_radiator_wbm: "0" }, "0")).toBeNull();
+  });
+
+  it("auto-mode wording for the tank pump stays as it was", () => {
+    expect(toggleLock("watersupply_ihb_pump", { watersupply_ihb_automode: "1" })).toBe(
+      "Насос бойлера в авто-режиме — управление по правому клику");
+  });
+});
