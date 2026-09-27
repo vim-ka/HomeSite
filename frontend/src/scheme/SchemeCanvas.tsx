@@ -3,6 +3,7 @@ import { Boiler, FillValve, FloorLoops, Gauge, MixingValve, Pipe, Pump, Radiator
 import { LAYOUTS, type LayoutName } from "./layouts";
 import { pipeColor } from "./pipeColor";
 import { dhwPriority, isAuto, isOn, TOGGLES } from "./toggles";
+import { manualHints } from "./hints";
 import { elementName } from "./names";
 import type { ElementKind, RoleKey, SchemeState } from "./types";
 
@@ -43,6 +44,12 @@ export function SchemeCanvas({ state, layout, onOpen, onToggle, busyKeys = [] }:
   const autofillEnabled = isOn(TOGGLES.autofill!, s, r);
   // switched on = by hand or handed to the controller (auto); whether it works right now is the relay
   const enabled = (id: string) => isAuto(TOGGLES[id]!, s) || isOn(TOGGLES[id]!, s, r);
+  // caption above the valve on a horizontal pipe, beside it on a vertical one
+  const fillPipe = L.pipes.find((p) => p.id === "cold_to_fill")!.points;
+  const fillOnVertical = fillPipe.some((p, i) => {
+    const q = fillPipe[i + 1];
+    return !!q && p[0] === q[0] && p[0] === L.autofill[0] && Math.min(p[1], q[1]) <= L.autofill[1] && L.autofill[1] <= Math.max(p[1], q[1]);
+  });
   const autofillState = c.flags.autofill_fault ? "fault" : r.af_open ? "opening" : r.af_close ? "closing" : "closed";
 
   // valve orientation follows the pipes: where the mixed water leaves, which side the bypass joins
@@ -133,7 +140,8 @@ export function SchemeCanvas({ state, layout, onOpen, onToggle, busyKeys = [] }:
         ))}
         {hit("gauge", "autofill", <Gauge x={L.gauge[0]} y={L.gauge[1]} value={val("heating_pressure")}
                                          lo={Number(s.heating_pressure_min ?? NaN) || null} hi={Number(s.heating_pressure_max ?? NaN) || null} />)}
-        {hit("autofill", "autofill", <FillValve x={L.autofill[0]} y={L.autofill[1]} state={autofillState} enabled={autofillEnabled} />)}
+        {hit("autofill", "autofill", <FillValve x={L.autofill[0]} y={L.autofill[1]} state={autofillState} enabled={autofillEnabled}
+                                                 captionSide={fillOnVertical ? "right" : "top"} />)}
         {hit("tank", "tank", (
           <g transform={`translate(${L.tank[0]} ${L.tank[1]}) scale(${L.tankScale ?? 1})`}>
             <Tank x={0} y={0} fill={warmth("tank")} />
@@ -169,6 +177,21 @@ export function SchemeCanvas({ state, layout, onOpen, onToggle, busyKeys = [] }:
           <text key={l.text} x={l.at[0]} y={l.at[1]} fontSize={12} fontWeight={700} fill="var(--scheme-text)"
                 textAnchor={l.align ?? (L.mirrored ? "end" : "start")}>{l.text}</text>
         ))}
+
+        {/* Manual-mode hints: an amber sign at the element, the text in its tooltip (and in the panel below) */}
+        {manualHints(state).map((h) => {
+          const tankScale = L.tankScale ?? 1, boilerScale = L.boilerScale ?? 1;
+          const [hx, hy] = h.element === "ihb_pump" ? [L.ihbPump[0], L.ihbPump[1] - 22]
+            : h.element === "teh" ? [L.tank[0] + 70 * tankScale, L.tank[1] + 140 * tankScale]
+            : [L.boiler[0] + (L.mirrored ? 10 : 110) * boilerScale, L.boiler[1] + 10 * boilerScale];
+          return (
+            <g key={h.element} data-hint={h.element} transform={`translate(${hx} ${hy})`} style={{ cursor: "help" }}>
+              <title>{h.text}</title>
+              <circle r={8} fill="#f59e0b" />
+              <text y={4} fontSize={12} fontWeight={800} textAnchor="middle" fill="#111827">!</text>
+            </g>
+          );
+        })}
 
         {/* State badges: night setback at the circuit; DHW priority right beside the pump it holds off */}
         {(["rad", "floor"] as const).map((k) => (

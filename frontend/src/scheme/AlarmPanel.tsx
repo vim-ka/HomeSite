@@ -1,11 +1,13 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
+import { manualHints } from "./hints";
 import type { SchemeState } from "./types";
 import { fmtTime } from "@/lib/utils";
 
 export function AlarmPanel({ state, collapsible }: { state: SchemeState; collapsible: boolean }) {
   const [open, setOpen] = useState(!collapsible || state.alarms.length > 0);
   const bad = state.alarms.length > 0;
+  const hints = manualHints(state);
   return (
     <section className={`rounded-lg border p-3 text-sm ${bad ? "border-red-300 bg-red-50" : "border-gray-200 bg-white"}`}>
       <button type="button" className="flex w-full items-center gap-2 font-semibold text-gray-800"
@@ -14,6 +16,10 @@ export function AlarmPanel({ state, collapsible }: { state: SchemeState; collaps
         Сигнализация {bad ? `(${state.alarms.length})` : "— аварий нет"}
         {collapsible && <span className="ml-auto text-gray-400">{open ? "▴" : "▾"}</span>}
       </button>
+      {/* hints stay visible when the panel is collapsed: they ask the user to change a setting */}
+      {hints.map((h) => (
+        <div key={h.element} className="mt-1 text-amber-700">⚠ {h.text}</div>
+      ))}
       {open && (
         <>
           {state.alarms.map((a) => (

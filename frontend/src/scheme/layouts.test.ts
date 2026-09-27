@@ -160,3 +160,15 @@ describe("pumps and valves mounted on the collector", () => {
     expect(L.ihbPump[0] - collectorEnd).toBeLessThanOrEqual(16);
   });
 });
+
+describe("radiators label", () => {
+  it("wide: 'Радиаторы' sits left of the radiators on screen, the scheme starts near the top", () => {
+    const L = LAYOUTS.wide;
+    const label = L.labels.find((l) => l.text === "Радиаторы")!;
+    expect(label.align).toBeUndefined();                 // right-anchored in the mirrored layout
+    expect(label.at[0]).toBeLessThanOrEqual(L.radiators[0] - 8);
+    expect(label.at[1]).toBeGreaterThan(L.radiators[1]);
+    expect(label.at[1]).toBeLessThan(L.radiators[1] + 46);
+    expect(L.radiators[1]).toBeLessThanOrEqual(16);
+  });
+});

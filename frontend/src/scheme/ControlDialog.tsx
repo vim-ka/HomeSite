@@ -1,3 +1,4 @@
+import { X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { isAxiosError } from "axios";
@@ -137,7 +138,13 @@ export function ControlDialog({ kind, role, state, userRole, onClose, onApplied 
            ref={box} tabIndex={-1} onKeyDown={(e) => e.key === "Escape" && close()}
            className="w-full sm:w-[440px] max-h-[85vh] overflow-y-auto rounded-t-2xl sm:rounded-xl bg-white p-4 shadow-xl"
            onClick={(e) => e.stopPropagation()}>
-        <h3 className="text-base font-semibold text-gray-900 mb-1">{form?.title ?? ROLE_LABELS[role!] ?? "Датчик"}</h3>
+        <div className="mb-1 flex items-start justify-between gap-2">
+          <h3 className="text-base font-semibold text-gray-900">{form?.title ?? ROLE_LABELS[role!] ?? "Датчик"}</h3>
+          <button type="button" onClick={close} aria-label="Закрыть" title="Закрыть"
+                  className="-mr-1 -mt-1 rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
 
         {kind === "sensor" && (
           <div className="text-sm text-gray-700 space-y-1">

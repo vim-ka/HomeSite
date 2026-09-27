@@ -52,6 +52,18 @@ describe("ControlDialog", () => {
     expect(onClose).not.toHaveBeenCalled();
   });
 
+  it("closes with the ✕ in the top right corner, asking about unsaved changes like Отмена", () => {
+    const onClose = vi.fn();
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    renderDialog({ onClose });
+    fireEvent.click(screen.getByRole("button", { name: "Закрыть" }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByLabelText("Автоматический режим"));
+    fireEvent.click(screen.getByRole("button", { name: "Закрыть" }));
+    expect(confirm).toHaveBeenCalled();
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
   it("shows a 422 validation error under the field", async () => {
     vi.mocked(api.put).mockRejectedValue(Object.assign(new Error("422"), {
       isAxiosError: true, response: { status: 422, data: { detail: { errors: { heating_boiler_temp: "must be between 30 and 90" } } } },

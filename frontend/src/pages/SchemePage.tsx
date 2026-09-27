@@ -15,6 +15,17 @@ import type { ElementKind, RoleKey } from "@/scheme/types";
 import { SCHEME_QUERY_KEY, stillAwaiting, useSchemeRefreshOnWs, useSchemeState } from "@/scheme/useSchemeState";
 import type { SchemeState } from "@/scheme/types";
 
+/** Toast after a quick toggle; autofill only arms the controller, it doesn't open the valve by itself. */
+function toggleMessage(key: string, label: string, next: "0" | "1", settings: Record<string, string>): string {
+  if (key === "heating_autofill_enabled") {
+    const min = Number(settings.heating_pressure_min ?? "1").toFixed(1);
+    return next === "1"
+      ? `Автоподпитка включена — клапан откроется сам, когда давление упадёт ниже ${min} бар`
+      : "Автоподпитка выключена — давление не будет восстанавливаться автоматически";
+  }
+  return `${label} ${next === "1" ? "включается" : "выключается"}`;
+}
+
 export default function SchemePage() {
   const role = useAuthStore((s) => s.user?.role);
   const [dialog, setDialog] = useState<{ kind: ElementKind; role?: RoleKey } | null>(null);
@@ -52,7 +63,7 @@ export default function SchemePage() {
     );
     try {
       const { data: res } = await api.put("/settings", { settings: { [key]: next } });
-      toast.success(`${label} ${next === "1" ? "включается" : "выключается"}`);
+      toast.success(toggleMessage(key, label, next, data.settings));
       if (res?.delivery === "failed") toast.error("Шлюз недоступен — команда уйдёт при переподключении");
       setAppliedAt(Date.now());
     } catch {

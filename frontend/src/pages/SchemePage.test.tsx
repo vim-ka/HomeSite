@@ -107,6 +107,14 @@ describe("SchemePage quick toggle", () => {
     }
   });
 
+  it("switching autofill on explains that the valve opens by itself on low pressure", async () => {
+    vi.mocked(api.put).mockResolvedValue({ data: { success: true, delivery: "queued", unrouted: [] } });
+    const { container } = renderPage();
+    fireEvent.click(container.querySelector("[data-element='autofill']")!);
+    expect(await screen.findByText("Автоподпитка включена — клапан откроется сам, когда давление упадёт ниже 1.0 бар"))
+      .toBeInTheDocument();
+  });
+
   it("boiler power can't be toggled in auto mode", () => {
     vi.mocked(api.put).mockClear();
     const { container } = renderPage();

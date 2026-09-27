@@ -302,3 +302,36 @@ describe("SchemeCanvas mixing valves", () => {
     expect(container.querySelectorAll("[data-element='teh'] [data-part='heat'] .scheme-heat").length).toBe(2);
   });
 });
+
+describe("SchemeCanvas manual-mode hints", () => {
+  it("marks the element with an amber sign whose tooltip explains the hint", () => {
+    const state = makeState();
+    state.settings.watersupply_ihb_automode = "0";
+    state.controller.relays.ihb_pump = true;
+    state.controller.targets.ihb = 65;
+    state.values.tank = { value: 67, ts: "2026-01-20T12:00:00Z", stale: false };
+    for (const layout of ["wide", "tall"] as const) {
+      const { container, unmount } = render(<SchemeCanvas state={state} layout={layout} onOpen={() => {}} />);
+      const mark = container.querySelector("[data-hint='ihb_pump']")!;
+      expect(mark.querySelector("title")!.textContent).toMatch(/уже нагрет/);
+      expect(container.querySelector("[data-hint='boiler']")).toBeNull();
+      unmount();
+    }
+  });
+});
+
+describe("SchemeCanvas autofill mode", () => {
+  it("says 'авто' at the valve when autofill is on and 'выкл' when it is off", () => {
+    for (const layout of ["wide", "tall"] as const) {
+      const state = makeState();
+      state.settings.heating_autofill_enabled = "1";
+      const { container, unmount, rerender } = render(<SchemeCanvas state={state} layout={layout} onOpen={() => {}} />);
+      expect(container.querySelector("[data-element='autofill'] [data-part='caption']")!.textContent).toBe("авто");
+      const off = makeState();
+      off.settings.heating_autofill_enabled = "0";
+      rerender(<SchemeCanvas state={off} layout={layout} onOpen={() => {}} />);
+      expect(container.querySelector("[data-element='autofill'] [data-part='caption']")!.textContent).toBe("выкл");
+      unmount();
+    }
+  });
+});
