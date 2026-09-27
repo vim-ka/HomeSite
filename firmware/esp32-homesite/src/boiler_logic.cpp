@@ -696,8 +696,10 @@ void BoilerLogic::updateTeh(const TempMap& temps) {
 void BoilerLogic::updateAntiLegionella(const TempMap& temps) {
     if (!_almMode || _almDays.length() == 0) {
         _almActive = false;
+        _almNoTime = false;
         return;
     }
+    _almNoTime = !_ntp->isReady();
 
     // ALM window: start_time to start_time + duration
     int endH = _almStartH;
@@ -706,22 +708,44 @@ void BoilerLogic::updateAntiLegionella(const TempMap& temps) {
     if (endH >= 24) endH -= 24;
 
     bool inWindow = _ntp->isInSchedule(_almDays, _almStartH, _almStartM, endH, endM);
-
-    if (inWindow) {
-        float ihbTemp = getTemp(temps, "tsihb_s");
-        if (ihbTemp != TEMP_INVALID && ihbTemp < _almTemp) {
-            // Raise the IHB target to ALM temp. Pump and boiler follow through the
-            // normal logic, so overtemp and manual OFF still apply (interlocks).
-            if (!_almActive) {
-                _almActive = true;
-                Serial.println("ALM: anti-legionella heating started");
-            }
-        } else {
-            _almActive = false;
+    if (!inWindow) {
+        if (_almInWindow && !_almDone) {
+            _almLast = "failed";
+            Serial.println("ALM: window over - temperature not reached/held");
         }
-    } else {
+        _almInWindow = false;
         _almActive = false;
+        return;
     }
+    if (!_almInWindow) {  // window starts
+        _almInWindow = true;
+        _almDone = false;
+        _almHoldActive = false;
+    }
+    if (_almDone) {
+        _almActive = false;
+        return;
+    }
+
+    // Raise the IHB target to ALM temp until the tank has held it. Pump and boiler follow through
+    // the normal logic, so overtemp and manual OFF still apply (interlocks).
+    float ihbTemp = getTemp(temps, "tsihb_s");
+    if (ihbTemp != TEMP_INVALID && ihbTemp >= _almTemp) {
+        if (!_almHoldActive) {
+            _almHoldActive = true;
+            _almHoldStart = millis();
+        } else if (millis() - _almHoldStart >= ALM_HOLD_MS) {
+            _almDone = true;
+            _almActive = false;
+            _almLast = "ok";
+            Serial.println("ALM: disinfection complete");
+            return;
+        }
+    } else if (ihbTemp != TEMP_INVALID) {
+        _almHoldActive = false;  // dropped below: the hold starts over
+    }
+    if (!_almActive) Serial.println("ALM: anti-legionella heating started");
+    _almActive = true;
 }
 
 // ── Three-way valve control (proportional pulse-based) ────────
@@ -885,6 +909,8 @@ void BoilerLogic::fillHeartbeat(JsonDocument& doc) {
     doc["boiler_no_heat"] = _boilerNoHeat;
     doc["ihb_sensor_lost"] = _ihbSensorLost;
     doc["well_dry"] = _wellDry;
+    doc["alm_no_time"] = _almNoTime;
+    if (_almLast[0] != '\0') doc["alm_last"] = _almLast;
 }
 
 // ── Helpers ───────────────────────────────────────────────────

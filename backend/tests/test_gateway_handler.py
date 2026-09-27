@@ -228,3 +228,67 @@ async def test_outdoor_temp_forwarded_to_controller(engine):
         ("home/devices/boiler_unit/cmd", {"outdoor_temp": "-7.5"}, False)
     ]
     await handler.close()
+
+
+async def _gateway_events(db_session) -> list[tuple[str, str]]:
+    from app.models.event import EventLog
+    db_session.expire_all()
+    return [(e.level, e.message) for e in (await db_session.execute(select(EventLog).order_by(EventLog.id))).scalars()]
+
+
+@pytest.mark.asyncio
+async def test_reboot_is_logged_with_its_reason_and_a_reboot_loop_is_an_error(engine, db_session):
+    import asyncio
+    from sqlalchemy.ext.asyncio import async_sessionmaker
+
+    handler = MQTTHandler(GatewaySettings(mqtt_broker_host="127.0.0.1"), async_sessionmaker(engine, expire_on_commit=False))
+    topic = "home/devices/boiler_unit/heartbeat"
+    await handler._handle_message(FakeMessage(topic, {"uptime": 500}))
+    await handler._handle_message(FakeMessage(topic, {"uptime": 5, "reset_reason": "watchdog"}))
+    for _ in range(100):
+        events = await _gateway_events(db_session)
+        if events:
+            break
+        await asyncio.sleep(0.02)
+    assert events == [("INFO", "Устройство «boiler_unit» перезагрузилось (причина: сторожевой таймер)")]
+
+    for _ in range(3):   # three more quick reboots: 4 within 30 minutes
+        await handler._handle_message(FakeMessage(topic, {"uptime": 400}))
+        await handler._handle_message(FakeMessage(topic, {"uptime": 2, "reset_reason": "brownout"}))
+    for _ in range(100):   # events are written by background tasks
+        events = await _gateway_events(db_session)
+        if len(events) >= 5:
+            break
+        await asyncio.sleep(0.02)
+    assert ("ERROR", "Устройство «boiler_unit» постоянно перезагружается: 4 раза за 30 мин "
+                     "(последняя причина: просадка питания)") in events
+    await handler.close()
+
+
+@pytest.mark.asyncio
+async def test_heartbeat_loss_and_return_in_russian_controller_left_to_the_backend(engine):
+    from datetime import timedelta
+    from sqlalchemy.ext.asyncio import async_sessionmaker
+
+    handler = MQTTHandler(GatewaySettings(mqtt_broker_host="127.0.0.1"), async_sessionmaker(engine, expire_on_commit=False))
+    for dev in ("rf-gateway", "boiler_unit"):
+        await handler._handle_message(FakeMessage(f"home/devices/{dev}/heartbeat", {"uptime": 10}))
+    later = datetime.now(UTC) + timedelta(seconds=120)
+    events = handler.check_heartbeats(later, timeout_s=60, quiet={"boiler_unit"})
+    assert events == [{"level": "WARNING", "source": "gateway_watchdog",
+                       "message": "Устройство «rf-gateway» не на связи — нет сигнала 60 с"}]
+    assert handler.heartbeats == {}   # both records dropped, the controller silently (backend alarm covers it)
+
+    restored: list[tuple[str, str]] = []
+
+    async def capture(level: str, message: str) -> None:
+        restored.append((level, message))
+
+    handler._log_event = capture  # type: ignore[method-assign]
+    await handler._handle_message(FakeMessage("home/devices/rf-gateway/heartbeat", {"uptime": 200}))
+    await handler._handle_message(FakeMessage("home/devices/boiler_unit/heartbeat", {"uptime": 200}))
+    import asyncio
+    for _ in range(10):
+        await asyncio.sleep(0)
+    assert restored == [("INFO", "Устройство «rf-gateway» снова на связи")]
+    await handler.close()

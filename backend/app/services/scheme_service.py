@@ -73,30 +73,6 @@ def decode_relays(mask: int | None) -> dict[str, bool]:
     return {name: bool(mask & (1 << i)) for i, name in enumerate(RELAY_NAMES)}
 
 
-def build_alarms(
-    *, online: bool, gateway_ok: bool, flags: dict, pressure: float | None, p_min: float | None, p_max: float | None,
-) -> list[dict]:
-    if not gateway_ok:
-        return [{"level": "ERROR", "code": "gateway_down", "text": "Шлюз устройств недоступен"}]
-    if not online:
-        return [{"level": "ERROR", "code": "no_link", "text": "Нет связи с контроллером котельной"}]
-    alarms = [{"level": level, "code": flag, "text": text}
-              for flag, (level, text) in CONTROLLER_FLAGS.items() if flags.get(flag)]
-    if flags.get("pressure_zero"):
-        pass  # already explained; "0.00 below the norm" would only repeat it
-    elif pressure is not None and p_min is not None and pressure < p_min:
-        alarms.append({"level": "ERROR", "code": "pressure_low",
-                       "text": f"Давление {pressure:.2f} бар ниже нормы {p_min:g}"})
-    if pressure is not None and p_max is not None and pressure > p_max:
-        alarms.append({"level": "ERROR", "code": "pressure_high",
-                       "text": f"Давление {pressure:.2f} бар выше нормы {p_max:g}"})
-    if flags.get("critical") and not alarms:
-        alarms.append({"level": "ERROR", "code": "critical", "text": "Контроллер сообщает об аварии"})
-    elif flags.get("warning") and not alarms:
-        alarms.append({"level": "WARNING", "code": "warning", "text": "Контроллер сообщает о предупреждении"})
-    return alarms
-
-
 class CachedFetch:
     """Share one gateway /health response between requests for a short time.
 
@@ -139,6 +115,7 @@ class SchemeService:
     def __init__(self, db: AsyncSession, fetch_gateway: GatewayFetch):
         self.db = db
         self.fetch_gateway = fetch_gateway
+        self.heartbeat_data: dict = {}
 
     async def _latest_temps(self) -> dict[int, tuple[float, datetime]]:
         rows = await self.db.execute(
@@ -190,10 +167,15 @@ class SchemeService:
         put("outdoor", outdoor_id)
 
         excluded = {outdoor_id, names.get(BOILER_ROOM_SENSOR)} | {names.get(n) for n in UNHEATED_SENSORS}
-        climate_ids = (await self.db.execute(
-            select(Sensor.id).join(MountPoint, MountPoint.id == Sensor.mount_point_id)
-            .where(MountPoint.system_id == CLIMATE_SYSTEM_ID)
-        )).scalars().all()
+        climate = (await self.db.execute(
+            select(Sensor.id, MountPoint.name).join(MountPoint, MountPoint.id == Sensor.mount_point_id)
+            .where(MountPoint.system_id == CLIMATE_SYSTEM_ID).order_by(MountPoint.id)
+        )).all()
+        climate_ids = [sid for sid, _ in climate]
+        # heated rooms one by one (by their place name) — the alarm rules watch each of them
+        rooms = [{"name": mp_name, **(_reading(round(float(temps[sid][0]), 1), temps[sid][1], stale_before)
+                                      if sid in temps else _reading(None, None, stale_before))}
+                 for sid, mp_name in climate if sid not in excluded]
         fresh = [temps[i] for i in climate_ids if i not in excluded and i in temps
                  and _utc(temps[i][1]) >= stale_before]
         if fresh:
@@ -207,6 +189,7 @@ class SchemeService:
         last_seen = _utc(datetime.fromisoformat(hb["timestamp"])) if hb and hb.get("timestamp") else None
         online = last_seen is not None and (now - last_seen).total_seconds() < hb_timeout
         data = (hb or {}).get("data", {}) if online else {}
+        self.heartbeat_data = data  # raw, for the alarm rules (PZA without outdoor, anti-legionella result)
         flags = {k: bool(data.get(k, False)) for k in FLAG_KEYS}
         controller = {
             "online": online,
@@ -235,20 +218,15 @@ class SchemeService:
                 values[role] = bound_reading  # stale, but better than nothing
 
         sync = (gw or {}).get("sync", {}).get(CONTROLLER_DEVICE, {})
-        pressure = values["heating_pressure"]["value"] if not values["heating_pressure"]["stale"] else None
-        alarms = build_alarms(
-            online=online, gateway_ok=gateway_ok, flags=flags, pressure=pressure,
-            p_min=_num(settings_all, "heating_pressure_min"), p_max=_num(settings_all, "heating_pressure_max"),
-        )
         events = (await self.db.execute(select(EventLog).order_by(desc(EventLog.timestamp)).limit(3))).scalars().all()
 
         return {
             "generated_at": _iso(now),
             "values": values,
+            "rooms": rooms,
             "controller": controller,
             "settings": settings,
             "sync": {"pending": list(sync.get("pending", [])), "unsynced": list(sync.get("unsynced", []))},
-            "alarms": alarms,
             "events": [{"ts": _iso(_utc(e.timestamp)), "level": e.level, "text": e.message or ""} for e in events],
             "stale_minutes": stale_minutes,
         }

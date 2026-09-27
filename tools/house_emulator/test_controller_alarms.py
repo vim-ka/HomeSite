@@ -177,3 +177,38 @@ def test_no_water_pressure_sensor_no_dry_run_check():
     c = make(watersupply_pump="1")
     run(c, 300, WARM, water=None)
     assert c.relays["water_pump"] and not c.well_dry
+
+
+# ---------------------------------------------------------------- anti-legionella: hold and result (B8)
+from datetime import timedelta  # noqa: E402
+
+ALM = dict(watersupply_ihb_alm_mode="1", watersupply_alm_days="1,2,3,4,5,6,7", watersupply_alm_start_time="03:00",
+           watersupply_alm_duration="60", watersupply_alm_temp="60", watersupply_ihb_temp="50",
+           watersupply_ihb_automode="1")
+
+
+def run_at(c: Controller, start: datetime, minutes: float, tank: float) -> datetime:
+    t = start
+    for _ in range(int(minutes * 6)):
+        c.tick(10)
+        c.update(t, {**WARM, "tsihb_s": tank}, 1.5)
+        t += timedelta(seconds=10)
+    return t
+
+
+def test_anti_legionella_holds_the_temperature_before_it_counts():
+    c = make(**ALM)
+    t = run_at(c, datetime(2026, 1, 20, 3, 0), 5, tank=55)
+    assert c.alm_active and c.ihb_target() == 60
+    t = run_at(c, t, 5, tank=60.5)            # reached, but only for 5 minutes
+    assert c.alm_active, "the target stays raised while the temperature is held"
+    t = run_at(c, t, 6, tank=60.5)            # 11 minutes at 60 °C
+    assert not c.alm_active and c.alm_last == "ok"
+    assert c.heartbeat(1.5, None)["alm_last"] == "ok"
+
+
+def test_anti_legionella_that_never_got_hot_enough_is_reported():
+    c = make(**ALM)
+    t = run_at(c, datetime(2026, 1, 20, 3, 0), 61, tank=55)
+    run_at(c, t, 2, tank=55)                  # window over
+    assert c.alm_last == "failed" and not c.alm_active

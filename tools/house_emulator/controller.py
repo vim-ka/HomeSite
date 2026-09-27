@@ -43,6 +43,7 @@ WELL_MIN_BAR = 0.5                 # well pump on, water pressure below this …
 WELL_GRACE_S = 60.0                # … this long → dry run
 WELL_RETRY_S = 30 * 60
 WELL_MAX_TRIES = 3
+ALM_HOLD_S = 10 * 60               # anti-legionella counts only after the tank held the temperature this long
 
 # PZA curves — same as backend app/services/pza.py and firmware pza_controller.cpp
 OUTDOOR_POINTS = [20, 10, 0, -10, -20, -35]
@@ -129,6 +130,11 @@ class Controller:
     well_failures: int = 0
     well_locked: bool = False
     well_dry: bool = False
+    alm_hold_since: float | None = None
+    alm_done: bool = False              # this window's disinfection is complete
+    alm_in_window: bool = False
+    alm_last: str = ""                  # "", "ok", "failed" — result of the last window
+    reset_reason: str = "poweron"
 
     autofill_active: bool = False
     autofill_closing: bool = False
@@ -178,6 +184,7 @@ class Controller:
         """ESP.restart(): RAM state lost, relays off, NVS (settings, fault flag) kept."""
         keep_settings, keep_fault = dict(self.settings), self.autofill_fault
         self.__init__(settings=keep_settings, autofill_fault=keep_fault)  # type: ignore[misc]
+        self.reset_reason = "software"
 
     def _log(self, msg: str) -> None:
         self.log.append(msg)
@@ -347,6 +354,8 @@ class Controller:
         self.well_dry = self.well_waiting or self.well_locked
 
     def _update_alm(self, now: datetime, temps: dict[str, float]) -> None:
+        """Firmware updateAntiLegionella: raise the tank target in the window until the tank has HELD
+        the temperature for ALM_HOLD_S; report the window's result (alm_last)."""
         days = self.s("watersupply_alm_days")
         if not self.b("watersupply_ihb_alm_mode") or not days:
             self.alm_active = False
@@ -355,11 +364,30 @@ class Controller:
         total = sh * 60 + sm + int(self.f("watersupply_alm_duration"))
         end = f"{(total // 60) % 24:02d}:{total % 60:02d}"
         in_window = in_schedule(now, days, self.s("watersupply_alm_start_time"), end)
+        if not in_window:
+            if self.alm_in_window and not self.alm_done:
+                self.alm_last = "failed"
+                self._log("ALM: window over — temperature not reached/held")
+            self.alm_in_window = self.alm_active = False
+            return
+        if not self.alm_in_window:  # window starts
+            self.alm_in_window, self.alm_done, self.alm_hold_since = True, False, None
+        if self.alm_done:
+            self.alm_active = False
+            return
         ihb = temps.get("tsihb_s")
-        active = in_window and ihb is not None and ihb < self.f("watersupply_alm_temp")
-        if active and not self.alm_active:
+        if ihb is not None and ihb >= self.f("watersupply_alm_temp"):
+            if self.alm_hold_since is None:
+                self.alm_hold_since = self.t
+            elif self.t - self.alm_hold_since >= ALM_HOLD_S:
+                self.alm_done, self.alm_active, self.alm_last = True, False, "ok"
+                self._log("ALM: disinfection complete")
+                return
+        elif ihb is not None:
+            self.alm_hold_since = None   # dropped below: the hold starts over
+        if not self.alm_active:
             self._log("ALM: anti-legionella heating started")
-        self.alm_active = active
+        self.alm_active = True
 
     def _update_boiler(self, temps: dict[str, float]) -> None:
         bt = temps.get("tsboiler_s")
@@ -597,5 +625,9 @@ class Controller:
             "boiler_no_heat": self.boiler_no_heat,
             "ihb_sensor_lost": self.ihb_sensor_lost,
             "well_dry": self.well_dry,
+            "alm_no_time": False,             # the emulator always knows the time
+            "reset_reason": self.reset_reason,
         })
+        if self.alm_last:
+            hb["alm_last"] = self.alm_last
         return hb

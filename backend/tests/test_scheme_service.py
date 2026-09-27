@@ -1,4 +1,4 @@
-"""SchemeService: role bindings, heartbeat fallback, staleness, alarms, gateway failures."""
+"""SchemeService: role bindings, heartbeat fallback, staleness, gateway failures (alarms: test_alarm_rules)."""
 
 from datetime import UTC, datetime, timedelta
 
@@ -7,7 +7,7 @@ import pytest
 from app.models.config import ConfigKV
 from app.models.heating import HeatingCircuit
 from app.models.sensor import MountPoint, Place, Sensor, SensorData, SensorDataType, SensorType, SystemType
-from app.services.scheme_service import SchemeService, build_alarms, decode_relays
+from app.services.scheme_service import SchemeService, decode_relays
 
 NOW = datetime(2026, 1, 20, 12, 0, tzinfo=UTC)
 
@@ -67,11 +67,7 @@ def test_decode_relays():
     assert len(decode_relays(0)) == 16
 
 
-def test_build_alarms_pressure_and_flags():
-    alarms = build_alarms(online=True, gateway_ok=True, flags={"autofill_fault": True}, pressure=0.92, p_min=1.0, p_max=2.0)
-    codes = {a["code"] for a in alarms}
-    assert codes == {"autofill_fault", "pressure_low"}
-    assert all(a["level"] == "ERROR" for a in alarms)
+
 
 
 @pytest.mark.asyncio
@@ -108,7 +104,6 @@ async def test_controller_never_seen(db_session):
     assert state["controller"]["online"] is False
     assert state["controller"]["last_seen"] is None
     assert not any(state["controller"]["relays"].values())
-    assert {a["code"] for a in state["alarms"]} == {"no_link"}
 
 
 @pytest.mark.asyncio
@@ -129,7 +124,6 @@ async def test_gateway_down(db_session):
     state = await SchemeService(db_session, down).build_state(NOW)
     assert state["controller"]["online"] is False
     assert state["sync"] == {"pending": [], "unsynced": []}
-    assert {a["code"] for a in state["alarms"]} == {"gateway_down"}
 
 
 @pytest.mark.asyncio
@@ -180,21 +174,13 @@ async def test_gateway_health_is_cached_briefly():
     assert (await cached())["n"] == 2
 
 
-def test_build_alarms_explains_every_controller_safety_flag():
-    from app.services.controller_flags import CONTROLLER_FLAGS
-    for flag, (level, text) in CONTROLLER_FLAGS.items():
-        alarms = build_alarms(online=True, gateway_ok=True, flags={flag: True, "critical": True},
-                              pressure=1.5, p_min=1.0, p_max=2.0)
-        assert [(a["code"], a["level"], a["text"]) for a in alarms] == [(flag, level, text)], flag
-    assert "бар" in CONTROLLER_FLAGS["pressure_zero"][1] and "замерзания" in CONTROLLER_FLAGS["frost_protect"][1]
-
-
-def test_build_alarms_zero_pressure_is_not_reported_twice():
-    alarms = build_alarms(online=True, gateway_ok=True, flags={"pressure_zero": True}, pressure=0.0, p_min=1.0, p_max=2.0)
-    assert [a["code"] for a in alarms] == ["pressure_zero"]
-
-
 def test_every_controller_safety_flag_is_read_from_the_heartbeat():
     from app.services.controller_flags import CONTROLLER_FLAGS
     from app.services.scheme_service import FLAG_KEYS
     assert set(CONTROLLER_FLAGS) <= set(FLAG_KEYS)
+
+
+async def test_state_lists_heated_rooms_by_their_place(db_session):
+    await seed(db_session)
+    state = await SchemeService(db_session, gateway()).build_state(NOW)
+    assert [(r["name"], r["value"]) for r in state["rooms"]] == [("Камин", 22.7)]

@@ -49,6 +49,12 @@ docker compose up -d
 
 **Health monitoring**: `HealthMonitor` background task (single source of truth) → cached state read by `/health/*` endpoints → frontend polls via `useServiceHealth` hook
 
+**Alarms**: every poll the HealthMonitor builds the scheme state and runs `app/services/alarm_rules.py` —
+`evaluate()` (pure rules: rooms / boiler room / cold water temperature, heating pressure, controller link and
+safety flags, circuits and DHW tank not heating, tank overheat, anti-legionella result) → `AlarmTracker`
+(per-alarm raise delay, hysteresis in the rules) → raise/clear events in the log + `state.active_alarms`,
+which `/scheme/state` returns as `alarms`. Add a new alarm as a rule with a test in `tests/test_alarm_rules.py`.
+
 **Scheme page** (`/scheme`): SCADA-style mnemonic of the boiler room. Backend `GET /api/v1/scheme/state`
 (`app/services/scheme_service.py`) aggregates sensors by role (circuit mount points), controller heartbeat
 (relays, flags, targets), gateway sync lists and alarms. Frontend `src/scheme/*`: pure SVG elements,

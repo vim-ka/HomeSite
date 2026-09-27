@@ -2,6 +2,7 @@
 #include <WiFi.h>
 #include <ArduinoJson.h>
 #include <esp_task_wdt.h>
+#include <esp_system.h>
 #include "config_manager.h"
 #include "wifi_portal.h"
 #include "mqtt_client.h"
@@ -11,6 +12,21 @@
 #include "pressure_reader.h"
 #include "boiler_logic.h"
 #include "ntp_time.h"
+
+// esp_reset_reason() → short code for the heartbeat (translated by the gateway)
+static const char* resetReasonName() {
+    switch (esp_reset_reason()) {
+        case ESP_RST_POWERON:  return "poweron";
+        case ESP_RST_SW:       return "software";
+        case ESP_RST_PANIC:    return "panic";
+        case ESP_RST_INT_WDT:
+        case ESP_RST_TASK_WDT:
+        case ESP_RST_WDT:      return "watchdog";
+        case ESP_RST_BROWNOUT: return "brownout";
+        case ESP_RST_EXT:      return "external";
+        default:               return "other";
+    }
+}
 
 // --- Pin configuration ---
 #define ONE_WIRE_PIN    4    // DS18B20 data pin
@@ -366,6 +382,9 @@ void sendHeartbeat() {
         doc["prs_heat"] = round(pressure.readHeatingPressure() * 100) / 100.0;
     if (pressureWaterName.length() > 0)
         doc["prs_water"] = round(pressure.readWaterPressure() * 100) / 100.0;
+
+    // Why the chip last started — the gateway logs reboots and reboot loops with it
+    doc["reset_reason"] = resetReasonName();
 
     // Boiler logic status (relays, automode, schedules, etc.)
     boilerLogic.fillHeartbeat(doc);

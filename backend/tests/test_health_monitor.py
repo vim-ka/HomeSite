@@ -13,23 +13,6 @@ def _monitor(engine):
     return HealthMonitor(async_sessionmaker(engine, expire_on_commit=False), gateway_url="http://127.0.0.1:9")
 
 
-def test_device_alarm_events_on_change(engine):
-    m = _monitor(engine)
-    events: list[EventLog] = []
-    m._check_device_alarms({"boiler_unit": {"data": {"autofill_fault": False}}}, events)
-    m._initialized = True
-
-    m._check_device_alarms({"boiler_unit": {"data": {"autofill_fault": True}}}, events)
-    assert [e.level for e in events] == ["ERROR"]
-    assert "Автоподпитка" in events[0].message
-
-    m._check_device_alarms({"boiler_unit": {"data": {"autofill_fault": True}}}, events)
-    assert len(events) == 1  # no repeat while the flag stays set
-
-    m._check_device_alarms({"boiler_unit": {"data": {"autofill_fault": False}}}, events)
-    assert events[-1].level == "INFO"
-
-
 @pytest.mark.asyncio
 async def test_duplicate_boiler_prefix_does_not_break_monitoring(engine, db_session):
     """Two circuits with config_prefix=heating_boiler used to raise on every poll."""
@@ -70,12 +53,73 @@ async def _stop_after_one(_seconds):
     raise _Stop
 
 
-def test_new_controller_flags_are_logged_with_their_level(engine):
+# ---------------------------------------------------------------- alarms through the tracker
+from datetime import timedelta  # noqa: E402
+
+from tests.test_scheme_service import NOW, gateway, seed  # noqa: E402
+
+
+def _with_gateway(m, monkeypatch, fetch):
+    async def services(_session, _timeout=3.0):
+        payload = await fetch()
+        return {"database": True, "gateway": True, "mqtt": True}, payload
+    monkeypatch.setattr(m, "_check_services", services)
+
+
+async def _events(db_session) -> list[EventLog]:
+    db_session.expire_all()
+    return list((await db_session.execute(select(EventLog).order_by(EventLog.id))).scalars())
+
+
+async def test_controller_flag_is_logged_and_cleared(engine, db_session, monkeypatch):
+    await seed(db_session)
     m = _monitor(engine)
-    events: list[EventLog] = []
-    m._check_device_alarms({"boiler_unit": {"data": {}}}, events)
-    m._initialized = True
-    m._check_device_alarms({"boiler_unit": {"data": {"frost_protect": True, "ihb_sensor_lost": True}}}, events)
-    by_text = {e.message: e.level for e in events}
-    assert any("замерзания" in t and lvl == "ERROR" for t, lvl in by_text.items())
-    assert any("бойлера ГВС" in t and lvl == "WARNING" for t, lvl in by_text.items())
+    m._now = lambda: NOW
+    data = {"relays": 0b11, "prs_heat": 1.43, "frost_protect": True}
+    _with_gateway(m, monkeypatch, gateway(data=data))
+    await m._check()
+    assert "flag:frost_protect" in [a["code"] for a in m.state.active_alarms]
+    raised = [e for e in await _events(db_session) if "замерзания" in (e.message or "")]
+    assert [e.level for e in raised] == ["ERROR"]
+
+    _with_gateway(m, monkeypatch, gateway(data={**data, "frost_protect": False}))
+    await m._check()
+    assert "flag:frost_protect" not in [a["code"] for a in m.state.active_alarms]
+    assert any(e.level == "INFO" and (e.message or "").startswith("Снято:") for e in await _events(db_session))
+
+
+async def test_controller_silent_since_startup_is_logged_after_the_delay(engine, db_session, monkeypatch):
+    """B7: a controller that never sent a heartbeat since start used to go unnoticed."""
+    await seed(db_session)
+    m = _monitor(engine)
+    _with_gateway(m, monkeypatch, gateway(hb_age_s=None))
+    m._now = lambda: NOW
+    await m._check()
+    assert not any("Нет связи с контроллером" in (e.message or "") for e in await _events(db_session))
+    m._now = lambda: NOW + timedelta(seconds=61)
+    await m._check()
+    assert any(e.level == "ERROR" and "Нет связи с контроллером" in (e.message or "") for e in await _events(db_session))
+
+
+async def test_silent_sensor_is_reported_in_russian_with_its_place(engine, db_session, monkeypatch):
+    await seed(db_session)
+    m = _monitor(engine)
+    _with_gateway(m, monkeypatch, gateway())
+    m._now = lambda: NOW
+    await m._check()
+    m._now = lambda: NOW + timedelta(minutes=10)
+    await m._check()
+    texts = [e.message or "" for e in await _events(db_session)]
+    assert any(t.startswith("Датчик «Камин» (clm_gost_th) не присылает данные") for t in texts)
+    assert not any("stopped responding" in t for t in texts)
+
+
+async def test_water_pressure_is_not_judged_by_heating_limits(engine, db_session, monkeypatch):
+    """B3: a normal 3 bar in the water main used to raise 'Давление вне нормы' every time."""
+    await seed(db_session)
+    m = _monitor(engine)
+    _with_gateway(m, monkeypatch, gateway())   # prs_water 3.05 in the heartbeat
+    for minutes in (0, 5, 11, 20):
+        m._now = lambda minutes=minutes: NOW + timedelta(minutes=minutes, seconds=-60)
+        await m._check()
+    assert not any("Давлен" in (e.message or "") for e in await _events(db_session))

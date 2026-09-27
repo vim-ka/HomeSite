@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
@@ -16,6 +16,7 @@ _gateway_cache: dict[tuple[str, float], CachedFetch] = {}
 
 @router.get("/state")
 async def scheme_state(
+    request: Request,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
@@ -33,4 +34,8 @@ async def scheme_state(
             return await fetch_gateway_health(url, timeout)
 
         _gateway_cache[key] = CachedFetch(fetch)
-    return await SchemeService(db, _gateway_cache[key]).build_state()
+    state = await SchemeService(db, _gateway_cache[key]).build_state()
+    # alarms: what the HealthMonitor raised (delays, hysteresis) — the same list the event log follows
+    monitor = getattr(request.app.state, "health_monitor", None)
+    state["alarms"] = list(monitor.state.active_alarms) if monitor else []
+    return state

@@ -12,12 +12,12 @@ from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.logging import get_logger
-from app.models.event import EventLog
-from app.services.controller_flags import CONTROLLER_FLAGS
-from app.models.heating import HeatingCircuit
-from app.models.sensor import Sensor, SensorData, SensorDataType
-from app.models.pending_sensor import PendingSensor
 from app.models.config import Actuator, ConfigKV
+from app.models.event import EventLog
+from app.models.pending_sensor import PendingSensor
+from app.models.sensor import MountPoint, Sensor, SensorData
+from app.services.alarm_rules import AlarmTracker, Snapshot, evaluate
+from app.services.scheme_service import SchemeService
 
 logger = get_logger(__name__)
 
@@ -25,7 +25,6 @@ DEFAULT_POLL_INTERVAL = 30  # seconds
 DEFAULT_STALE_MINUTES = 5
 
 # Safety flags reported in the boiler controller heartbeat → event text
-DEVICE_ALARM_FLAGS = {flag: text for flag, (_level, text) in CONTROLLER_FLAGS.items()}
 
 
 @dataclass
@@ -51,6 +50,9 @@ class HealthState:
     pending_commands: int = 0
     unsynced_commands: int = 0
 
+    # Alarms active right now (most severe first) — the scheme panel and the header read these
+    active_alarms: list[dict] = field(default_factory=list)
+
     # Config (exposed to frontend)
     poll_seconds: int = DEFAULT_POLL_INTERVAL
 
@@ -68,13 +70,11 @@ class HealthMonitor:
         self.state = HealthState()
 
         # Previous state for change detection
-        self._prev_services: dict[str, bool] = {}
         self._prev_active_sensor_ids: set[int] = set()
         self._prev_pending_names: set[str] = set()
-        self._pressure_alert_sensor_ids: set[int] = set()
-        self._boiler_overheat: bool = False
-        self._device_alarms: set[tuple[str, str]] = set()
         self._initialized = False
+        self.alarms = AlarmTracker()
+        self._now = lambda: datetime.now(UTC)  # replaceable clock (tests)
 
     async def run(self) -> None:
         """Main loop — polls at configured interval."""
@@ -127,27 +127,11 @@ class HealthMonitor:
             except ValueError:
                 pass
 
-            # --- Service checks ---
+            # --- Service checks (their alarms come from the rules below) ---
             services, gateway_health = await self._check_services(session, gateway_timeout)
-            for name, ok in services.items():
-                prev = self._prev_services.get(name)
-                if prev is not None and prev != ok:
-                    if not ok:
-                        events.append(EventLog(
-                            level="ERROR",
-                            source="health_monitor",
-                            message=f"Service '{name}' is down",
-                        ))
-                    else:
-                        events.append(EventLog(
-                            level="INFO",
-                            source="health_monitor",
-                            message=f"Service '{name}' is back online",
-                        ))
-            self._prev_services = services
 
             # --- Sensor activity checks ---
-            now = datetime.now(UTC)
+            now = self._now()
             stale_threshold = now - timedelta(minutes=stale_minutes)
 
             result = await session.execute(select(Sensor.id))
@@ -163,26 +147,20 @@ class HealthMonitor:
             if self._initialized:
                 lost = self._prev_active_sensor_ids - active_ids
                 if lost:
-                    result = await session.execute(
-                        select(Sensor.id, Sensor.name).where(Sensor.id.in_(lost))
-                    )
-                    for sid, name in result:
+                    for name, place in await self._sensor_places(session, lost):
                         events.append(EventLog(
                             level="WARNING",
                             source="health_monitor",
-                            message=f"Sensor '{name}' (id={sid}) stopped responding",
+                            message=f"Датчик «{place}» ({name}) не присылает данные {stale_minutes} мин",
                         ))
 
                 recovered = active_ids - self._prev_active_sensor_ids
                 if recovered:
-                    result = await session.execute(
-                        select(Sensor.id, Sensor.name).where(Sensor.id.in_(recovered))
-                    )
-                    for sid, name in result:
+                    for name, place in await self._sensor_places(session, recovered):
                         events.append(EventLog(
                             level="INFO",
                             source="health_monitor",
-                            message=f"Sensor '{name}' (id={sid}) is back online",
+                            message=f"Датчик «{place}» ({name}) снова на связи",
                         ))
 
             self._prev_active_sensor_ids = active_ids
@@ -197,32 +175,10 @@ class HealthMonitor:
                     events.append(EventLog(
                         level="INFO",
                         source="health_monitor",
-                        message=f"New device discovered: '{name}'",
+                        message=f"Обнаружен новый датчик: '{name}' — привяжите его в настройках",
                     ))
 
             self._prev_pending_names = current_pending
-
-            # --- Range monitoring (pressure + boiler overtemp) ---
-            if self._initialized:
-                pressure_min = 1.0
-                pressure_max = 1.8
-                boiler_max_temp = 85.0
-                try:
-                    pressure_min = float(kv.get("heating_pressure_min", "1.0"))
-                    pressure_max = float(kv.get("heating_pressure_max", "1.8"))
-                    boiler_max_temp = float(kv.get("heating_boiler_max_temp", "85.0"))
-                except ValueError:
-                    pass
-
-                # Each check isolated: one failure must not disable the others
-                for check in (
-                    self._check_pressure_ranges(session, pressure_min, pressure_max, stale_threshold, events),
-                    self._check_boiler_overtemp(session, boiler_max_temp, stale_threshold, events),
-                ):
-                    try:
-                        await check
-                    except Exception as e:
-                        logger.exception("health_range_check_error", error=str(e))
 
             # --- Device (actuator) checks via heartbeats from gateway ---
             pending_commands = 0
@@ -248,7 +204,12 @@ class HealthMonitor:
                             device_online += 1
                     except (ValueError, TypeError, KeyError):
                         pass
-                self._check_device_alarms(heartbeats, events)
+
+            # --- Alarms: rules over the scheme state, raised/cleared through the tracker ---
+            try:
+                await self._check_alarms(session, now, services, gateway_health, events)
+            except Exception as e:
+                logger.exception("health_alarm_check_error", error=str(e))
 
             # --- Write events ---
             if events:
@@ -272,131 +233,45 @@ class HealthMonitor:
                 pending_commands=pending_commands,
                 unsynced_commands=unsynced_commands,
                 poll_seconds=poll_seconds,
+                active_alarms=self.alarms.active_list(),
                 updated_at=now,
             )
 
             self._initialized = True
 
-    def _check_device_alarms(self, heartbeats: dict, events: list[EventLog]) -> None:
-        """Turn controller safety flags (heartbeat) into ERROR/INFO events on change."""
-        current: set[tuple[str, str]] = set()
-        for device, hb_info in heartbeats.items():
-            data = hb_info.get("data", {}) if isinstance(hb_info, dict) else {}
-            if not isinstance(data, dict):
-                continue
-            for flag in DEVICE_ALARM_FLAGS:
-                if data.get(flag) is True:
-                    current.add((device, flag))
-        if self._initialized:
-            for device, flag in sorted(current - self._device_alarms):
-                events.append(EventLog(
-                    level=CONTROLLER_FLAGS[flag][0], source="health_monitor",
-                    message=f"{device}: {DEVICE_ALARM_FLAGS[flag]}",
-                ))
-            for device, flag in sorted(self._device_alarms - current):
-                if device in heartbeats:  # cleared, not just offline
-                    events.append(EventLog(
-                        level="INFO", source="health_monitor",
-                        message=f"{device}: снято — {DEVICE_ALARM_FLAGS[flag]}",
-                    ))
-        self._device_alarms = current
+    async def _sensor_places(self, session: AsyncSession, ids: set[int]) -> list[tuple[str, str]]:
+        rows = await session.execute(
+            select(Sensor.name, MountPoint.name)
+            .join(MountPoint, MountPoint.id == Sensor.mount_point_id)
+            .where(Sensor.id.in_(ids)).order_by(Sensor.id)
+        )
+        return [(name, place) for name, place in rows]
 
-    async def _check_pressure_ranges(
-        self,
-        session: AsyncSession,
-        p_min: float,
-        p_max: float,
-        stale_threshold: datetime,
-        events: list[EventLog],
+    async def _check_alarms(
+        self, session: AsyncSession, now: datetime, services: dict[str, bool],
+        gateway_health: dict | None, events: list[EventLog],
     ) -> None:
-        """Check all pressure sensors against [p_min, p_max]; emit ERROR/INFO on state changes."""
-        result = await session.execute(
-            select(SensorData.sensor_id, SensorData.value, Sensor.name)
-            .join(Sensor, SensorData.sensor_id == Sensor.id)
-            .join(SensorDataType, SensorData.datatype_id == SensorDataType.id)
-            .where(SensorDataType.code == "prs")
-            .where(SensorData.timestamp >= stale_threshold)
+        async def fetch() -> dict | None:
+            return gateway_health
+
+        scheme = SchemeService(session, fetch)
+        state = await scheme.build_state(now)
+        c = state["controller"]
+        snap = Snapshot(
+            now=now,
+            services={"gateway": services.get("gateway", False), "mqtt": services.get("mqtt", False)},
+            online=c["online"], values=state["values"], relays=c["relays"], flags=c["flags"],
+            targets=c["targets"], settings=state["settings"],
+            rooms=[(r["name"], None if r["stale"] else r["value"]) for r in state["rooms"]],
+            hb=scheme.heartbeat_data,
         )
-        rows = result.all()
-
-        current_alerts: set[int] = set()
-        for sensor_id, value, name in rows:
-            if value < p_min or value > p_max:
-                current_alerts.add(sensor_id)
-                if sensor_id not in self._pressure_alert_sensor_ids:
-                    direction = "низкое" if value < p_min else "высокое"
-                    events.append(EventLog(
-                        level="ERROR",
-                        source="health_monitor",
-                        message=(
-                            f"Давление вне нормы: {name} = {value:.2f} бар"
-                            f" ({direction}, норма {p_min}–{p_max} бар)"
-                        ),
-                    ))
-            elif sensor_id in self._pressure_alert_sensor_ids:
-                events.append(EventLog(
-                    level="INFO",
-                    source="health_monitor",
-                    message=f"Давление восстановилось: {name} = {value:.2f} бар",
-                ))
-
-        self._pressure_alert_sensor_ids = current_alerts
-
-    async def _check_boiler_overtemp(
-        self,
-        session: AsyncSession,
-        max_temp: float,
-        stale_threshold: datetime,
-        events: list[EventLog],
-    ) -> None:
-        """Check boiler supply temperature against max_temp; emit ERROR/INFO on state change."""
-        # Find boiler supply mount point via HeatingCircuit
-        mp_result = await session.execute(
-            select(HeatingCircuit.supply_mount_point_id)
-            .where(HeatingCircuit.config_prefix == "heating_boiler")
-            .where(HeatingCircuit.supply_mount_point_id.is_not(None))
-            .order_by(HeatingCircuit.id)
-            .limit(1)
-        )
-        supply_mp_id = mp_result.scalar_one_or_none()
-        if supply_mp_id is None:
-            return
-
-        # Find temperature reading for any sensor at that mount point
-        temp_dt_result = await session.execute(
-            select(SensorDataType.id).where(SensorDataType.code == "tmp").limit(1)
-        )
-        tmp_dt_id = temp_dt_result.scalar_one_or_none()
-        if tmp_dt_id is None:
-            return
-
-        result = await session.execute(
-            select(SensorData.value, Sensor.name)
-            .join(Sensor, SensorData.sensor_id == Sensor.id)
-            .where(Sensor.mount_point_id == supply_mp_id)
-            .where(SensorData.datatype_id == tmp_dt_id)
-            .where(SensorData.timestamp >= stale_threshold)
-        )
-        row = result.first()
-        if row is None:
-            return
-
-        temp, name = row
-        if temp > max_temp:
-            if not self._boiler_overheat:
-                self._boiler_overheat = True
-                events.append(EventLog(
-                    level="ERROR",
-                    source="health_monitor",
-                    message=f"Перегрев котла: {name} = {temp:.1f}°C (макс. {max_temp:.0f}°C)",
-                ))
-        elif self._boiler_overheat:
-            self._boiler_overheat = False
-            events.append(EventLog(
-                level="INFO",
-                source="health_monitor",
-                message=f"Температура котла в норме: {name} = {temp:.1f}°C",
-            ))
+        # while the controller is unreachable its flags are unknown, not cleared
+        hold = () if c["online"] else ("flag:", "pza_", "alm_")
+        raised, cleared = self.alarms.update(evaluate(snap, set(self.alarms.active)), now, hold)
+        for a in raised:
+            events.append(EventLog(level=a.level, source="alarms", message=a.text))
+        for a in cleared:
+            events.append(EventLog(level="INFO", source="alarms", message=f"Снято: {a.text}"))
 
     async def _check_services(
         self, session: AsyncSession, gateway_timeout: float = 3.0

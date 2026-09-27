@@ -101,8 +101,8 @@ async def main() -> None:
 
     async def watchdog() -> None:
         """Check for unacknowledged commands and stale heartbeats."""
-        from datetime import UTC, datetime, timedelta
-        from device_gateway.config_db import load_mqtt_from_db
+        from datetime import UTC, datetime
+        from device_gateway.config_db import load_device_prefixes, load_mqtt_from_db
 
         await asyncio.sleep(10)  # Initial delay
         while True:
@@ -127,18 +127,13 @@ async def main() -> None:
                     events.append({
                         "level": "ERROR",
                         "source": "gateway_watchdog",
-                        "message": f"Command '{key}' to '{device_id}' failed after {MAX_RETRIES} retries — NOT SYNCED",
+                        "message": f"Команда «{key}» устройству «{device_id}» не подтверждена после "
+                                   f"{MAX_RETRIES} повторов — настройка не синхронизирована",
                     })
 
-                # Check heartbeat timeouts
-                now = datetime.now(UTC)
-                heartbeat_timeout = timedelta(seconds=hb_timeout)
-                for device_name, hb_record in list(handler.heartbeats.items()):
-                    if now - hb_record["timestamp"] > heartbeat_timeout:
-                        msg = f"Device '{device_name}' heartbeat lost"
-                        logger.warning("heartbeat_lost", device=device_name)
-                        events.append({"level": "ERROR", "source": "gateway_watchdog", "message": msg})
-                        del handler.heartbeats[device_name]
+                # Heartbeat timeouts; command devices (the controller) are the backend's no-link alarm
+                command_devices = {name for _prefix, name in await load_device_prefixes(settings.database_url)}
+                events.extend(handler.check_heartbeats(datetime.now(UTC), hb_timeout, command_devices))
 
                 # Write events to DB
                 if events:

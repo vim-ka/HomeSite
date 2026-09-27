@@ -3,7 +3,7 @@
 import asyncio
 import json
 from collections.abc import Awaitable, Callable
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import aiomqtt
 import httpx
@@ -16,6 +16,14 @@ from device_gateway.config import (
 )
 
 import structlog
+
+# ESP32 reset reasons (firmware heartbeat "reset_reason") in words for the event log
+RESET_REASONS = {
+    "poweron": "включение питания", "software": "программный перезапуск", "panic": "сбой программы",
+    "watchdog": "сторожевой таймер", "brownout": "просадка питания", "external": "кнопка сброса",
+}
+REBOOT_LOOP_WINDOW = timedelta(minutes=30)
+REBOOT_LOOP_COUNT = 4
 
 logger = structlog.get_logger(__name__)
 
@@ -52,6 +60,9 @@ class MQTTHandler:
         self.heartbeats: dict[str, dict] = {}
         # Last reported uptime per device — a decrease means the device rebooted
         self._last_uptime: dict[str, float | None] = {}
+        self._reboots: dict[str, list[datetime]] = {}
+        # Devices reported as lost by check_heartbeats — their return is logged
+        self._lost: set[str] = set()
         # Scan results: device_name → sensor list (set by /sensors topic)
         self._scan_results: dict[str, list[dict]] = {}
         self._scan_events: dict[str, asyncio.Event] = {}
@@ -171,7 +182,7 @@ class MQTTHandler:
                 if rejected:
                     await self._log_event(
                         "ERROR",
-                        f"Device '{device_name}' rejected settings: "
+                        f"Устройство «{device_name}» отклонило настройки: "
                         + ", ".join(f"{k} ({r})" for k, r in rejected),
                     )
             return
@@ -217,7 +228,10 @@ class MQTTHandler:
                 "timestamp": datetime.now(UTC),
                 "data": hb_data,
             }
-            self._track_boot(device_name, hb_data.get("uptime"))
+            if device_name in self._lost:
+                self._lost.discard(device_name)
+                self._spawn(self._log_event("INFO", f"Устройство «{device_name}» снова на связи"))
+            self._track_boot(device_name, hb_data.get("uptime"), hb_data.get("reset_reason"))
             return
 
         payload = message.payload
@@ -269,7 +283,39 @@ class MQTTHandler:
         # Telemetry, not a setting: no dispatcher, no ack, not retained
         self._spawn(client.publish(f"{self.topic_prefix}{target}/cmd", payload, qos=0, retain=False))
 
-    def _track_boot(self, device_name: str, uptime: object) -> None:
+    def check_heartbeats(self, now: datetime, timeout_s: int, quiet: set[str]) -> list[dict]:
+        """Drop devices silent for longer than the timeout; events for those not in `quiet`.
+
+        `quiet` are the command devices (the boiler controller): the backend's "no link" alarm
+        covers them with a delay and the frost context, so a second line here would only repeat it.
+        """
+        events = []
+        for name, record in list(self.heartbeats.items()):
+            if now - record["timestamp"] > timedelta(seconds=timeout_s):
+                del self.heartbeats[name]
+                logger.warning("heartbeat_lost", device=name)
+                if name not in quiet:
+                    self._lost.add(name)
+                    events.append({"level": "WARNING", "source": "gateway_watchdog",
+                                   "message": f"Устройство «{name}» не на связи — нет сигнала {timeout_s} с"})
+        return events
+
+    def _track_reboot(self, device_name: str, reason: object) -> None:
+        now = datetime.now(UTC)
+        why = RESET_REASONS.get(str(reason), str(reason)) if reason else None
+        self._spawn(self._log_event(
+            "INFO", f"Устройство «{device_name}» перезагрузилось" + (f" (причина: {why})" if why else "")))
+        recent = [t for t in self._reboots.get(device_name, []) if now - t < REBOOT_LOOP_WINDOW] + [now]
+        self._reboots[device_name] = recent
+        if len(recent) == REBOOT_LOOP_COUNT:
+            minutes = int(REBOOT_LOOP_WINDOW.total_seconds() // 60)
+            self._spawn(self._log_event(
+                "ERROR",
+                f"Устройство «{device_name}» постоянно перезагружается: {len(recent)} раза за {minutes} мин"
+                + (f" (последняя причина: {why})" if why else ""),
+            ))
+
+    def _track_boot(self, device_name: str, uptime: object, reason: object = None) -> None:
         """Fire on_device_boot when a device reboots or is first seen since gateway start."""
         try:
             uptime_s = float(uptime)  # type: ignore[arg-type]
@@ -279,6 +325,8 @@ class MQTTHandler:
         previous = self._last_uptime.get(device_name)
         self._last_uptime[device_name] = uptime_s if uptime_s is not None else (previous or 0.0)
         rebooted = previous is not None and uptime_s is not None and uptime_s < previous
+        if rebooted:
+            self._track_reboot(device_name, reason)
         if (first_seen or rebooted) and self._on_device_boot is not None:
             logger.info("device_boot_detected", device=device_name, rebooted=rebooted)
             self._spawn(self._on_device_boot(device_name))

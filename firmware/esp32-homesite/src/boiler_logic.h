@@ -142,6 +142,15 @@ private:
     int _almStartH = 3, _almStartM = 0;
     int _almDuration = 30;
     bool _almActive = false;
+    // The disinfection counts only after the tank HELD the temperature this long; the result of the
+    // last window goes to the heartbeat (alm_last: "ok" / "failed")
+    static constexpr unsigned long ALM_HOLD_MS = 10UL * 60UL * 1000UL;
+    bool _almInWindow = false;
+    bool _almDone = false;
+    bool _almHoldActive = false;
+    unsigned long _almHoldStart = 0;
+    const char* _almLast = "";
+    bool _almNoTime = false;   // schedule set but no NTP time — the cycle can't run
 
     // Three-way valve control (proportional pulse-based)
     // PZA computes target supply temp; controller adjusts valve to match.
