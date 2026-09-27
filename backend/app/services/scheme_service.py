@@ -7,6 +7,7 @@ One place maps scheme roles to sensors:
   one, otherwise the value the controller reports in its heartbeat.
 """
 
+import time
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 
@@ -22,6 +23,8 @@ from app.repositories.sensor_repository import CLIMATE_SYSTEM_ID, SensorReposito
 from app.repositories.settings_repository import SettingsRepository
 
 CONTROLLER_DEVICE = "boiler_unit"
+HEATING_SYSTEM_ID = 1
+WATER_SYSTEM_ID = 2
 # Same order as firmware RelayChannel (relay_controller.h)
 RELAY_NAMES = [
     "boiler", "rad_pump", "floor_pump", "ihb_pump", "water_pump", "water_hot_pump", "teh",
@@ -98,6 +101,28 @@ def build_alarms(
     return alarms
 
 
+class CachedFetch:
+    """Share one gateway /health response between requests for a short time.
+
+    Every open scheme tab polls every 2–10 s; without this each poll is an HTTP
+    call to the gateway.
+    """
+
+    def __init__(self, fetch: GatewayFetch, ttl: float = 1.5, now: Callable[[], float] = time.monotonic):
+        self._fetch = fetch
+        self._ttl = ttl
+        self._now = now
+        self._at: float | None = None
+        self._value: dict | None = None
+
+    async def __call__(self) -> dict | None:
+        now = self._now()
+        if self._at is None or now - self._at >= self._ttl:
+            self._value = await self._fetch()
+            self._at = now
+        return self._value
+
+
 async def fetch_gateway_health(url: str, timeout: float) -> dict | None:
     try:
         async with httpx.AsyncClient(base_url=url, timeout=timeout) as client:
@@ -127,13 +152,13 @@ class SchemeService:
         )
         return {sid: (value, ts) for sid, value, ts in rows}
 
-    async def _latest_pressure(self, mount_point_name_hint: str) -> tuple[float, datetime] | None:
+    async def _latest_pressure(self, system_id: int) -> tuple[float, datetime] | None:
         """A pressure sensor bound in the catalog (mount point pressure_sensor_id)."""
         row = (await self.db.execute(
             select(SensorData.value, SensorData.timestamp)
             .join(SensorDataType, SensorDataType.id == SensorData.datatype_id)
             .join(MountPoint, MountPoint.pressure_sensor_id == SensorData.sensor_id)
-            .where(SensorDataType.code == "prs", MountPoint.system_id == (1 if mount_point_name_hint == "heating" else 2))
+            .where(SensorDataType.code == "prs", MountPoint.system_id == system_id)
             .order_by(desc(SensorData.timestamp)).limit(1)
         )).first()
         return (row[0], row[1]) if row else None
@@ -198,15 +223,20 @@ class SchemeService:
             },
         }
 
-        # Pressure: catalog sensor first, heartbeat as fallback
-        for role, system, hb_key in (("heating_pressure", "heating", "prs_heat"), ("water_pressure", "water", "prs_water")):
+        # Pressure: a fresh catalog sensor first, otherwise what the controller reports
+        for role, system, hb_key in (
+            ("heating_pressure", HEATING_SYSTEM_ID, "prs_heat"), ("water_pressure", WATER_SYSTEM_ID, "prs_water"),
+        ):
             bound = await self._latest_pressure(system)
-            if bound:
-                values[role] = _reading(round(float(bound[0]), 2), bound[1], stale_before)
+            bound_reading = _reading(round(float(bound[0]), 2), bound[1], stale_before) if bound else None
+            if bound_reading and not bound_reading["stale"]:
+                values[role] = bound_reading
             elif hb and hb.get("data", {}).get(hb_key) is not None:
                 values[role] = _reading(float(hb["data"][hb_key]), last_seen, now - timedelta(seconds=hb_timeout), "heartbeat")
                 if not online:
                     values[role]["stale"] = True
+            elif bound_reading:
+                values[role] = bound_reading  # stale, but better than nothing
 
         sync = (gw or {}).get("sync", {}).get(CONTROLLER_DEVICE, {})
         pressure = values["heating_pressure"]["value"] if not values["heating_pressure"]["stale"] else None

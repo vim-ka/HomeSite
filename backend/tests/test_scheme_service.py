@@ -138,3 +138,43 @@ async def test_sync_lists_for_controller(db_session):
     sync = {"boiler_unit": {"pending": ["heating_radiator_curve"], "unsynced": ["heating_boiler_temp"]}}
     state = await SchemeService(db_session, gateway(sync=sync)).build_state(NOW)
     assert state["sync"] == sync["boiler_unit"]
+
+
+@pytest.mark.asyncio
+async def test_stale_catalog_pressure_falls_back_to_heartbeat(db_session):
+    """A bound pressure sensor that stopped reporting must not hide the live value from the controller."""
+    await seed(db_session)
+    db_session.add_all([SensorType(id=2, name="A2"), SensorDataType(id=2, name="Pressure", code="prs")])
+    await db_session.flush()
+    db_session.add(MountPoint(id=30, name="Давление контура", system_id=1, place_id=1))
+    await db_session.flush()
+    db_session.add(Sensor(id=30, name="prs_heating", sensor_type_id=2, mount_point_id=30))
+    await db_session.flush()
+    (await db_session.get(MountPoint, 30)).pressure_sensor_id = 30
+    db_session.add(SensorData(sensor_id=30, datatype_id=2, value=0.4,
+                              timestamp=(NOW - timedelta(hours=2)).replace(tzinfo=None)))
+    await db_session.commit()
+
+    state = await SchemeService(db_session, gateway()).build_state(NOW)
+    assert state["values"]["heating_pressure"]["value"] == 1.43
+    assert state["values"]["heating_pressure"]["source"] == "heartbeat"
+
+
+@pytest.mark.asyncio
+async def test_gateway_health_is_cached_briefly():
+    """Several open scheme tabs polling every 2 s share one gateway request."""
+    from app.services.scheme_service import CachedFetch
+
+    calls = []
+    clock = [100.0]
+
+    async def fetch():
+        calls.append(clock[0])
+        return {"n": len(calls)}
+
+    cached = CachedFetch(fetch, ttl=1.5, now=lambda: clock[0])
+    assert (await cached())["n"] == 1
+    clock[0] += 1.0
+    assert (await cached())["n"] == 1
+    clock[0] += 1.0
+    assert (await cached())["n"] == 2

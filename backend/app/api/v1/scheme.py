@@ -6,9 +6,12 @@ from app.core.config import get_settings
 from app.db.session import get_db
 from app.models.user import User
 from app.repositories.settings_repository import SettingsRepository
-from app.services.scheme_service import SchemeService, fetch_gateway_health
+from app.services.scheme_service import CachedFetch, SchemeService, fetch_gateway_health
 
 router = APIRouter()
+
+# One shared, briefly cached gateway /health per (url, timeout) — see CachedFetch
+_gateway_cache: dict[tuple[str, float], CachedFetch] = {}
 
 
 @router.get("/state")
@@ -24,7 +27,10 @@ async def scheme_state(
     except ValueError:
         timeout = 3.0
 
-    async def fetch():
-        return await fetch_gateway_health(url, timeout)
+    key = (url, timeout)
+    if key not in _gateway_cache:
+        async def fetch():
+            return await fetch_gateway_health(url, timeout)
 
-    return await SchemeService(db, fetch).build_state()
+        _gateway_cache[key] = CachedFetch(fetch)
+    return await SchemeService(db, _gateway_cache[key]).build_state()
