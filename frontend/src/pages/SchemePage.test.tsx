@@ -35,7 +35,7 @@ describe("SchemePage", () => {
         <ToastProvider><MemoryRouter><SchemePage /></MemoryRouter></ToastProvider>
       </QueryClientProvider>,
     );
-    expect(screen.getByRole("img", { name: "Схема котельной" })).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Схема котельной" })).toBeInTheDocument();
     expect(screen.getByText("Давление 0.92 бар ниже нормы 1")).toBeInTheDocument();
     expect(screen.getByText(/Не синхронизировано: 1/)).toBeInTheDocument();
   });
@@ -64,7 +64,7 @@ describe("SchemePage layout", () => {
       const { rerender } = render(page());
       mocked.loading = false;
       rerender(page());
-      expect(screen.getByRole("img", { name: "Схема котельной" })).toHaveAttribute("viewBox", "0 0 360 640");
+      expect(screen.getByRole("group", { name: "Схема котельной" })).toHaveAttribute("viewBox", "0 0 360 640");
     } finally {
       mocked.loading = false;
       globalThis.ResizeObserver = original;

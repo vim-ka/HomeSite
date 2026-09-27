@@ -156,7 +156,8 @@ frontend/src/scheme/SchemeCanvas.tsx       SVG: трубы + элементы п
 frontend/src/scheme/elements/*.tsx         Boiler, Separator, Radiators, FloorLoops, Tank, Pump,
                                            MixingValve, FillValve, Gauge, ValueTag, Pipe, Tap
 frontend/src/scheme/ControlDialog.tsx      окно/нижняя панель; формы по типу элемента
-frontend/src/scheme/forms/*.tsx            BoilerForm, CircuitForm, TankForm, AutofillForm, PumpForm
+frontend/src/scheme/forms.ts               декларативные описания полей окон по виду элемента
+                                           (одна форма-рендерер в ControlDialog вместо BoilerForm/CircuitForm/…)
 frontend/src/scheme/AlarmPanel.tsx         табло сигнализации
 frontend/src/scheme/pipeColor.ts           цвет трубы по температуре
 ```

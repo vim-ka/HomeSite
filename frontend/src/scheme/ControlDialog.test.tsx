@@ -105,4 +105,32 @@ describe("ControlDialog", () => {
     rerenderWith([]);
     expect(screen.getByTitle("Подтверждено устройством")).toBeInTheDocument();
   });
+
+  it("does not send a field that became disabled after editing it", async () => {
+    vi.mocked(api.put).mockResolvedValue({ data: { success: true, delivery: "queued", unrouted: [] } });
+    const state = makeState();
+    state.settings.heating_boiler_automode = "0";
+    state.settings.heating_boiler_power = "1";
+    renderDialog({ state });
+    fireEvent.click(screen.getByLabelText("Питание котла"));          // power off (manual mode)
+    fireEvent.click(screen.getByLabelText("Автоматический режим"));   // auto on → power field disabled
+    fireEvent.click(screen.getByRole("button", { name: "Применить" }));
+    await waitFor(() => expect(api.put).toHaveBeenCalledWith("/settings", { settings: { heating_boiler_automode: "1" } }));
+  });
+
+  it("reports a failed autofill reset", async () => {
+    vi.mocked(api.post).mockReset().mockRejectedValue(new Error("403"));
+    const state = makeState({ flags: { autofill_fault: true } });
+    renderDialog({ kind: "autofill", state, userRole: "admin" });
+    fireEvent.click(screen.getByRole("button", { name: "Сбросить блокировку" }));
+    expect(await screen.findByText("Не удалось сбросить блокировку")).toBeInTheDocument();
+  });
+
+  it("closes on Escape", () => {
+    const onClose = vi.fn();
+    renderDialog({ onClose });
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+    expect(onClose).toHaveBeenCalled();
+  });
 });
+

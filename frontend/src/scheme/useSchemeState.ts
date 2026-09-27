@@ -16,20 +16,32 @@ export function useSchemeState(opts: { fast?: boolean } = {}) {
   return { data: query.data, isLoading: query.isLoading, refetch: query.refetch };
 }
 
-/** Throttled invalidation used by the WebSocket hook (≤ once per 2 s). */
+/** Throttled invalidation used by the WebSocket hook: at most once per 2 s,
+ *  with a trailing refresh so the last update of a burst is never dropped. */
 export function useSchemeRefreshOnWs() {
   const qc = useQueryClient();
   useEffect(() => {
     let last = 0;
+    let trailing: ReturnType<typeof setTimeout> | undefined;
+    const refresh = () => {
+      last = Date.now();
+      qc.invalidateQueries({ queryKey: SCHEME_QUERY_KEY });
+    };
     const onUpdate = () => {
-      const now = Date.now();
-      if (now - last >= 2000) {
-        last = now;
-        qc.invalidateQueries({ queryKey: SCHEME_QUERY_KEY });
+      const wait = last + 2000 - Date.now();
+      if (wait <= 0) refresh();
+      else if (!trailing) {
+        trailing = setTimeout(() => {
+          trailing = undefined;
+          refresh();
+        }, wait);
       }
     };
     window.addEventListener("scheme-refresh", onUpdate);
-    return () => window.removeEventListener("scheme-refresh", onUpdate);
+    return () => {
+      window.removeEventListener("scheme-refresh", onUpdate);
+      clearTimeout(trailing);
+    };
   }, [qc]);
 }
 

@@ -3,6 +3,7 @@ import { Boiler, FillValve, FloorLoops, Gauge, MixingValve, Pipe, Pump, Radiator
 import { LAYOUTS, type LayoutName } from "./layouts";
 import { pipeColor } from "./pipeColor";
 import { isOn, TOGGLES } from "./toggles";
+import { elementName } from "./names";
 import type { ElementKind, RoleKey, SchemeState } from "./types";
 
 const CIRCULATION = ["rad_pump", "floor_pump", "ihb_pump"] as const;
@@ -36,8 +37,9 @@ export function SchemeCanvas({ state, layout, onOpen, onToggle }: {
     const toggle = onToggle ? TOGGLES[id] : undefined;
     const on = toggle ? isOn(toggle, s, r) : undefined;
     const open = () => onOpen(kind, role);
+    // only a mouse click switches equipment; touch and stylus taps open the settings
     const click = () =>
-      toggle && lastPointer.current !== "touch" ? onToggle!(toggle.key, toggle.label, on ? "0" : "1") : open();
+      toggle && lastPointer.current === "mouse" ? onToggle!(toggle.key, toggle.label, on ? "0" : "1") : open();
     // switched off in the settings → drawn faded (the boiler's power is governed by auto mode, keep it)
     const faded = toggle !== undefined && !on && toggle.key !== "heating_boiler_power";
     return (
@@ -47,14 +49,18 @@ export function SchemeCanvas({ state, layout, onOpen, onToggle }: {
         opacity={faded ? 0.45 : undefined}
         role="button"
         tabIndex={0}
-        aria-label={id}
+        aria-label={elementName(id)}
         style={{ cursor: "pointer" }}
         onPointerDown={(e) => { lastPointer.current = e.pointerType || "mouse"; }}
         onClick={click}
         onContextMenu={(e: MouseEvent) => { e.preventDefault(); open(); }}
         onKeyDown={(e: KeyboardEvent) => {
           if (e.key === "Enter") open();
-          else if (e.key === " ") { e.preventDefault(); click(); }
+          else if (e.key === " ") {
+            e.preventDefault();
+            lastPointer.current = "mouse";  // keyboard Space = explicit toggle
+            click();
+          }
         }}
       >
         <title>
@@ -68,7 +74,7 @@ export function SchemeCanvas({ state, layout, onOpen, onToggle }: {
   };
 
   return (
-    <svg viewBox={`0 0 ${L.width} ${L.height}`} width="100%" role="img" aria-label="Схема котельной"
+    <svg viewBox={`0 0 ${L.width} ${L.height}`} width="100%" role="group" aria-label="Схема котельной"
          style={{ background: "var(--scheme-bg)", display: "block", borderRadius: 8 }}>
       <g data-offline={String(!c.online)} opacity={c.online ? 1 : 0.45}>
         {L.pipes.map((p, i) => {

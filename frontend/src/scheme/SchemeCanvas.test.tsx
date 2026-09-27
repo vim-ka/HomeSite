@@ -1,4 +1,4 @@
-import { fireEvent, render } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { chooseLayout } from "./layouts";
 import { SchemeCanvas } from "./SchemeCanvas";
@@ -135,6 +135,26 @@ describe("SchemeCanvas water colours", () => {
     const stops = [...sep.querySelectorAll("stop")].map((s) => s.getAttribute("stop-color"));
     expect(stops[0]).toBe(pipeColor(70, "supply"));
     expect(stops.at(-1)).toBe(pipeColor(40, "return"));
+  });
+});
+
+describe("SchemeCanvas accessibility and input", () => {
+  it("is a labelled group of Russian-named buttons", () => {
+    const { container } = render(<SchemeCanvas state={makeState()} layout="wide" onOpen={() => {}} />);
+    expect(screen.getByRole("group", { name: "Схема котельной" })).toBeInTheDocument();
+    expect(container.querySelector("[data-element='rad_pump']")?.getAttribute("aria-label")).toBe("Насос радиаторов");
+    expect(container.querySelector("[data-element='radiators']")?.getAttribute("aria-label")).toBe("Радиаторы");
+  });
+
+  it("a stylus tap opens settings instead of toggling", () => {
+    const onOpen = vi.fn();
+    const onToggle = vi.fn();
+    const { container } = render(<SchemeCanvas state={makeState()} layout="wide" onOpen={onOpen} onToggle={onToggle} />);
+    const pump = container.querySelector("[data-element='rad_pump']")!;
+    fireEvent.pointerDown(pump, { pointerType: "pen" });
+    fireEvent.click(pump);
+    expect(onToggle).not.toHaveBeenCalled();
+    expect(onOpen).toHaveBeenCalled();
   });
 });
 

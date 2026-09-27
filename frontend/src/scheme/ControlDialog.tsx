@@ -1,17 +1,12 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { isAxiosError } from "axios";
 import api from "@/api/client";
 import { FORMS, type FieldDef } from "./forms";
 import { canEdit } from "./permissions";
+import { ROLE_LABELS } from "./names";
 import type { ElementKind, RoleKey, SchemeState } from "./types";
 
-const ROLE_LABELS: Partial<Record<RoleKey, string>> = {
-  boiler_supply: "Подача котла", boiler_return: "Обратка котла", rad_supply: "Подача радиаторов",
-  rad_return: "Обратка радиаторов", floor_supply: "Подача пола", floor_return: "Обратка пола",
-  tank: "Бойлер", coil_return: "Обратка змеевика", cold_water: "Холодная вода", hot_water: "Горячая вода",
-  heating_pressure: "Давление контура", water_pressure: "Давление ХВС",
-};
 
 function SyncMark({ k, state, sent, seenPending, failed }: {
   k: string; state: SchemeState; sent: string[]; seenPending: Set<string>; failed: boolean;
@@ -43,7 +38,20 @@ export function ControlDialog({ kind, role, state, userRole, onClose, onApplied 
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const values = useMemo(() => ({ ...state.settings, ...draft }), [state.settings, draft]);
-  const dirty = Object.keys(draft).filter((k) => draft[k] !== state.settings[k]);
+  const form = kind === "sensor" ? null : FORMS[kind];
+  const isDisabled = (f: FieldDef) => !canEdit(userRole, f.key) || !!f.disabledWhen?.(values);
+  // a field edited and then locked (e.g. power after switching auto mode on) is not sent
+  const editable = new Set((form?.fields ?? []).filter((f) => !isDisabled(f)).map((f) => f.key));
+  const dirty = Object.keys(draft).filter((k) => draft[k] !== state.settings[k] && editable.has(k));
+  const [notice, setNotice] = useState<string | null>(null);
+
+  // focus the dialog (Escape works right away) and give focus back when it closes
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const previous = document.activeElement as HTMLElement | null;
+    box.current?.focus();
+    return () => previous?.focus?.();
+  }, []);
 
   const close = () => {
     if (dirty.length && !window.confirm("Есть несохранённые изменения. Закрыть без сохранения?")) return;
@@ -75,12 +83,18 @@ export function ControlDialog({ kind, role, state, userRole, onClose, onApplied 
   };
 
   const resetAutofill = async () => {
-    await api.post("/catalog/devices/boiler_unit/command", { params: { autofill_reset: "1" } });
-    onApplied([]);
+    setError(null);
+    try {
+      await api.post("/catalog/devices/boiler_unit/command", { params: { autofill_reset: "1" } });
+      setNotice("Команда сброса отправлена");
+      onApplied([]);
+    } catch {
+      setError("Не удалось сбросить блокировку");
+    }
   };
 
   const field = (f: FieldDef) => {
-    const disabled = !canEdit(userRole, f.key) || !!f.disabledWhen?.(values);
+    const disabled = isDisabled(f);
     const set = (v: string) => setDraft((d) => ({ ...d, [f.key]: v }));
     const id = `f-${f.key}`;
     return (
@@ -115,12 +129,12 @@ export function ControlDialog({ kind, role, state, userRole, onClose, onApplied 
     );
   };
 
-  const form = kind === "sensor" ? null : FORMS[kind];
   const reading = role ? state.values[role] : undefined;
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40" onClick={close}>
       <div role="dialog" aria-modal="true" aria-label={form?.title ?? ROLE_LABELS[role!] ?? "Датчик"}
+           ref={box} tabIndex={-1} onKeyDown={(e) => e.key === "Escape" && close()}
            className="w-full sm:w-[440px] max-h-[85vh] overflow-y-auto rounded-t-2xl sm:rounded-xl bg-white p-4 shadow-xl"
            onClick={(e) => e.stopPropagation()}>
         <h3 className="text-base font-semibold text-gray-900 mb-1">{form?.title ?? ROLE_LABELS[role!] ?? "Датчик"}</h3>
@@ -148,6 +162,7 @@ export function ControlDialog({ kind, role, state, userRole, onClose, onApplied 
         )}
 
         {error && <div className="mt-3 text-sm text-red-600">{error}</div>}
+        {notice && <div className="mt-3 text-sm text-emerald-700">{notice}</div>}
 
         <div className="mt-4 flex justify-end gap-2">
           <button type="button" onClick={close} className="rounded bg-gray-100 px-3 py-1.5 text-sm text-gray-700">Отмена</button>
