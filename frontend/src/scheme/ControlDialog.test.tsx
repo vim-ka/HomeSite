@@ -146,3 +146,21 @@ describe("ControlDialog", () => {
   });
 });
 
+
+describe("ControlDialog circuits (same rules as the Отопление page)", () => {
+  it("ПЗА comes first and locks the pump; without ПЗА the pump is editable", () => {
+    const state = makeState();
+    state.settings.heating_radiator_wbm = "1";
+    const { unmount } = render(
+      <MemoryRouter><ControlDialog kind="rad" state={state} userRole="operator" onClose={() => {}} onApplied={() => {}} /></MemoryRouter>,
+    );
+    const order = screen.getAllByRole("switch").map((el) => el.id);
+    const at = (key: string) => order.findIndex((id) => id.includes(key));
+    expect(at("heating_radiator_wbm")).toBeGreaterThanOrEqual(0);
+    expect(at("heating_radiator_wbm")).toBeLessThan(at("heating_radiator_pump"));
+    expect(screen.getByLabelText("Насос")).toBeDisabled();
+    fireEvent.click(screen.getByLabelText("ПЗА (погодозависимая)"));   // ПЗА off → pump unlocked
+    expect(screen.getByLabelText("Насос")).not.toBeDisabled();
+    unmount();
+  });
+});

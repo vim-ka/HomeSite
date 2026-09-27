@@ -13,8 +13,9 @@ export interface FormDef { title: string; fields: FieldDef[]; link?: { to: strin
 const circuit = (p: "heating_radiator" | "heating_floorheating", title: string, max: number): FormDef => ({
   title,
   fields: [
-    { key: `${p}_pump`, label: "Насос", type: "bool" },
+    // as on the Отопление page: ПЗА first, and it locks the pump and the manual setpoint
     { key: `${p}_wbm`, label: "ПЗА (погодозависимая)", type: "bool" },
+    { key: `${p}_pump`, label: "Насос", type: "bool", disabledWhen: (v) => v[`${p}_wbm`] === "1" },
     { key: `${p}_curve`, label: "Кривая ПЗА", type: "curve", disabledWhen: (v) => v[`${p}_wbm`] !== "1" },
     { key: `${p}_temp`, label: "Ручная уставка подачи", type: "number", min: 20, max, step: 1, unit: "°C",
       disabledWhen: (v) => v[`${p}_wbm`] === "1" },
