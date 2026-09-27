@@ -9,14 +9,15 @@ export interface ToggleDef {
   /** setting that hands the element to the controller: then a quick click would be ignored */
   autoKey?: string;
   /** how that mode is called; `runs: false` — the mode doesn't switch the element itself (ПЗА only sets the temperature) */
-  autoMode?: { lock: string; state: string; runs?: boolean };
+  autoMode?: { lock: string; state: string; runs?: boolean; howTo?: string };
 }
 
-const AUTO = { lock: "в авто-режиме", state: "авто-режим", runs: true };
-const PZA = { lock: "в режиме ПЗА", state: "режим ПЗА", runs: false };
+const AUTO = { lock: "в авто-режиме", state: "авто-режим", runs: true, howTo: "управление по правому клику" };
+// the card locks the pump under ПЗА too (as on the Отопление page)
+const PZA = { lock: "в режиме ПЗА", state: "режим ПЗА", runs: false, howTo: "сначала выключите ПЗА (правый клик)" };
 
 /** Name and behaviour of the element's automatic mode. */
-export function autoMode(def: ToggleDef): { lock: string; state: string; runs: boolean } {
+export function autoMode(def: ToggleDef): { lock: string; state: string; runs: boolean; howTo: string } {
   return { ...AUTO, ...def.autoMode };
 }
 
@@ -49,7 +50,7 @@ export function toggleLock(
   key: string, settings: Record<string, string>, next?: "0" | "1", controller?: SchemeState["controller"],
 ): string | null {
   const def = Object.values(TOGGLES).find((t) => t.key === key);
-  if (def?.autoKey && settings[def.autoKey] === "1") return `${def.label} ${autoMode(def).lock} — управление по правому клику`;
+  if (def?.autoKey && settings[def.autoKey] === "1") return `${def.label} ${autoMode(def).lock} — ${autoMode(def).howTo}`;
   if (next === "1" && controller && def && dhwPriority(key, settings, controller)) {
     return `${def.label} не включится — приоритет ГВС: сейчас греется бойлер`;
   }

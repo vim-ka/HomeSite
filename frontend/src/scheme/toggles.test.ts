@@ -32,9 +32,9 @@ describe("toggleLock: DHW priority", () => {
 describe("toggleLock: weather-compensated (ПЗА) circuits", () => {
   it("a circuit pump in ПЗА mode is not switched by a quick click, either way", () => {
     expect(toggleLock("heating_radiator_pump", { heating_radiator_wbm: "1" }, "0")).toBe(
-      "Насос радиаторов в режиме ПЗА — управление по правому клику");
+      "Насос радиаторов в режиме ПЗА — сначала выключите ПЗА (правый клик)");
     expect(toggleLock("heating_floorheating_pump", { heating_floorheating_wbm: "1" }, "1")).toBe(
-      "Насос тёплого пола в режиме ПЗА — управление по правому клику");
+      "Насос тёплого пола в режиме ПЗА — сначала выключите ПЗА (правый клик)");
     expect(toggleLock("heating_radiator_pump", { heating_radiator_wbm: "0" }, "0")).toBeNull();
   });
 
