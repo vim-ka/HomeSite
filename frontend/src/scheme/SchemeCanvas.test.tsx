@@ -122,3 +122,19 @@ describe("SchemeCanvas on/off state", () => {
   });
 });
 
+describe("SchemeCanvas water colours", () => {
+  it("collector bars and separator gradient follow the boiler supply/return temperatures", async () => {
+    const { pipeColor } = await import("./pipeColor");
+    const state = makeState();
+    state.values.boiler_supply = { value: 70, ts: "2026-01-20T12:00:00Z", stale: false };
+    state.values.boiler_return = { value: 40, ts: "2026-01-20T12:00:00Z", stale: false };
+    const { container } = render(<SchemeCanvas state={state} layout="wide" onOpen={() => {}} />);
+    const sep = container.querySelector("[data-element='separator']")!;
+    expect(sep.querySelector("[data-bar='supply']")?.getAttribute("fill")).toBe(pipeColor(70, "supply"));
+    expect(sep.querySelector("[data-bar='return']")?.getAttribute("fill")).toBe(pipeColor(40, "return"));
+    const stops = [...sep.querySelectorAll("stop")].map((s) => s.getAttribute("stop-color"));
+    expect(stops[0]).toBe(pipeColor(70, "supply"));
+    expect(stops.at(-1)).toBe(pipeColor(40, "return"));
+  });
+});
+

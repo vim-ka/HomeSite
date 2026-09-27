@@ -73,3 +73,37 @@ describe("value tags", () => {
     });
   }
 });
+
+describe("mixing units", () => {
+  for (const name of ["wide", "tall"] as const) {
+    for (const c of ["rad", "floor"] as const) {
+      it(`${name} ${c}: collector → 3-way valve → pump, colours change at the valve`, () => {
+        const L = BASE_LAYOUTS[name];
+        const valve = c === "rad" ? L.radValve : L.floorValve;
+        const pump = c === "rad" ? L.radPump : L.floorPump;
+        const role = c === "rad" ? "rad_supply" : "floor_supply";
+        // hot water from the collector reaches the valve…
+        const feed = L.pipes.find((p) => p.id === `${c}_feed`)!;
+        expect(feed.role).toBe("boiler_supply");
+        expect(feed.points.at(-1)).toEqual(valve);
+        // …mixed water leaves it, and the pump comes after the valve
+        const mixed = L.pipes.find((p) => p.id === `${c}_mixed`)!;
+        expect(mixed.role).toBe(role);
+        expect(mixed.points[0]).toEqual(valve);
+        const along = (pt: [number, number]) => Math.abs(pt[1] - feed.points[0]![1]);
+        expect(along(pump)).toBeGreaterThan(along(valve));
+        // bypass from the circuit return into the valve's third port
+        const bypass = L.pipes.find((p) => p.id === `${c}_bypass`)!;
+        expect(bypass.role).toBe(c === "rad" ? "rad_return" : "floor_return");
+        expect(Math.abs(bypass.points.at(-1)![1] - valve[1])).toBeLessThanOrEqual(1);
+      });
+    }
+  }
+
+  it("wide: the pipe from the collector down to the floor loops is long enough for valve + pump", () => {
+    const L = BASE_LAYOUTS.wide;
+    const feed = L.pipes.find((p) => p.id === "floor_feed")!;
+    const mixed = L.pipes.find((p) => p.id === "floor_mixed")!;
+    expect(mixed.points.at(-1)![1] - feed.points[0]![1]).toBeGreaterThanOrEqual(200);
+  });
+});

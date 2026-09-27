@@ -30,56 +30,62 @@ export interface LayoutDef {
 export const BASE_LAYOUTS: Record<LayoutName, LayoutDef> = {
   wide: {
     width: 1000, height: 560,
-    // Centred on the right edge of the pressure gauge (base x 516 + 18 → 500 after mirroring)
-    boiler: [90, 250], separator: [380, 270], gauge: [516, 340], autofill: [350, 470],
-    radiators: [300, 50], floor: [410, 470], tank: [720, 250], tap: [848, 222], well: [80, 468],
-    radPump: [490, 175], radValve: [490, 223], floorPump: [490, 432], floorValve: [490, 452],
-    ihbPump: [668, 300], recircPump: [885, 375], coldPump: [180, 470],
+    // Centred on the right edge of the pressure gauge (base x 516 + 18 → 500 after mirroring).
+    // Middle part raised so each circuit has room for its mixing unit: collector → 3-way valve → pump.
+    boiler: [90, 190], separator: [380, 210], gauge: [516, 280], autofill: [350, 470],
+    radiators: [300, 50], floor: [410, 470], tank: [720, 190], tap: [848, 162], well: [80, 468],
+    radPump: [490, 150], radValve: [490, 190], floorPump: [490, 420], floorValve: [490, 380],
+    ihbPump: [668, 240], recircPump: [885, 315], coldPump: [180, 470],
     tags: {
-      boiler_supply: [225, 270], boiler_return: [225, 390], rad_supply: [505, 130], rad_return: [380, 140],
-      floor_supply: [505, 400], floor_return: [380, 420], tank: [728, 320], coil_return: [625, 390],
-      hot_water: [872, 250], heating_pressure: [538, 332], cold_water: [142, 490], water_pressure: [142, 512],
+      boiler_supply: [225, 210], boiler_return: [225, 330], rad_supply: [505, 118], rad_return: [380, 140],
+      floor_supply: [505, 435], floor_return: [380, 420], tank: [728, 260], coil_return: [625, 330],
+      hot_water: [872, 190], heating_pressure: [538, 272], cold_water: [142, 490], water_pressure: [142, 512],
     },
     labels: [
       { text: "Радиаторы", at: [430, 40], align: "middle" }, { text: "Тёплый пол", at: [584, 500] },
-      { text: "Бойлер ГВС", at: [760, 238], align: "middle" }, { text: "Подпитка", at: [296, 498] },
-      { text: "Скважина", at: [72, 462] }, { text: "Рециркуляция", at: [820, 400] },
+      { text: "Бойлер ГВС", at: [760, 178], align: "middle" }, { text: "Подпитка", at: [296, 498] },
+      { text: "Скважина", at: [72, 462] }, { text: "Рециркуляция", at: [820, 340] },
     ],
-    badges: { rad: [300, 22], floor: [584, 518], tank: [720, 460] },
+    badges: { rad: [300, 22], floor: [584, 518], tank: [720, 400] },
     pipes: [
-      { kind: "supply", role: "boiler_supply", flow: "any", points: [[210, 300], [380, 300]] },
-      { kind: "return", role: "boiler_return", flow: "any", points: [[380, 380], [210, 380]] },
+      { kind: "supply", role: "boiler_supply", flow: "any", points: [[210, 240], [380, 240]] },
+      { kind: "return", role: "boiler_return", flow: "any", points: [[380, 320], [210, 320]] },
       // Radiators at x 300/395/490 (70 wide), ports on the bottom: supply left (+8), return right (+62).
       // Every pipe runs in the flow direction (the animation follows point order):
       // supply rises and splits UP into each radiator, returns drop DOWN from each into the return riser.
       { kind: "return", role: "rad_return", flow: "rad_pump", points: [[362, 96], [362, 124], [450, 124]] },
       { kind: "return", role: "rad_return", flow: "rad_pump", points: [[457, 96], [457, 124], [450, 124]] },
       { kind: "return", role: "rad_return", flow: "rad_pump", points: [[552, 96], [552, 124], [450, 124]] },
-      { kind: "return", role: "rad_return", flow: "rad_pump", points: [[450, 124], [450, 365]] },
-      { kind: "supply", role: "rad_supply", flow: "rad_pump", points: [[490, 285], [490, 110]] },
+      { kind: "return", role: "rad_return", flow: "rad_pump", points: [[450, 124], [450, 305]] },
+      // mixing unit: hot collector water → 3-way valve (+ return via the bypass) → pump → radiators
+      { id: "rad_feed", kind: "supply", role: "boiler_supply", flow: "rad_pump", points: [[490, 225], [490, 190]] },
+      { id: "rad_bypass", kind: "return", role: "rad_return", flow: "rad_pump", points: [[450, 190], [482, 190]] },
+      { id: "rad_mixed", kind: "supply", role: "rad_supply", flow: "rad_pump", points: [[490, 190], [490, 110]] },
       { kind: "supply", role: "rad_supply", flow: "rad_pump", points: [[490, 110], [308, 110], [308, 96]] },
       { kind: "supply", role: "rad_supply", flow: "rad_pump", points: [[403, 110], [403, 96]] },
       { kind: "supply", role: "rad_supply", flow: "rad_pump", points: [[490, 110], [498, 110], [498, 96]] },
-      // floor loops sit in a frame (y 464..522): the pipes end at the frame
-      { kind: "supply", role: "floor_supply", flow: "floor_pump", points: [[490, 315], [490, 464]] },
-      { kind: "return", role: "floor_return", flow: "floor_pump", points: [[450, 464], [450, 395]] },
+      // floor: collector → 3-way valve → pump → loops (frame top at y 464)
+      { id: "floor_feed", kind: "supply", role: "boiler_supply", flow: "floor_pump", points: [[490, 255], [490, 380]] },
+      { id: "floor_bypass", kind: "return", role: "floor_return", flow: "floor_pump", points: [[450, 380], [482, 380]] },
+      { id: "floor_mixed", kind: "supply", role: "floor_supply", flow: "floor_pump", points: [[490, 380], [490, 464]] },
+      { kind: "return", role: "floor_return", flow: "floor_pump", points: [[450, 464], [450, 335]] },
       // tank connection: collector end (616) → tank (720), loading pump in between
-      { kind: "supply", role: "boiler_supply", flow: "ihb_pump", points: [[616, 300], [720, 300]] },
-      { kind: "return", role: "coil_return", flow: "ihb_pump", points: [[720, 380], [616, 380]] },
+      { kind: "supply", role: "boiler_supply", flow: "ihb_pump", points: [[616, 240], [720, 240]] },
+      { kind: "return", role: "coil_return", flow: "ihb_pump", points: [[720, 320], [616, 320]] },
       // DHW: tank top → tap; a narrow recirculation loop returns into the tank (pump on the return)
-      { id: "hot_to_tap", kind: "hot", role: "hot_water", flow: "water_hot_pump", points: [[800, 280], [860, 280], [860, 248]] },
-      { id: "recirc_return", kind: "hot", flow: "water_hot_pump", points: [[860, 280], [910, 280], [910, 375], [800, 375]] },
-      // cold water: well → pump → branch to autofill and to the tank bottom
+      { id: "hot_to_tap", kind: "hot", role: "hot_water", flow: "water_hot_pump", points: [[800, 220], [860, 220], [860, 188]] },
+      { id: "recirc_return", kind: "hot", flow: "water_hot_pump", points: [[860, 220], [910, 220], [910, 315], [800, 315]] },
+      // cold water: well → pump → branch to autofill (separator bottom) and to the tank bottom
       { id: "cold_from_well", kind: "cold", role: "cold_water", flow: "water_pump", points: [[105, 470], [250, 470]] },
-      { id: "cold_to_fill", kind: "fill", flow: "af_open", points: [[250, 470], [398, 470], [398, 420]] },
-      { id: "cold_to_tank", kind: "cold", role: "cold_water", flow: "water_pump", points: [[250, 470], [250, 545], [760, 545], [760, 436]] },
+      { id: "cold_to_fill", kind: "fill", flow: "af_open", points: [[250, 470], [398, 470], [398, 360]] },
+      { id: "cold_to_tank", kind: "cold", role: "cold_water", flow: "water_pump", points: [[250, 470], [250, 545], [760, 545], [760, 376]] },
     ],
   },
   tall: {
     width: 360, height: 640,
     boiler: [8, 250], separator: [110, 240], gauge: [230, 310], autofill: [90, 505],
     radiators: [50, 62], floor: [100, 470], tank: [290, 250], tap: [302, 190], well: [8, 552],
-    radPump: [200, 170], radValve: [200, 215], floorPump: [200, 420], floorValve: [200, 445],
+    radPump: [200, 170], radValve: [200, 215], floorPump: [200, 445], floorValve: [200, 420],
     ihbPump: [273, 270], recircPump: [346, 290], coldPump: [60, 556],
     boilerScale: 0.55, tankScale: 0.6, collectorWidth: 110,
     tags: {
@@ -101,11 +107,15 @@ export const BASE_LAYOUTS: Record<LayoutName, LayoutDef> = {
       { kind: "return", role: "rad_return", flow: "rad_pump", points: [[207, 108], [207, 124], [165, 124]] },
       { kind: "return", role: "rad_return", flow: "rad_pump", points: [[302, 108], [302, 124], [165, 124]] },
       { kind: "return", role: "rad_return", flow: "rad_pump", points: [[165, 124], [165, 335]] },
-      { kind: "supply", role: "rad_supply", flow: "rad_pump", points: [[200, 255], [200, 114]] },
+      { id: "rad_feed", kind: "supply", role: "boiler_supply", flow: "rad_pump", points: [[200, 255], [200, 215]] },
+      { id: "rad_bypass", kind: "return", role: "rad_return", flow: "rad_pump", points: [[165, 215], [192, 215]] },
+      { id: "rad_mixed", kind: "supply", role: "rad_supply", flow: "rad_pump", points: [[200, 215], [200, 114]] },
       { kind: "supply", role: "rad_supply", flow: "rad_pump", points: [[200, 114], [58, 114], [58, 108]] },
       { kind: "supply", role: "rad_supply", flow: "rad_pump", points: [[153, 114], [153, 108]] },
       { kind: "supply", role: "rad_supply", flow: "rad_pump", points: [[200, 114], [248, 114], [248, 108]] },
-      { kind: "supply", role: "floor_supply", flow: "floor_pump", points: [[200, 285], [200, 464]] },
+      { id: "floor_feed", kind: "supply", role: "boiler_supply", flow: "floor_pump", points: [[200, 285], [200, 420]] },
+      { id: "floor_bypass", kind: "return", role: "floor_return", flow: "floor_pump", points: [[165, 420], [192, 420]] },
+      { id: "floor_mixed", kind: "supply", role: "floor_supply", flow: "floor_pump", points: [[200, 420], [200, 464]] },
       { kind: "return", role: "floor_return", flow: "floor_pump", points: [[165, 464], [165, 365]] },
       { kind: "supply", role: "boiler_supply", flow: "ihb_pump", points: [[256, 270], [290, 270]] },
       { kind: "return", role: "coil_return", flow: "ihb_pump", points: [[290, 350], [256, 350]] },

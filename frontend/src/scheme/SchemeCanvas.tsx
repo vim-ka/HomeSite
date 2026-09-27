@@ -93,7 +93,8 @@ export function SchemeCanvas({ state, layout, onOpen, onToggle }: {
           </g>
         ))}
         {hit("separator", "autofill", (
-          <Separator x={L.separator[0]} y={L.separator[1]} collectorWidth={L.collectorWidth} side={L.mirrored ? "left" : "right"} />
+          <Separator x={L.separator[0]} y={L.separator[1]} collectorWidth={L.collectorWidth} side={L.mirrored ? "left" : "right"}
+                     supplyColor={pipeColor(val("boiler_supply"), "supply")} returnColor={pipeColor(val("boiler_return"), "return")} />
         ))}
         {hit("gauge", "autofill", <Gauge x={L.gauge[0]} y={L.gauge[1]} value={val("heating_pressure")}
                                          lo={Number(s.heating_pressure_min ?? NaN) || null} hi={Number(s.heating_pressure_max ?? NaN) || null} />)}
