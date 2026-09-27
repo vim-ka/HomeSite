@@ -14,12 +14,14 @@ function valveDirection(open: boolean, close: boolean): "open" | "close" | null 
   return null;
 }
 
-export function SchemeCanvas({ state, layout, onOpen, onToggle }: {
+export function SchemeCanvas({ state, layout, onOpen, onToggle, busyKeys = [] }: {
   state: SchemeState;
   layout: LayoutName;
   onOpen: (kind: ElementKind, role?: RoleKey) => void;
   /** Left click on an on/off element (desktop). Without it every click opens settings. */
   onToggle?: (key: string, label: string, next: "0" | "1") => void;
+  /** Settings whose quick-toggle command is being sent right now (pumps blink) */
+  busyKeys?: string[];
 }) {
   // Touch has no right click: a tap opens settings, so a scroll tap never switches equipment
   const lastPointer = useRef<string>("mouse");
@@ -31,6 +33,12 @@ export function SchemeCanvas({ state, layout, onOpen, onToggle }: {
     const t = val(role);
     return t == null ? 0 : (t - 20) / 50;
   };
+  // pump blinks while its command is on the way: being sent, queued or awaiting the device's ack
+  const switching = (id: string) => {
+    const key = TOGGLES[id]?.key;
+    return !!key && (busyKeys.includes(key) || state.sync.pending.includes(key));
+  };
+  const autofillEnabled = isOn(TOGGLES.autofill!, s, r);
   const autofillState = c.flags.autofill_fault ? "fault" : r.af_open ? "opening" : r.af_close ? "closing" : "closed";
 
   const hit = (id: string, kind: ElementKind, child: ReactNode, role?: RoleKey) => {
@@ -40,16 +48,14 @@ export function SchemeCanvas({ state, layout, onOpen, onToggle }: {
     // only a mouse click switches equipment; touch and stylus taps open the settings
     const click = () =>
       toggle && lastPointer.current === "mouse" ? onToggle!(toggle.key, toggle.label, on ? "0" : "1") : open();
-    // switched off in the settings → drawn faded (the boiler's power is governed by auto mode, keep it)
-    const faded = toggle !== undefined && !on && toggle.key !== "heating_boiler_power";
     return (
       <g
         data-element={id}
         data-enabled={on === undefined ? undefined : String(on)}
-        opacity={faded ? 0.45 : undefined}
         role="button"
         tabIndex={0}
         aria-label={elementName(id)}
+        className="scheme-hit"
         style={{ cursor: "pointer" }}
         onPointerDown={(e) => { lastPointer.current = e.pointerType || "mouse"; }}
         onClick={click}
@@ -87,10 +93,10 @@ export function SchemeCanvas({ state, layout, onOpen, onToggle }: {
         })}
 
         {hit("radiators", "rad", <Radiators x={L.radiators[0]} y={L.radiators[1]} warmth={warmth("rad_supply")} />)}
-        {hit("rad_pump", "rad", <Pump x={L.radPump[0]} y={L.radPump[1]} running={r.rad_pump} />)}
+        {hit("rad_pump", "rad", <Pump x={L.radPump[0]} y={L.radPump[1]} running={r.rad_pump} switching={switching("rad_pump")} />)}
         {hit("rad_valve", "rad", <MixingValve x={L.radValve[0]} y={L.radValve[1]} direction={valveDirection(r.rad_open, r.rad_close)} />)}
         {hit("floor", "floor", <FloorLoops x={L.floor[0]} y={L.floor[1]} warmth={warmth("floor_supply")} />)}
-        {hit("floor_pump", "floor", <Pump x={L.floorPump[0]} y={L.floorPump[1]} running={r.floor_pump} r={11} />)}
+        {hit("floor_pump", "floor", <Pump x={L.floorPump[0]} y={L.floorPump[1]} running={r.floor_pump} switching={switching("floor_pump")} />)}
         {hit("floor_valve", "floor", <MixingValve x={L.floorValve[0]} y={L.floorValve[1]} direction={valveDirection(r.floor_open, r.floor_close)} />)}
         {hit("boiler", "boiler", (
           <g transform={`translate(${L.boiler[0]} ${L.boiler[1]}) scale(${L.boilerScale ?? 1})`}>
@@ -104,16 +110,16 @@ export function SchemeCanvas({ state, layout, onOpen, onToggle }: {
         ))}
         {hit("gauge", "autofill", <Gauge x={L.gauge[0]} y={L.gauge[1]} value={val("heating_pressure")}
                                          lo={Number(s.heating_pressure_min ?? NaN) || null} hi={Number(s.heating_pressure_max ?? NaN) || null} />)}
-        {hit("autofill", "autofill", <FillValve x={L.autofill[0]} y={L.autofill[1]} state={autofillState} />)}
+        {hit("autofill", "autofill", <FillValve x={L.autofill[0]} y={L.autofill[1]} state={autofillState} enabled={autofillEnabled} />)}
         {hit("tank", "tank", (
           <g transform={`translate(${L.tank[0]} ${L.tank[1]}) scale(${L.tankScale ?? 1})`}>
             <Tank x={0} y={0} fill={warmth("tank")} teh={r.teh} />
           </g>
         ))}
         {hit("well", "cold", <Well x={L.well[0]} y={L.well[1]} />)}
-        {hit("ihb_pump", "tank", <Pump x={L.ihbPump[0]} y={L.ihbPump[1]} running={r.ihb_pump} r={11} />)}
-        {hit("recirc_pump", "hot", <Pump x={L.recircPump[0]} y={L.recircPump[1]} running={r.water_hot_pump} r={9} />)}
-        {hit("cold_pump", "cold", <Pump x={L.coldPump[0]} y={L.coldPump[1]} running={r.water_pump} r={9} />)}
+        {hit("ihb_pump", "tank", <Pump x={L.ihbPump[0]} y={L.ihbPump[1]} running={r.ihb_pump} switching={switching("ihb_pump")} />)}
+        {hit("recirc_pump", "hot", <Pump x={L.recircPump[0]} y={L.recircPump[1]} running={r.water_hot_pump} switching={switching("recirc_pump")} />)}
+        {hit("cold_pump", "cold", <Pump x={L.coldPump[0]} y={L.coldPump[1]} running={r.water_pump} switching={switching("cold_pump")} />)}
         {hit("tap", "hot", L.mirrored
           ? <g transform={`translate(${L.tap[0] + 24} ${L.tap[1]}) scale(-1 1)`}><Tap x={0} y={0} /></g>
           : <Tap x={L.tap[0]} y={L.tap[1]} />)}

@@ -28,6 +28,7 @@ export default function SchemePage() {
 
   // one command per switch at a time: a double click must not send ON and OFF concurrently
   const inFlight = useRef(new Set<string>());
+  const [busyKeys, setBusyKeys] = useState<string[]>([]);
 
   const quickToggle = async (key: string, label: string, next: "0" | "1") => {
     if (!data) return;
@@ -42,6 +43,7 @@ export default function SchemePage() {
     }
     if (inFlight.current.has(key)) return;
     inFlight.current.add(key);
+    setBusyKeys([...inFlight.current]);
     // a poll already in flight must not overwrite the optimistic value
     await queryClient.cancelQueries({ queryKey: SCHEME_QUERY_KEY });
     const previous = queryClient.getQueryData<SchemeState>(SCHEME_QUERY_KEY);
@@ -58,6 +60,7 @@ export default function SchemePage() {
       toast.error(`${label}: не удалось отправить команду`);
     } finally {
       inFlight.current.delete(key);
+      setBusyKeys([...inFlight.current]);
       refetch();
     }
   };
@@ -86,7 +89,7 @@ export default function SchemePage() {
   return (
     <div className="space-y-3" ref={box}>
       <TopStrip state={data} canRetry={role === "admin" || role === "operator"} />
-      <SchemeCanvas state={data} layout={layout} onOpen={(kind, r) => setDialog({ kind, role: r })} onToggle={quickToggle} />
+      <SchemeCanvas state={data} layout={layout} onOpen={(kind, r) => setDialog({ kind, role: r })} onToggle={quickToggle} busyKeys={busyKeys} />
       {/* Below the scheme, never over it: on top it hid the tank and the water inlet */}
       <AlarmPanel state={data} collapsible={layout === "tall"} />
       {dialog && (

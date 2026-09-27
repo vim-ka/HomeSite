@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { FillValve, MixingValve, Pump, ValueTag } from ".";
+import { FillValve, MixingValve, Pipe, Pump, ValueTag } from ".";
 
 const svg = (el: React.ReactNode) => render(<svg>{el}</svg>);
 
@@ -31,4 +31,27 @@ describe("scheme elements", () => {
     rerender(<svg><ValueTag x={0} y={0} unit="°" reading={{ value: 54.12, ts: null, stale: true }} /></svg>);
     expect(screen.getByText("—")).toBeInTheDocument();
   });
+
+  it("pump is a solid disc: green when running, grey when stopped, no dark frame", () => {
+    const { container, rerender } = svg(<Pump x={0} y={0} running />);
+    const disc = () => container.querySelector("[data-part='disc']")!;
+    expect(disc().getAttribute("fill")).toBe("#16a34a");
+    expect(disc().getAttribute("stroke")).toBeNull();
+    expect(disc().getAttribute("r")).toBe("11");
+    rerender(<svg><Pump x={0} y={0} running={false} /></svg>);
+    expect(disc().getAttribute("fill")).toBe("#9ca3af");
+  });
+
+  it("pump blinks grey/green while switching", () => {
+    const { container } = svg(<Pump x={0} y={0} running={false} switching />);
+    expect(container.querySelector("[data-part='disc']")!.getAttribute("class")).toContain("scheme-pump-switching");
+  });
+
+  it("pipes have flat ends (no round tails poking out of devices)", () => {
+    const { container } = svg(<Pipe points={[[0, 0], [10, 0], [10, 10]]} color="#f00" flowing />);
+    for (const path of container.querySelectorAll("path")) {
+      expect(path.getAttribute("stroke-linecap")).toBe("butt");
+    }
+  });
 });
+

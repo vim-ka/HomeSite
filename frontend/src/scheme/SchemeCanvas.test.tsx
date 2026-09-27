@@ -158,3 +158,34 @@ describe("SchemeCanvas accessibility and input", () => {
   });
 });
 
+describe("SchemeCanvas pumps", () => {
+  const PUMPS = ["rad_pump", "floor_pump", "ihb_pump", "recirc_pump", "cold_pump"];
+
+  it("all pumps have the same size", () => {
+    const { container } = render(<SchemeCanvas state={makeState()} layout="wide" onOpen={() => {}} />);
+    const radii = PUMPS.map((id) => container.querySelector(`[data-element='${id}'] [data-part='disc']`)?.getAttribute("r"));
+    expect(new Set(radii)).toEqual(new Set(["11"]));
+  });
+
+  it("a pump switched off in the settings is plain grey, not see-through", () => {
+    const state = makeState();
+    state.settings.heating_radiator_pump = "0";
+    state.controller.relays.rad_pump = false;
+    const { container } = render(<SchemeCanvas state={state} layout="wide" onOpen={() => {}} onToggle={() => {}} />);
+    const el = container.querySelector("[data-element='rad_pump']")!;
+    expect(el.getAttribute("opacity")).toBeNull();
+    expect(el.querySelector("[data-part='disc']")!.getAttribute("fill")).toBe("#9ca3af");
+  });
+
+  it("blinks while its command is pending or being sent", () => {
+    const state = makeState();
+    state.sync.pending = ["heating_floorheating_pump"];
+    const { container } = render(
+      <SchemeCanvas state={state} layout="wide" onOpen={() => {}} busyKeys={["heating_radiator_pump"]} />,
+    );
+    expect(container.querySelector("[data-element='floor_pump'] .scheme-pump-switching")).not.toBeNull();
+    expect(container.querySelector("[data-element='rad_pump'] .scheme-pump-switching")).not.toBeNull();
+    expect(container.querySelector("[data-element='ihb_pump'] .scheme-pump-switching")).toBeNull();
+  });
+});
+
