@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.logging import get_logger
 from app.models.event import EventLog
+from app.services.controller_flags import CONTROLLER_FLAGS
 from app.models.heating import HeatingCircuit
 from app.models.sensor import Sensor, SensorData, SensorDataType
 from app.models.pending_sensor import PendingSensor
@@ -24,11 +25,7 @@ DEFAULT_POLL_INTERVAL = 30  # seconds
 DEFAULT_STALE_MINUTES = 5
 
 # Safety flags reported in the boiler controller heartbeat → event text
-DEVICE_ALARM_FLAGS = {
-    "autofill_fault": "Автоподпитка заблокирована после аварийного таймаута (возможна утечка)",
-    "boiler_sensor_lost": "Потерян датчик температуры котла — котёл отключён",
-    "overtemp": "Контроллер отключил котёл по перегреву",
-}
+DEVICE_ALARM_FLAGS = {flag: text for flag, (_level, text) in CONTROLLER_FLAGS.items()}
 
 
 @dataclass
@@ -293,7 +290,7 @@ class HealthMonitor:
         if self._initialized:
             for device, flag in sorted(current - self._device_alarms):
                 events.append(EventLog(
-                    level="ERROR", source="health_monitor",
+                    level=CONTROLLER_FLAGS[flag][0], source="health_monitor",
                     message=f"{device}: {DEVICE_ALARM_FLAGS[flag]}",
                 ))
             for device, flag in sorted(self._device_alarms - current):

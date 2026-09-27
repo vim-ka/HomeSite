@@ -199,9 +199,7 @@ class Emulator:
         # Like the firmware: report the new relay state right away, not in ≤30 s —
         # but not for the outdoor_temp telemetry the gateway forwards on every street reading
         if not restart and set(data) != {"outdoor_temp"}:
-            self.sim.controller.update(
-                self.sim.now, self.sim.boiler_readings(), self.sim.heating_pressure_reading() or 0.0
-            )
+            self.sim.controller.update(self.sim.now, self.sim.boiler_readings(), *self.sim.controller_pressures())
             await self.publish_heartbeats()
         if restart:
             await asyncio.sleep(0.5)

@@ -73,12 +73,22 @@ def test_acks_mirror_firmware_validation():
     assert c.settings["heating_radiator_schedule_start"] == "07:30"
 
 
-def test_lost_boiler_sensor_switches_boiler_off_in_automode():
+def test_lost_boiler_sensor_switches_boiler_off_in_automode_when_mild_outside():
     sim = make({"heating_boiler_automode": "1"})
+    sim.controller.set_outdoor(8.0)
     sim.failed.add("tsboiler_s")
     sim.advance(60)
     assert sim.controller.boiler_sensor_lost
     assert not sim.controller.relays["boiler"]
+
+
+def test_lost_boiler_sensor_in_winter_leaves_the_boiler_on_its_own_thermostat():
+    """Outdoor unknown or cold: freezing is the bigger danger; the boiler has its own limit thermostat."""
+    sim = make({"heating_boiler_automode": "1"})
+    sim.failed.add("tsboiler_s")
+    sim.advance(60)
+    assert sim.controller.boiler_sensor_lost and sim.controller.critical
+    assert sim.controller.relays["boiler"]
 
 
 def test_reboot_keeps_settings_and_fault():

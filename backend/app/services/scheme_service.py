@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.setting_rules import SECRET_KEYS
 from app.models.event import EventLog
+from app.services.controller_flags import CONTROLLER_FLAGS
 from app.models.heating import HeatingCircuit
 from app.models.sensor import MountPoint, Sensor, SensorData, SensorDataType
 from app.repositories.sensor_repository import CLIMATE_SYSTEM_ID, SensorRepository
@@ -41,9 +42,8 @@ WATER_SENSORS = {"cold_water": "tswatersupply_c", "hot_water": "tswatersupply_h"
 UNHEATED_SENSORS = {"clm_garage_th"}
 BOILER_ROOM_SENSOR = "clm_boiler_th"
 FLAG_KEYS = [
-    "warning", "critical", "overtemp", "boiler_sensor_lost", "autofill_fault", "alm_active",
-    "schedule_rad", "schedule_floor", "ihb_heating", "autofill_active", "autofill_closing",
-    "boiler_auto",
+    "warning", "critical", "alm_active", "schedule_rad", "schedule_floor", "ihb_heating",
+    "autofill_active", "autofill_closing", "boiler_auto", *CONTROLLER_FLAGS,
 ]
 ALL_ROLES = [r for pair in CIRCUIT_ROLES.values() for r in pair] + [
     "cold_water", "hot_water", "heating_pressure", "water_pressure", "outdoor", "indoor_avg", "boiler_room",
@@ -80,15 +80,11 @@ def build_alarms(
         return [{"level": "ERROR", "code": "gateway_down", "text": "Шлюз устройств недоступен"}]
     if not online:
         return [{"level": "ERROR", "code": "no_link", "text": "Нет связи с контроллером котельной"}]
-    alarms = []
-    if flags.get("overtemp"):
-        alarms.append({"level": "ERROR", "code": "overtemp", "text": "Перегрев котла — котёл отключён защитой"})
-    if flags.get("boiler_sensor_lost"):
-        alarms.append({"level": "ERROR", "code": "boiler_sensor_lost", "text": "Потерян датчик температуры котла"})
-    if flags.get("autofill_fault"):
-        alarms.append({"level": "ERROR", "code": "autofill_fault",
-                       "text": "Автоподпитка заблокирована после аварийного таймаута (возможна утечка)"})
-    if pressure is not None and p_min is not None and pressure < p_min:
+    alarms = [{"level": level, "code": flag, "text": text}
+              for flag, (level, text) in CONTROLLER_FLAGS.items() if flags.get(flag)]
+    if flags.get("pressure_zero"):
+        pass  # already explained; "0.00 below the norm" would only repeat it
+    elif pressure is not None and p_min is not None and pressure < p_min:
         alarms.append({"level": "ERROR", "code": "pressure_low",
                        "text": f"Давление {pressure:.2f} бар ниже нормы {p_min:g}"})
     if pressure is not None and p_max is not None and pressure > p_max:

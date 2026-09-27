@@ -141,7 +141,12 @@ Settings changes → Gateway → grouped MQTT message per device:
 seen after a gateway restart, the gateway re-sends all of its keys (`device_gateway/sync.py`).
 
 ESP32 publishes a periodic heartbeat: `home/devices/{name}/heartbeat` (JSON with `uptime`, relays,
-safety flags `autofill_fault` / `boiler_sensor_lost` / `overtemp`).
+safety flags — `backend/app/services/controller_flags.py` maps each to an alarm level and text).
+Controller safety rules (firmware `boiler_logic.cpp`, mirrored in `tools/house_emulator/controller.py` with tests):
+frost protection (water < 7 °C → boiler and pumps forced on, beats manual OFF), zero pressure = alarm and no
+blind autofill, boiler-doesn't-heat detection, well dry-run stop/retry/latch, TEH never heats without a tank
+sensor, auto boiler target capped at max − 7 so regulation never hits the overtemp trip, lost boiler sensor
+switches the boiler off only in mild weather (else it runs on its own thermostat).
 Heartbeat loss detected after `heartbeat_timeout_seconds` (default 60s) → ERROR in event log.
 
 ## Deployment Target

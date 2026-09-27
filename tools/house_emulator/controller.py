@@ -28,6 +28,22 @@ SENSOR_LOSS_CYCLES = 3
 MIN_SUPPLY_TARGET = 20.0
 OUTDOOR_TTL_S = 15 * 60
 
+# Safety rules from the alarm review (2026-09)
+PRESSURE_ZERO_BAR = 0.05           # configured sensor below this: empty system or broken sensor
+BOILER_TARGET_MARGIN = 5.0         # auto target stays max - margin - hysteresis: regulation, never the trip
+TEH_BOILER_MARGIN = 5.0            # the boiler heats the tank only if its supply is this much hotter
+FROST_ENTER = 7.0                  # any water temperature below → frost protection
+FROST_EXIT = 15.0                  # all back above → normal control
+SENSOR_LOST_MILD_OUTDOOR = 5.0     # boiler sensor lost: switch off only when it's this warm outside
+NO_HEAT_AFTER_S = 30 * 60          # boiler on this long, still far below target and not warming up …
+NO_HEAT_WINDOW_S = 15 * 60         # … by at least NO_HEAT_MIN_RISE over this window
+NO_HEAT_MIN_RISE = 2.0
+NO_HEAT_GAP = 10.0
+WELL_MIN_BAR = 0.5                 # well pump on, water pressure below this …
+WELL_GRACE_S = 60.0                # … this long → dry run
+WELL_RETRY_S = 30 * 60
+WELL_MAX_TRIES = 3
+
 # PZA curves — same as backend app/services/pza.py and firmware pza_controller.cpp
 OUTDOOR_POINTS = [20, 10, 0, -10, -20, -35]
 RADIATOR_CURVES = [
@@ -99,6 +115,20 @@ class Controller:
     overtemp: bool = False
     boiler_sensor_missing: int = 0
     boiler_sensor_lost: bool = False
+    ihb_sensor_missing: int = 0
+    ihb_sensor_lost: bool = False
+    pressure_zero: bool = False
+    frost_protect: bool = False
+    boiler_no_heat: bool = False
+    boiler_on_since: float | None = None
+    no_heat_check: tuple[float, float] | None = None   # (t, supply) at the start of the current window
+    no_heat_stalled: bool = False
+    well_low_since: float | None = None
+    well_waiting: bool = False
+    well_retry_at: float = 0.0
+    well_failures: int = 0
+    well_locked: bool = False
+    well_dry: bool = False
 
     autofill_active: bool = False
     autofill_closing: bool = False
@@ -201,7 +231,9 @@ class Controller:
             vs.drive_s = 0
 
     # -------------------------------------------------------------- update
-    def update(self, now: datetime, temps: dict[str, float], heating_pressure: float) -> None:
+    def update(self, now: datetime, temps: dict[str, float], heating_pressure: float | None,
+               water_pressure: float | None = None) -> None:
+        """Pressures are None when the sensor isn't configured (firmware: NAN)."""
         self.schedule_rad = self.b("heating_radiator_schedule_enabled") and in_schedule(
             now, self.s("heating_radiator_schedule_days"),
             self.s("heating_radiator_schedule_start"), self.s("heating_radiator_schedule_end"))
@@ -218,6 +250,14 @@ class Controller:
         if self.boiler_sensor_lost and not was_lost:
             self._log("BOILER: SENSOR LOST")
 
+        if temps.get("tsihb_s") is None:
+            self.ihb_sensor_missing = min(255, self.ihb_sensor_missing + 1)
+        else:
+            self.ihb_sensor_missing = 0
+        self.ihb_sensor_lost = self.ihb_sensor_missing >= SENSOR_LOSS_CYCLES
+        self.pressure_zero = heating_pressure is not None and heating_pressure < PRESSURE_ZERO_BAR
+        self._update_frost(temps)
+
         self._update_alm(now, temps)
         ihb = temps.get("tsihb_s")
         self.ihb_heating = ihb is not None and ihb < self.ihb_target()
@@ -227,10 +267,84 @@ class Controller:
         self._update_autofill(heating_pressure)
         self._update_teh(temps)
         self._update_valves(temps)
-        self.relays["water_pump"] = self.b("watersupply_pump")
+        self._update_well(water_pressure)
         self.relays["water_hot_pump"] = self.b("watersupply_pump_hot")
         self._apply_interlocks(temps)
+        self._update_no_heat(temps)
         self._update_alarms(temps, heating_pressure)
+
+    def _update_frost(self, temps: dict[str, float]) -> None:
+        """Water in the boiler or the circuits near freezing: heat regardless of manual OFF."""
+        vals = [temps[k] for k in ("tsboiler_s", "tsrad_s", "tsfloor_s") if temps.get(k) is not None]
+        if not vals:
+            return
+        if not self.frost_protect and min(vals) < FROST_ENTER:
+            self.frost_protect = True
+            self._log(f"FROST: protection ON ({min(vals):.1f} °C)")
+        elif self.frost_protect and min(vals) >= FROST_EXIT:
+            self.frost_protect = False
+            self._log("FROST: protection OFF")
+
+    def _mild_outside(self) -> bool:
+        return self.outdoor_fresh() and self.outdoor >= SENSOR_LOST_MILD_OUTDOOR
+
+    def _boiler_target(self) -> float:
+        return self.boiler_auto_target if self.b("heating_boiler_automode") else self.f("heating_boiler_temp")
+
+    def _update_no_heat(self, temps: dict[str, float]) -> None:
+        """Boiler asked to heat for a long time, supply far below target and not rising: burner lockout, no gas."""
+        bt = temps.get("tsboiler_s")
+        if not self.relays["boiler"] or bt is None:
+            self.boiler_on_since = self.no_heat_check = None
+            self.no_heat_stalled = self.boiler_no_heat = False
+            return
+        if self.boiler_on_since is None:
+            self.boiler_on_since, self.no_heat_check = self.t, (self.t, bt)
+        if bt >= self._boiler_target() - NO_HEAT_GAP:
+            self.no_heat_check, self.no_heat_stalled, self.boiler_no_heat = (self.t, bt), False, False
+            return
+        t0, bt0 = self.no_heat_check  # type: ignore[misc]
+        if self.t - t0 >= NO_HEAT_WINDOW_S:
+            self.no_heat_stalled = bt - bt0 < NO_HEAT_MIN_RISE
+            self.no_heat_check = (self.t, bt)
+        was = self.boiler_no_heat
+        self.boiler_no_heat = self.t - self.boiler_on_since >= NO_HEAT_AFTER_S and self.no_heat_stalled
+        if self.boiler_no_heat and not was:
+            self._log(f"BOILER: NO HEAT (supply {bt:.1f} °C)")
+
+    def _update_well(self, water: float | None) -> None:
+        """Dry-run protection: no pressure with the pump on → stop, retry later, latch after repeated failures."""
+        if not self.b("watersupply_pump"):
+            self.relays["water_pump"] = False
+            self.well_low_since, self.well_waiting, self.well_failures, self.well_locked = None, False, 0, False
+            self.well_dry = False
+            return
+        if water is None:
+            self.relays["water_pump"] = True
+            self.well_low_since, self.well_dry = None, False
+            return
+        if self.well_locked or (self.well_waiting and self.t < self.well_retry_at):
+            self.relays["water_pump"] = False
+            return
+        if self.well_waiting:  # retry: a fresh grace period
+            self.well_waiting, self.well_low_since = False, None
+        self.relays["water_pump"] = True
+        if water < WELL_MIN_BAR:
+            if self.well_low_since is None:
+                self.well_low_since = self.t
+            if self.t - self.well_low_since >= WELL_GRACE_S:
+                self.relays["water_pump"] = False
+                self.well_low_since = None
+                self.well_failures += 1
+                if self.well_failures >= WELL_MAX_TRIES:
+                    self.well_locked = True
+                    self._log("WELL: dry run — pump locked until switched off and on")
+                else:
+                    self.well_waiting, self.well_retry_at = True, self.t + WELL_RETRY_S
+                    self._log("WELL: dry run — pump stopped, retry in 30 min")
+        else:
+            self.well_low_since, self.well_failures = None, 0
+        self.well_dry = self.well_waiting or self.well_locked
 
     def _update_alm(self, now: datetime, temps: dict[str, float]) -> None:
         days = self.s("watersupply_alm_days")
@@ -257,7 +371,11 @@ class Controller:
             self.relays["boiler"] = self.b("heating_boiler_power")
             return
         if bt is None:
-            return  # brief dropout — interlock handles a sustained loss
+            # brief dropout: keep the relay. Sustained loss in frost: let the boiler run on its own
+            # thermostat (cold is the bigger danger); in mild weather the interlock switches it off
+            if self.boiler_sensor_lost and not self._mild_outside():
+                self.relays["boiler"] = True
+            return
         target = 0.0
         if self.b("heating_radiator_pump"):
             target = max(target, self.radiator_target())
@@ -267,7 +385,7 @@ class Controller:
             target = max(target, self.ihb_target())
         if target <= 0:
             target = self.f("heating_boiler_temp")
-        target = min(target, max_temp)
+        target = min(target, max_temp - BOILER_TARGET_MARGIN - BOILER_HYSTERESIS)
         self.boiler_auto_target = target
         on = self.relays["boiler"]
         if not on and bt < target:
@@ -312,8 +430,8 @@ class Controller:
         self.autofill_fault = True
         self._log("AUTOFILL: SAFETY TIMEOUT — valve closed, locked out until autofill_reset")
 
-    def _update_autofill(self, pressure: float) -> None:
-        if self.autofill_closing:
+    def _update_autofill(self, pressure: float | None) -> None:
+        if self.autofill_closing or pressure is None:
             return
         if not self.b("heating_autofill_enabled") or self.autofill_fault:
             if self.autofill_active:
@@ -326,7 +444,7 @@ class Controller:
             elif pressure >= p_min + AUTOFILL_HYSTERESIS:
                 self._close_autofill()
                 self._log(f"AUTOFILL: pressure OK ({pressure:.2f} bar) — closing valve")
-        elif 0.01 < pressure < p_min:
+        elif PRESSURE_ZERO_BAR <= pressure < p_min:  # at ~0 it's a broken sensor or an empty system
             self.relays["af_close"] = False
             self.relays["af_open"] = True
             self.autofill_active = True
@@ -335,14 +453,17 @@ class Controller:
 
     def _update_teh(self, temps: dict[str, float]) -> None:
         ihb = temps.get("tsihb_s")
-        if ihb is not None and ihb >= self.ihb_target():
+        if ihb is None or ihb >= self.ihb_target():  # no tank sensor: never heat blind, in any mode
             self.relays["teh"] = False
             self.teh_delay_active = False
             return
         if not self.b("watersupply_ihb_teh_automode"):
             self.relays["teh"] = self.b("watersupply_ihb_teh_power")
             return
-        if self.relays["boiler"] and self.relays["ihb_pump"]:
+        bt = temps.get("tsboiler_s")
+        boiler_heats_tank = (self.relays["boiler"] and self.relays["ihb_pump"]
+                             and bt is not None and bt > ihb + TEH_BOILER_MARGIN)
+        if boiler_heats_tank:
             self.relays["teh"] = False
             self.teh_delay_active = False
         elif self.ihb_heating:
@@ -382,28 +503,36 @@ class Controller:
         reason = None
         if self.overtemp:
             reason = "OVERTEMP"
-        elif not self.b("heating_boiler_automode") and not self.b("heating_boiler_power"):
+        elif not self.frost_protect and not self.b("heating_boiler_automode") and not self.b("heating_boiler_power"):
             reason = "MANUAL OFF"
-        elif self.b("heating_boiler_automode") and self.boiler_sensor_lost:
+        elif self.frost_protect:
+            reason = None  # frost protection beats manual OFF and the sensor-lost switch-off
+        elif self.b("heating_boiler_automode") and self.boiler_sensor_lost and self._mild_outside():
             reason = "SENSOR LOST"
         if reason and self.relays["boiler"]:
             self.relays["boiler"] = False
             self._log(f"BOILER: INTERLOCK OFF ({reason})")
         if self.autofill_fault and self.relays["af_open"]:
             self._close_autofill()
+        if self.frost_protect:
+            self.relays["rad_pump"] = self.relays["floor_pump"] = True
+            if not self.overtemp:
+                self.relays["boiler"] = True
 
-    def _update_alarms(self, temps: dict[str, float], pressure: float) -> None:
+    def _update_alarms(self, temps: dict[str, float], pressure: float | None) -> None:
         bt = temps.get("tsboiler_s")
         p_min, p_max = self.f("heating_pressure_min"), self.f("heating_pressure_max")
         max_temp = self.f("heating_boiler_max_temp")
         warning = critical = False
-        if pressure > 0.01:
+        if pressure is not None and pressure < PRESSURE_ZERO_BAR:
+            critical = True
+        elif pressure is not None:
             if pressure < p_min or pressure > p_max:
                 warning = True
             if pressure < p_min - 0.3 or pressure > p_max + 0.3:
                 critical = True
         if bt is not None:
-            warning |= bt >= max_temp - 5
+            warning |= bt >= max_temp - 2   # the auto cycle tops out at max - 5; this is the real approach
             critical |= bt >= max_temp
         else:
             warning = True
@@ -413,8 +542,15 @@ class Controller:
             warning = True
         if self.b("watersupply_ihb_automode") and temps.get("tsihb_s") is None:
             critical = True
-        if self.boiler_sensor_lost or self.overtemp or self.autofill_fault:
+        if self.boiler_sensor_lost or self.overtemp or self.autofill_fault or self.frost_protect:
             critical = True
+        if self.boiler_no_heat:
+            if self.outdoor_fresh() and self.outdoor < 0:
+                critical = True
+            else:
+                warning = True
+        if self.well_dry or self.ihb_sensor_lost:
+            warning = True
         self.warning, self.critical = warning, critical
         self.relays["lamp_warning"], self.relays["lamp_critical"] = warning, critical
 
@@ -456,5 +592,10 @@ class Controller:
             "autofill_fault": self.autofill_fault,
             "boiler_sensor_lost": self.boiler_sensor_lost,
             "overtemp": self.overtemp,
+            "pressure_zero": self.pressure_zero,
+            "frost_protect": self.frost_protect,
+            "boiler_no_heat": self.boiler_no_heat,
+            "ihb_sensor_lost": self.ihb_sensor_lost,
+            "well_dry": self.well_dry,
         })
         return hb

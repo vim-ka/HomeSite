@@ -250,6 +250,15 @@ void BoilerLogic::update(const TempMap& temps, float heatingPressure, float wate
     _boilerSensorLost = _boilerSensorMissing >= SENSOR_LOSS_CYCLES;
     if (_boilerSensorLost && !wasLost) Serial.println("BOILER: SENSOR LOST");
 
+    if (getTemp(temps, "tsihb_s") == TEMP_INVALID) {
+        if (_ihbSensorMissing < 255) _ihbSensorMissing++;
+    } else {
+        _ihbSensorMissing = 0;
+    }
+    _ihbSensorLost = _ihbSensorMissing >= SENSOR_LOSS_CYCLES;
+    _pressureZero = !isnan(heatingPressure) && heatingPressure < PRESSURE_ZERO_BAR;
+    updateFrost(temps);
+
     // ALM only raises the IHB target — it never drives relays itself
     updateAntiLegionella(temps);
 
@@ -263,13 +272,133 @@ void BoilerLogic::update(const TempMap& temps, float heatingPressure, float wate
     updateTeh(temps);
     updateValves(temps);
 
-    // Direct pump commands (no complex logic)
-    _relays->set(RELAY_WATER_PUMP, _waterPumpCmd);
+    updateWell(waterPressure);
     _relays->set(RELAY_WATER_HOT_PUMP, _waterHotPumpCmd);
 
     // Last word: nothing above may override the safety interlocks
     applyInterlocks(temps);
+    updateNoHeat(temps);
     updateAlarms(temps, heatingPressure);
+}
+
+// ── Frost protection ──────────────────────────────────────────
+
+void BoilerLogic::updateFrost(const TempMap& temps) {
+    const char* names[] = {"tsboiler_s", "tsrad_s", "tsfloor_s"};
+    bool any = false;
+    float lowest = 1000;
+    for (const char* n : names) {
+        float t = getTemp(temps, n);
+        if (t == TEMP_INVALID) continue;
+        any = true;
+        if (t < lowest) lowest = t;
+    }
+    if (!any) return;
+    if (!_frostProtect && lowest < FROST_ENTER) {
+        _frostProtect = true;
+        Serial.print("FROST: protection ON (");
+        Serial.print(lowest, 1);
+        Serial.println(" C)");
+    } else if (_frostProtect && lowest >= FROST_EXIT) {
+        _frostProtect = false;
+        Serial.println("FROST: protection OFF");
+    }
+}
+
+bool BoilerLogic::mildOutside() {
+    return _pza->hasOutdoorTemp() && _pza->outdoorTemp() >= SENSOR_LOST_MILD_OUTDOOR;
+}
+
+float BoilerLogic::boilerTarget() const {
+    return _boilerAutomode ? _boilerAutoTarget : _boilerTempSet;
+}
+
+// ── Boiler doesn't heat ───────────────────────────────────────
+
+void BoilerLogic::updateNoHeat(const TempMap& temps) {
+    float bt = getTemp(temps, "tsboiler_s");
+    unsigned long now = millis();
+    if (!_relays->get(RELAY_BOILER_POWER) || bt == TEMP_INVALID) {
+        _boilerOnActive = false;
+        _noHeatStalled = false;
+        _boilerNoHeat = false;
+        return;
+    }
+    if (!_boilerOnActive) {
+        _boilerOnActive = true;
+        _boilerOnSince = now;
+        _noHeatCheckAt = now;
+        _noHeatCheckTemp = bt;
+    }
+    if (bt >= boilerTarget() - NO_HEAT_GAP) {
+        _noHeatCheckAt = now;
+        _noHeatCheckTemp = bt;
+        _noHeatStalled = false;
+        _boilerNoHeat = false;
+        return;
+    }
+    if (now - _noHeatCheckAt >= NO_HEAT_WINDOW_MS) {
+        _noHeatStalled = bt - _noHeatCheckTemp < NO_HEAT_MIN_RISE;
+        _noHeatCheckAt = now;
+        _noHeatCheckTemp = bt;
+    }
+    bool was = _boilerNoHeat;
+    _boilerNoHeat = now - _boilerOnSince >= NO_HEAT_AFTER_MS && _noHeatStalled;
+    if (_boilerNoHeat && !was) {
+        Serial.print("BOILER: NO HEAT (supply ");
+        Serial.print(bt, 1);
+        Serial.println(" C)");
+    }
+}
+
+// ── Well pump dry-run protection ──────────────────────────────
+
+void BoilerLogic::updateWell(float waterPressure) {
+    unsigned long now = millis();
+    if (!_waterPumpCmd) {
+        // switching the pump off (and on again) is how the user clears a latched dry run
+        _relays->set(RELAY_WATER_PUMP, false);
+        _wellLowActive = _wellWaiting = _wellLocked = _wellDry = false;
+        _wellFailures = 0;
+        return;
+    }
+    if (isnan(waterPressure)) {  // no water pressure sensor — plain command
+        _relays->set(RELAY_WATER_PUMP, true);
+        _wellLowActive = _wellDry = false;
+        return;
+    }
+    if (_wellLocked || (_wellWaiting && (long)(now - _wellRetryAt) < 0)) {
+        _relays->set(RELAY_WATER_PUMP, false);
+        return;
+    }
+    if (_wellWaiting) {  // retry with a fresh grace period
+        _wellWaiting = false;
+        _wellLowActive = false;
+    }
+    _relays->set(RELAY_WATER_PUMP, true);
+    if (waterPressure < WELL_MIN_BAR) {
+        if (!_wellLowActive) {
+            _wellLowActive = true;
+            _wellLowSince = now;
+        }
+        if (now - _wellLowSince >= WELL_GRACE_MS) {
+            _relays->set(RELAY_WATER_PUMP, false);
+            _wellLowActive = false;
+            _wellFailures++;
+            if (_wellFailures >= WELL_MAX_TRIES) {
+                _wellLocked = true;
+                Serial.println("WELL: dry run - pump locked until switched off and on");
+            } else {
+                _wellWaiting = true;
+                _wellRetryAt = now + WELL_RETRY_MS;
+                Serial.println("WELL: dry run - pump stopped, retry in 30 min");
+            }
+        }
+    } else {
+        _wellLowActive = false;
+        _wellFailures = 0;
+    }
+    _wellDry = _wellWaiting || _wellLocked;
 }
 
 float BoilerLogic::circuitTarget(bool wbm, float pzaTarget, float manual, bool scheduleActive, float delta) {
@@ -301,8 +430,9 @@ void BoilerLogic::applyInterlocks(const TempMap& temps) {
 
     const char* reason = nullptr;
     if (_overtemp) reason = "OVERTEMP";
+    else if (_frostProtect) reason = nullptr;  // frost protection beats manual OFF and sensor-lost
     else if (!_boilerAutomode && !_boilerPowerCmd) reason = "MANUAL OFF";
-    else if (_boilerAutomode && _boilerSensorLost) reason = "SENSOR LOST";
+    else if (_boilerAutomode && _boilerSensorLost && mildOutside()) reason = "SENSOR LOST";
 
     if (reason != nullptr && _relays->get(RELAY_BOILER_POWER)) {
         _relays->set(RELAY_BOILER_POWER, false);
@@ -314,6 +444,13 @@ void BoilerLogic::applyInterlocks(const TempMap& temps) {
     // Autofill valve must never stay open while locked out
     if (_autofillFault && _relays->get(RELAY_AUTOFILL_OPEN)) {
         closeAutofill(millis());
+    }
+
+    // Frost protection: circulate and heat, whatever the manual commands and DHW priority say
+    if (_frostProtect) {
+        _relays->set(RELAY_RADIATOR_PUMP, true);
+        _relays->set(RELAY_FLOOR_PUMP, true);
+        if (!_overtemp) _relays->set(RELAY_BOILER_POWER, true);
     }
 }
 
@@ -331,7 +468,9 @@ void BoilerLogic::updateBoiler(const TempMap& temps) {
 
     if (_boilerAutomode) {
         if (boilerTemp == TEMP_INVALID) {
-            // Brief dropout — hold state; a sustained loss is handled by applyInterlocks()
+            // Brief dropout — hold state. Sustained loss in frost (or unknown weather): let the boiler
+            // run on its own thermostat; in mild weather applyInterlocks() switches it off
+            if (_boilerSensorLost && !mildOutside()) _relays->set(RELAY_BOILER_POWER, true);
             return;
         }
 
@@ -357,8 +496,9 @@ void BoilerLogic::updateBoiler(const TempMap& temps) {
         // Fallback if no circuits are active
         if (target <= 0) target = _boilerTempSet;
 
-        // Safety cap
-        if (target > _boilerMaxTemp) target = _boilerMaxTemp;
+        // Safety cap below the overtemp trip: the cycle ends at target + hysteresis = max - margin
+        float cap = _boilerMaxTemp - BOILER_TARGET_MARGIN - BOILER_HYSTERESIS;
+        if (target > cap) target = cap;
 
         _boilerAutoTarget = target;
         bool isOn = _relays->get(RELAY_BOILER_POWER);
@@ -443,8 +583,8 @@ void BoilerLogic::tripAutofillTimeout(unsigned long now) {
 void BoilerLogic::updateAutofill(float heatingPressure) {
     unsigned long now = millis();
 
-    // Closing phase end is handled in tick(); don't open while closing
-    if (_autofillClosing) return;
+    // Closing phase end is handled in tick(); don't open while closing. No sensor — nothing to do.
+    if (_autofillClosing || isnan(heatingPressure)) return;
 
     if (!_autofillEnabled || _autofillFault) {
         if (_autofillActive) closeAutofill(now);
@@ -467,7 +607,8 @@ void BoilerLogic::updateAutofill(float heatingPressure) {
         }
     } else {
         // Open when pressure drops below minimum
-        if (heatingPressure < _pressureMin && heatingPressure > 0.01) {
+        // ~0 bar is a broken sensor or an empty system: filling blindly would be wrong
+        if (heatingPressure < _pressureMin && heatingPressure >= PRESSURE_ZERO_BAR) {
             _relays->set(RELAY_AUTOFILL_CLOSE, false);
             _relays->set(RELAY_AUTOFILL_OPEN, true);
             _autofillActive = true;
@@ -514,8 +655,8 @@ void BoilerLogic::finishValvePulse(ValveState& vs, RelayChannel openRelay,
 void BoilerLogic::updateTeh(const TempMap& temps) {
     float ihbTemp = getTemp(temps, "tsihb_s");
 
-    // Safety: turn off TEH if IHB is already hot
-    if (ihbTemp != TEMP_INVALID && ihbTemp >= ihbTarget()) {
+    // Safety: TEH off if the tank is already hot — or its sensor is lost (never heat blind, in any mode)
+    if (ihbTemp == TEMP_INVALID || ihbTemp >= ihbTarget()) {
         _relays->set(RELAY_TEH, false);
         _tehDelayActive = false;
         return;
@@ -523,7 +664,10 @@ void BoilerLogic::updateTeh(const TempMap& temps) {
 
     if (_tehAutomode) {
         // Auto: TEH kicks in after delay if boiler isn't heating IHB
-        bool boilerHeatingIhb = _relays->get(RELAY_BOILER_POWER) && _relays->get(RELAY_IHB_PUMP);
+        // By the temperatures, not the relays: a boiler in lockout has its relay on but heats nothing
+        float boilerTemp = getTemp(temps, "tsboiler_s");
+        bool boilerHeatingIhb = _relays->get(RELAY_BOILER_POWER) && _relays->get(RELAY_IHB_PUMP)
+                                && boilerTemp != TEMP_INVALID && boilerTemp > ihbTemp + TEH_BOILER_MARGIN;
 
         if (boilerHeatingIhb) {
             // Boiler is working — reset TEH delay
@@ -651,8 +795,10 @@ void BoilerLogic::updateAlarms(const TempMap& temps, float heatingPressure) {
     _warningActive = false;
     _criticalActive = false;
 
-    // Pressure warnings
-    if (heatingPressure > 0.01) {
+    // Pressure: ~0 on a configured sensor is critical (empty system or broken wire)
+    if (_pressureZero) {
+        _criticalActive = true;
+    } else if (!isnan(heatingPressure)) {
         if (heatingPressure < _pressureMin || heatingPressure > _pressureMax) {
             _warningActive = true;
         }
@@ -664,8 +810,8 @@ void BoilerLogic::updateAlarms(const TempMap& temps, float heatingPressure) {
 
     // Temperature warnings
     if (boilerTemp != TEMP_INVALID) {
-        if (boilerTemp >= _boilerMaxTemp - 5.0) {
-            _warningActive = true;  // approaching max
+        if (boilerTemp >= _boilerMaxTemp - 2.0) {
+            _warningActive = true;  // approaching max (the auto cycle tops out at max - 5)
         }
         if (boilerTemp >= _boilerMaxTemp) {
             _criticalActive = true;  // at or above max
@@ -689,8 +835,15 @@ void BoilerLogic::updateAlarms(const TempMap& temps, float heatingPressure) {
     }
 
     // Boiler forced off by interlock / autofill locked out after timeout
-    if (_boilerSensorLost || _overtemp || _autofillFault) {
+    if (_boilerSensorLost || _overtemp || _autofillFault || _frostProtect) {
         _criticalActive = true;
+    }
+    if (_boilerNoHeat) {
+        if (_pza->hasOutdoorTemp() && _pza->outdoorTemp() < 0) _criticalActive = true;
+        else _warningActive = true;
+    }
+    if (_wellDry || _ihbSensorLost) {
+        _warningActive = true;
     }
 
     _relays->set(RELAY_LAMP_WARNING, _warningActive);
@@ -727,6 +880,11 @@ void BoilerLogic::fillHeartbeat(JsonDocument& doc) {
     doc["autofill_fault"] = _autofillFault;
     doc["boiler_sensor_lost"] = _boilerSensorLost;
     doc["overtemp"] = _overtemp;
+    doc["pressure_zero"] = _pressureZero;
+    doc["frost_protect"] = _frostProtect;
+    doc["boiler_no_heat"] = _boilerNoHeat;
+    doc["ihb_sensor_lost"] = _ihbSensorLost;
+    doc["well_dry"] = _wellDry;
 }
 
 // ── Helpers ───────────────────────────────────────────────────

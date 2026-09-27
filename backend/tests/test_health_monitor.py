@@ -68,3 +68,14 @@ class _Stop(Exception):
 
 async def _stop_after_one(_seconds):
     raise _Stop
+
+
+def test_new_controller_flags_are_logged_with_their_level(engine):
+    m = _monitor(engine)
+    events: list[EventLog] = []
+    m._check_device_alarms({"boiler_unit": {"data": {}}}, events)
+    m._initialized = True
+    m._check_device_alarms({"boiler_unit": {"data": {"frost_protect": True, "ihb_sensor_lost": True}}}, events)
+    by_text = {e.message: e.level for e in events}
+    assert any("замерзания" in t and lvl == "ERROR" for t, lvl in by_text.items())
+    assert any("бойлера ГВС" in t and lvl == "WARNING" for t, lvl in by_text.items())

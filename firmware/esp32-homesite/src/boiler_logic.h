@@ -61,6 +61,8 @@ private:
     float _boilerTempSet = 50.0;
     float _boilerMaxTemp = 85.0;
     static constexpr float BOILER_HYSTERESIS = 2.0;
+    // Auto target stays at max - margin - hysteresis: the cycle ends by regulation, never by the overtemp trip
+    static constexpr float BOILER_TARGET_MARGIN = 5.0;
 
     // Radiator
     bool _radPumpCmd = true;
@@ -84,6 +86,20 @@ private:
     int _tehDelay = 120;           // minutes (UI and config_kv use minutes)
     unsigned long _tehDelayStart = 0;
     bool _tehDelayActive = false;
+    static constexpr float TEH_BOILER_MARGIN = 5.0;  // boiler heats the tank only if supply is this much hotter
+
+    // Well pump dry-run protection
+    static constexpr float WELL_MIN_BAR = 0.5;
+    static constexpr unsigned long WELL_GRACE_MS = 60000UL;
+    static constexpr unsigned long WELL_RETRY_MS = 30UL * 60UL * 1000UL;
+    static constexpr uint8_t WELL_MAX_TRIES = 3;
+    bool _wellLowActive = false;
+    unsigned long _wellLowSince = 0;
+    bool _wellWaiting = false;
+    unsigned long _wellRetryAt = 0;
+    uint8_t _wellFailures = 0;
+    bool _wellLocked = false;
+    bool _wellDry = false;
 
     // Water pumps
     bool _waterPumpCmd = true;
@@ -97,6 +113,8 @@ private:
     bool _autofillActive = false;
     bool _autofillClosing = false;
     unsigned long _autofillCloseStart = 0;
+    static constexpr float PRESSURE_ZERO_BAR = 0.05;  // configured sensor below: empty system or broken wire
+    bool _pressureZero = false;
     // Latched after AUTOFILL_MAX_MS without reaching pressure (leak?). Persisted,
     // cleared only by the autofill_reset command.
     bool _autofillFault = false;
@@ -152,7 +170,29 @@ private:
     static constexpr uint8_t SENSOR_LOSS_CYCLES = 3;  // consecutive reads without tsboiler_s
     uint8_t _boilerSensorMissing = 0;
     bool _boilerSensorLost = false;
+    uint8_t _ihbSensorMissing = 0;
+    bool _ihbSensorLost = false;
     bool _overtemp = false;
+    // Boiler sensor lost: switch the boiler off only when it's this warm outside;
+    // colder (or unknown) it keeps running on its own thermostat — freezing is the bigger danger
+    static constexpr float SENSOR_LOST_MILD_OUTDOOR = 5.0;
+
+    // Frost protection: any water temperature below ENTER → boiler and pumps forced on
+    static constexpr float FROST_ENTER = 7.0;
+    static constexpr float FROST_EXIT = 15.0;
+    bool _frostProtect = false;
+
+    // "Boiler doesn't heat": on this long, supply far below target and not rising (lockout, no gas)
+    static constexpr unsigned long NO_HEAT_AFTER_MS = 30UL * 60UL * 1000UL;
+    static constexpr unsigned long NO_HEAT_WINDOW_MS = 15UL * 60UL * 1000UL;
+    static constexpr float NO_HEAT_MIN_RISE = 2.0;
+    static constexpr float NO_HEAT_GAP = 10.0;
+    bool _boilerOnActive = false;
+    unsigned long _boilerOnSince = 0;
+    unsigned long _noHeatCheckAt = 0;
+    float _noHeatCheckTemp = 0;
+    bool _noHeatStalled = false;
+    bool _boilerNoHeat = false;
 
     // Runtime state
     bool _ihbHeating = false;      // БКН is actively heating
@@ -184,6 +224,11 @@ private:
     void updateAntiLegionella(const TempMap& temps);
     void updateValves(const TempMap& temps);
     void updateAlarms(const TempMap& temps, float heatingPressure);
+    void updateFrost(const TempMap& temps);
+    void updateNoHeat(const TempMap& temps);
+    void updateWell(float waterPressure);
+    bool mildOutside();
+    float boilerTarget() const;
     float getTemp(const TempMap& temps, const String& sensor);
 
     void parseTime(const String& hhmm, int& h, int& m);

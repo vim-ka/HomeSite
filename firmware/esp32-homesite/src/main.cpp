@@ -507,8 +507,9 @@ void loop() {
         }
 
         // Read pressure sensors (only if configured)
-        float heatPrs = pressureHeatingName.length() > 0 ? pressure.readHeatingPressure() : 0.0;
-        float waterPrs = pressureWaterName.length() > 0 ? pressure.readWaterPressure() : 0.0;
+        // NAN = sensor not configured; a configured one reads 0 bar on a broken wire (alarm, not "no sensor")
+        float heatPrs = pressureHeatingName.length() > 0 ? pressure.readHeatingPressure() : NAN;
+        float waterPrs = pressureWaterName.length() > 0 ? pressure.readWaterPressure() : NAN;
 
         // Run control logic
         boilerLogic.update(tempMap, heatPrs, waterPrs);

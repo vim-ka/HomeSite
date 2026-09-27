@@ -61,9 +61,7 @@ class Simulation:
     def _control_cycle(self) -> None:
         if self.local_outdoor and "clm_street_th" not in self.failed:
             self.controller.set_outdoor(self.plant.room_local.get("clm_street_th", self.plant.outdoor(self.now)))
-        temps = self.boiler_readings()
-        pressure = self.heating_pressure_reading()
-        self.controller.update(self.now, temps, pressure if pressure is not None else 0.0)
+        self.controller.update(self.now, self.boiler_readings(), *self.controller_pressures())
 
     def warmup(self, hours: float) -> None:
         """Run quietly so plant, valves and controller reach a consistent state."""
@@ -82,6 +80,15 @@ class Simulation:
             for name in DS18B20
             if name not in self.failed
         }
+
+    def controller_pressures(self) -> tuple[float | None, float | None]:
+        """Pressures as the firmware sees them: None = sensor not configured, a failed one reads 0 V = 0 bar."""
+        def seen(name: str, reading: float | None) -> float | None:
+            if not name:
+                return None
+            return 0.0 if reading is None else reading
+        return (seen(self.prs_heating_name, self.heating_pressure_reading()),
+                seen(self.prs_water_name, self.water_pressure_reading()))
 
     def heating_pressure_reading(self) -> float | None:
         if self.prs_heating_name in self.failed:

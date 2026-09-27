@@ -178,3 +178,23 @@ async def test_gateway_health_is_cached_briefly():
     assert (await cached())["n"] == 1
     clock[0] += 1.0
     assert (await cached())["n"] == 2
+
+
+def test_build_alarms_explains_every_controller_safety_flag():
+    from app.services.controller_flags import CONTROLLER_FLAGS
+    for flag, (level, text) in CONTROLLER_FLAGS.items():
+        alarms = build_alarms(online=True, gateway_ok=True, flags={flag: True, "critical": True},
+                              pressure=1.5, p_min=1.0, p_max=2.0)
+        assert [(a["code"], a["level"], a["text"]) for a in alarms] == [(flag, level, text)], flag
+    assert "бар" in CONTROLLER_FLAGS["pressure_zero"][1] and "замерзания" in CONTROLLER_FLAGS["frost_protect"][1]
+
+
+def test_build_alarms_zero_pressure_is_not_reported_twice():
+    alarms = build_alarms(online=True, gateway_ok=True, flags={"pressure_zero": True}, pressure=0.0, p_min=1.0, p_max=2.0)
+    assert [a["code"] for a in alarms] == ["pressure_zero"]
+
+
+def test_every_controller_safety_flag_is_read_from_the_heartbeat():
+    from app.services.controller_flags import CONTROLLER_FLAGS
+    from app.services.scheme_service import FLAG_KEYS
+    assert set(CONTROLLER_FLAGS) <= set(FLAG_KEYS)
