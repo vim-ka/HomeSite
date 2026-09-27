@@ -33,13 +33,13 @@ export interface LayoutDef {
 /** Layouts as drawn originally (boiler on the left); the scheme shows them mirrored. */
 export const BASE_LAYOUTS: Record<LayoutName, LayoutDef> = {
   wide: {
-    width: 1000, height: 524,
+    width: 1000, height: 540,
     // right of the radiators, above the boiler (top right on screen after mirroring)
     panel: { at: [10, 8], width: 320, height: 138 },
     // Circuit risers (536 / 496) straddle the collector's middle (416 + 200 / 2 = 516), the gauge beside them.
     // Middle part raised so each circuit has room for its mixing unit: collector → 3-way valve → pump.
     boiler: [90, 154], separator: [380, 174], gauge: [562, 244], autofill: [350, 434],
-    radiators: [346, 14], floor: [456, 434], tank: [720, 154], tap: [848, 126], coldTap: [953, 126], well: [80, 432],
+    radiators: [346, 14], floor: [456, 434], tank: [720, 154], tap: [848, 126], coldTap: [953, 126], well: [80, 452],
     radPump: [536, 144], radValve: [536, 176], floorPump: [536, 344], floorValve: [536, 312],
     ihbPump: [632, 204], recircPump: [830, 299], coldPump: [180, 434],
     tags: {
@@ -83,16 +83,16 @@ export const BASE_LAYOUTS: Record<LayoutName, LayoutDef> = {
       { id: "hot_to_tap", kind: "hot", role: "hot_water", flow: "water_hot_pump", points: [[800, 199], [860, 199], [860, 152]] },
       { id: "recirc_return", kind: "hot", flow: "water_hot_pump", points: [[860, 199], [910, 199], [910, 299], [800, 299]] },
       // cold water: well → pump → branch to autofill (separator bottom), the tank bottom and the cold tap
-      { id: "cold_from_well", kind: "cold", role: "cold_water", flow: "water_pump", points: [[105, 434], [250, 434]] },
+      { id: "cold_from_well", kind: "cold", role: "cold_water", flow: "water_pump", points: [[105, 454], [105, 434], [250, 434]] },
       { id: "cold_to_fill", kind: "fill", flow: "af_open", points: [[250, 434], [398, 434], [398, 324]] },
       { id: "cold_to_tank", kind: "cold", role: "cold_water", flow: "water_pump", points: [[250, 434], [250, 509], [760, 509], [760, 344]] },
       { id: "cold_to_tap", kind: "cold", role: "cold_water", flow: "water_pump", points: [[760, 509], [965, 509], [965, 152]] },
     ],
   },
   tall: {
-    width: 384, height: 640,  // extra 24 on the (mirrored) left for the cold water tap
+    width: 384, height: 656,  // extra 24 on the (mirrored) left for the cold water tap
     boiler: [8, 250], separator: [110, 240], gauge: [230, 310], autofill: [90, 505],
-    radiators: [50, 62], floor: [100, 470], tank: [290, 250], tap: [302, 190], coldTap: [356, 188], well: [8, 552],
+    radiators: [50, 62], floor: [100, 470], tank: [290, 250], tap: [302, 190], coldTap: [356, 188], well: [8, 574],
     radPump: [200, 210], radValve: [200, 242], floorPump: [200, 410], floorValve: [200, 378],
     ihbPump: [270, 270], recircPump: [346, 290], coldPump: [60, 556],
     boilerScale: 0.55, tankScale: 0.6, collectorWidth: 110,
@@ -103,7 +103,7 @@ export const BASE_LAYOUTS: Record<LayoutName, LayoutDef> = {
     },
     labels: [
       { text: "Радиаторы", at: [180, 54], align: "middle" }, { text: "Тёплый пол", at: [130, 540] },
-      { text: "Бойлер", at: [290, 400] }, { text: "Скважина", at: [6, 545] },
+      { text: "Бойлер", at: [290, 400] }, { text: "Скважина", at: [6, 538] },
     ],
     badges: { rad: [180, 54], floor: [230, 540], tank: [262, 410] },
     pipes: [
@@ -130,7 +130,7 @@ export const BASE_LAYOUTS: Record<LayoutName, LayoutDef> = {
       { id: "hot_to_tap", kind: "hot", role: "hot_water", flow: "water_hot_pump", points: [[314, 250], [314, 214]] },
       { id: "recirc_return", kind: "hot", flow: "water_hot_pump", points: [[314, 232], [346, 232], [346, 330], [338, 330]] },
       // branch left of the floor loops (x 100–260) so the fill line doesn't cross them
-      { id: "cold_from_well", kind: "cold", role: "cold_water", flow: "water_pump", points: [[33, 556], [90, 556]] },
+      { id: "cold_from_well", kind: "cold", role: "cold_water", flow: "water_pump", points: [[33, 576], [33, 556], [90, 556]] },
       { id: "cold_to_fill", kind: "fill", flow: "af_open", points: [[90, 556], [90, 440], [128, 440], [128, 390]] },
       { id: "cold_to_tank", kind: "cold", role: "cold_water", flow: "water_pump", points: [[90, 556], [314, 556], [314, 364]] },
       { id: "cold_to_tap", kind: "cold", role: "cold_water", flow: "water_pump", points: [[314, 556], [368, 556], [368, 214]] },

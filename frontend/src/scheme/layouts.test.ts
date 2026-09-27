@@ -193,3 +193,15 @@ describe("message panel area", () => {
     expect(LAYOUTS.tall.panel).toBeUndefined();
   });
 });
+
+describe("well", () => {
+  it.each(["wide", "tall"] as const)("%s: the pipe drops into the wellhead from above (Г-shaped), the well fits the scheme", (name) => {
+    const L = BASE_LAYOUTS[name];
+    const [a, b, c] = L.pipes.find((p) => p.id === "cold_from_well")!.points;
+    expect(a).toEqual([L.well[0] + 25, L.well[1] + 2]);   // top of the wellhead, over the casing
+    expect(b![0]).toBe(a![0]);                               // straight up first…
+    expect(a![1] - b![1]).toBeGreaterThanOrEqual(16);
+    expect(c![1]).toBe(b![1]);                               // …then along to the pump
+    expect(L.well[1] + 80).toBeLessThanOrEqual(L.height);
+  });
+});
