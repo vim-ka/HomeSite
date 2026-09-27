@@ -1,10 +1,12 @@
 import { useRef, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
-import { Boiler, FillValve, FloorLoops, Gauge, MixingValve, Pipe, Pump, Radiators, Separator, Tank, Tap, ValueTag, Well } from "./elements";
+import { Boiler, FillValve, FloorLoops, Gauge, MixingValve, Pipe, Pump, Radiators, Separator, Tank, Tap, Teh, ValueTag, Well } from "./elements";
 import { LAYOUTS, type LayoutName } from "./layouts";
 import { pipeColor } from "./pipeColor";
 import { isOn, TOGGLES } from "./toggles";
 import { elementName } from "./names";
 import type { ElementKind, RoleKey, SchemeState } from "./types";
+
+type Pt = [number, number];
 
 const CIRCULATION = ["rad_pump", "floor_pump", "ihb_pump"] as const;
 
@@ -79,6 +81,16 @@ export function SchemeCanvas({ state, layout, onOpen, onToggle, busyKeys = [] }:
     );
   };
 
+  // the tap icon is flipped in mirrored layouts, its caption is not
+  const tapAt = ([x, y]: Pt, water: "hot" | "cold", caption: string) => (
+    <g>
+      {L.mirrored
+        ? <g transform={`translate(${x + 24} ${y}) scale(-1 1)`}><Tap x={0} y={0} water={water} /></g>
+        : <Tap x={x} y={y} water={water} />}
+      <text x={x + 12} y={y - 6} fontSize={11} fontWeight={700} textAnchor="middle" fill="var(--scheme-text)">{caption}</text>
+    </g>
+  );
+
   return (
     <svg viewBox={`0 0 ${L.width} ${L.height}`} width="100%" role="group" aria-label="Схема котельной"
          style={{ background: "var(--scheme-bg)", display: "block", borderRadius: 8 }}>
@@ -113,16 +125,20 @@ export function SchemeCanvas({ state, layout, onOpen, onToggle, busyKeys = [] }:
         {hit("autofill", "autofill", <FillValve x={L.autofill[0]} y={L.autofill[1]} state={autofillState} enabled={autofillEnabled} />)}
         {hit("tank", "tank", (
           <g transform={`translate(${L.tank[0]} ${L.tank[1]}) scale(${L.tankScale ?? 1})`}>
-            <Tank x={0} y={0} fill={warmth("tank")} teh={r.teh} />
+            <Tank x={0} y={0} fill={warmth("tank")} />
+          </g>
+        ))}
+        {hit("teh", "tank", (
+          <g transform={`translate(${L.tank[0]} ${L.tank[1]}) scale(${L.tankScale ?? 1})`}>
+            <Teh on={r.teh} switching={switching("teh")} />
           </g>
         ))}
         {hit("well", "cold", <Well x={L.well[0]} y={L.well[1]} />)}
         {hit("ihb_pump", "tank", <Pump x={L.ihbPump[0]} y={L.ihbPump[1]} running={r.ihb_pump} switching={switching("ihb_pump")} />)}
         {hit("recirc_pump", "hot", <Pump x={L.recircPump[0]} y={L.recircPump[1]} running={r.water_hot_pump} switching={switching("recirc_pump")} />)}
         {hit("cold_pump", "cold", <Pump x={L.coldPump[0]} y={L.coldPump[1]} running={r.water_pump} switching={switching("cold_pump")} />)}
-        {hit("tap", "hot", L.mirrored
-          ? <g transform={`translate(${L.tap[0] + 24} ${L.tap[1]}) scale(-1 1)`}><Tap x={0} y={0} /></g>
-          : <Tap x={L.tap[0]} y={L.tap[1]} />)}
+        {hit("tap", "hot", tapAt(L.tap, "hot", "ГВС"))}
+        {L.coldTap && hit("cold_tap", "cold", tapAt(L.coldTap, "cold", "ХВС"))}
 
         {Object.entries(L.tags).map(([role, [x, y]]) => {
           const key = role as RoleKey;

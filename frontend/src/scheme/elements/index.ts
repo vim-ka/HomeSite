@@ -10,4 +10,5 @@ export { Radiators } from "./Radiators";
 export { FloorLoops } from "./FloorLoops";
 export { Tank } from "./Tank";
 export { Tap } from "./Tap";
+export { Teh } from "./Teh";
 export { Well } from "./Well";

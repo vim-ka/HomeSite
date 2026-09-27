@@ -15,7 +15,7 @@ export const ELEMENT_NAMES: Record<string, string> = {
   floor: "Тёплый пол", floor_pump: "Насос тёплого пола", floor_valve: "Смесительный клапан тёплого пола",
   boiler: "Котёл", separator: "Гидрострелка и коллектор", gauge: "Манометр", autofill: "Автоподпитка",
   tank: "Бойлер ГВС", ihb_pump: "Насос бойлера", recirc_pump: "Рециркуляция ГВС", cold_pump: "Насос ХВС",
-  tap: "Горячая вода", well: "Скважина",
+  tap: "Горячая вода", cold_tap: "Холодная вода", well: "Скважина", teh: "ТЭН бойлера",
 };
 
 export function elementName(id: string): string {

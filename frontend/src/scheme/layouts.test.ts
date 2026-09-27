@@ -107,3 +107,38 @@ describe("mixing units", () => {
     expect(mixed.points.at(-1)![1] - feed.points[0]![1]).toBeGreaterThanOrEqual(200);
   });
 });
+
+describe("DHW tank", () => {
+  for (const name of ["wide", "tall"] as const) {
+    it(`${name}: pipes meet the tank outline and never stick into it`, () => {
+      const L = BASE_LAYOUTS[name];
+      const s = L.tankScale ?? 1;
+      const [x0, y0] = L.tank;
+      const [x1, y1] = [x0 + 80 * s, y0 + 190 * s];
+      for (const p of L.pipes) {
+        for (const [x, y] of [p.points[0]!, p.points.at(-1)!]) {
+          const inside = x > x0 && x < x1 && y > y0 && y < y1;
+          expect(inside, `${p.id ?? p.role} ends inside the tank at ${x},${y}`).toBe(false);
+        }
+      }
+    });
+  }
+
+  it("wide: the recirculation loop is centred on the tank height, its pump close to the tank", () => {
+    const L = BASE_LAYOUTS.wide;
+    const loop = L.pipes.find((p) => p.id === "recirc_return")!;
+    const top = L.pipes.find((p) => p.id === "hot_to_tap")!.points[0]![1];
+    const bottom = loop.points.at(-1)![1];
+    expect((top + bottom) / 2).toBe(L.tank[1] + 95);
+    expect(L.recircPump[1]).toBe(bottom);
+    expect(L.recircPump[0] - (L.tank[0] + 80)).toBeLessThanOrEqual(40);
+  });
+
+  it("wide: cold water rises from the main to its own tap", () => {
+    const L = BASE_LAYOUTS.wide;
+    const pipe = L.pipes.find((p) => p.id === "cold_to_tap")!;
+    const toTank = L.pipes.find((p) => p.id === "cold_to_tank")!;
+    expect(toTank.points.some(([x, y]) => x === pipe.points[0]![0] && y === pipe.points[0]![1])).toBe(true);
+    expect(pipe.points.at(-1)).toEqual([L.coldTap![0] + 12, L.coldTap![1] + 26]);
+  });
+});

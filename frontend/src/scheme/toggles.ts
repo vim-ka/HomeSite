@@ -17,6 +17,7 @@ export const TOGGLES: Record<string, ToggleDef> = {
   cold_pump: { key: "watersupply_pump", label: "Насос ХВС", relay: "water_pump" },
   boiler: { key: "heating_boiler_power", label: "Котёл", relay: "boiler" },
   autofill: { key: "heating_autofill_enabled", label: "Автоподпитка" },
+  teh: { key: "watersupply_ihb_teh_power", label: "ТЭН", relay: "teh" },
 };
 
 /** Why a quick toggle would have no effect right now (the controller ignores it), or null. */
@@ -26,6 +27,9 @@ export function toggleLock(key: string, settings: Record<string, string>): strin
   }
   if (key === "watersupply_ihb_pump" && settings.watersupply_ihb_automode === "1") {
     return "Насос бойлера в авто-режиме — управление по правому клику";
+  }
+  if (key === "watersupply_ihb_teh_power" && settings.watersupply_ihb_teh_automode === "1") {
+    return "ТЭН в авто-режиме — управление по правому клику";
   }
   return null;
 }

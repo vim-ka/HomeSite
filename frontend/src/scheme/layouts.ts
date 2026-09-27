@@ -16,6 +16,8 @@ export interface LayoutDef {
   width: number;
   height: number;
   boiler: Pt; separator: Pt; gauge: Pt; autofill: Pt; radiators: Pt; floor: Pt; tank: Pt; tap: Pt; well: Pt;
+  /** Cold water tap (ХВС); the layout may have no room for it */
+  coldTap?: Pt;
   radPump: Pt; radValve: Pt; floorPump: Pt; floorValve: Pt; ihbPump: Pt; recircPump: Pt; coldPump: Pt;
   boilerScale?: number; tankScale?: number; collectorWidth?: number;
   /** Drawn right-to-left: manifold on the separator's left, tags/labels anchored at their right end. */
@@ -33,9 +35,9 @@ export const BASE_LAYOUTS: Record<LayoutName, LayoutDef> = {
     // Centred on the right edge of the pressure gauge (base x 516 + 18 → 500 after mirroring).
     // Middle part raised so each circuit has room for its mixing unit: collector → 3-way valve → pump.
     boiler: [90, 190], separator: [380, 210], gauge: [516, 280], autofill: [350, 470],
-    radiators: [300, 50], floor: [410, 470], tank: [720, 190], tap: [848, 162], well: [80, 468],
+    radiators: [300, 50], floor: [410, 470], tank: [720, 190], tap: [848, 162], coldTap: [953, 162], well: [80, 468],
     radPump: [490, 150], radValve: [490, 190], floorPump: [490, 420], floorValve: [490, 380],
-    ihbPump: [668, 240], recircPump: [885, 315], coldPump: [180, 470],
+    ihbPump: [668, 240], recircPump: [830, 335], coldPump: [180, 470],
     tags: {
       boiler_supply: [225, 210], boiler_return: [225, 330], rad_supply: [505, 118], rad_return: [380, 140],
       floor_supply: [505, 435], floor_return: [380, 420], tank: [728, 260], coil_return: [625, 330],
@@ -44,7 +46,7 @@ export const BASE_LAYOUTS: Record<LayoutName, LayoutDef> = {
     labels: [
       { text: "Радиаторы", at: [430, 40], align: "middle" }, { text: "Тёплый пол", at: [584, 500] },
       { text: "Бойлер ГВС", at: [760, 178], align: "middle" }, { text: "Подпитка", at: [296, 498] },
-      { text: "Скважина", at: [72, 462] }, { text: "Рециркуляция", at: [820, 340] },
+      { text: "Скважина", at: [72, 462] }, { text: "Рециркуляция", at: [812, 362] },
     ],
     badges: { rad: [300, 22], floor: [584, 518], tank: [720, 400] },
     pipes: [
@@ -72,13 +74,15 @@ export const BASE_LAYOUTS: Record<LayoutName, LayoutDef> = {
       // tank connection: collector end (616) → tank (720), loading pump in between
       { kind: "supply", role: "boiler_supply", flow: "ihb_pump", points: [[616, 240], [720, 240]] },
       { kind: "return", role: "coil_return", flow: "ihb_pump", points: [[720, 320], [616, 320]] },
-      // DHW: tank top → tap; a narrow recirculation loop returns into the tank (pump on the return)
-      { id: "hot_to_tap", kind: "hot", role: "hot_water", flow: "water_hot_pump", points: [[800, 220], [860, 220], [860, 188]] },
-      { id: "recirc_return", kind: "hot", flow: "water_hot_pump", points: [[860, 220], [910, 220], [910, 315], [800, 315]] },
-      // cold water: well → pump → branch to autofill (separator bottom) and to the tank bottom
+      // DHW: tank → tap; a narrow recirculation loop centred on the tank height (285) returns into it,
+      // its pump on the return right next to the tank
+      { id: "hot_to_tap", kind: "hot", role: "hot_water", flow: "water_hot_pump", points: [[800, 235], [860, 235], [860, 188]] },
+      { id: "recirc_return", kind: "hot", flow: "water_hot_pump", points: [[860, 235], [910, 235], [910, 335], [800, 335]] },
+      // cold water: well → pump → branch to autofill (separator bottom), the tank bottom and the cold tap
       { id: "cold_from_well", kind: "cold", role: "cold_water", flow: "water_pump", points: [[105, 470], [250, 470]] },
       { id: "cold_to_fill", kind: "fill", flow: "af_open", points: [[250, 470], [398, 470], [398, 360]] },
-      { id: "cold_to_tank", kind: "cold", role: "cold_water", flow: "water_pump", points: [[250, 470], [250, 545], [760, 545], [760, 376]] },
+      { id: "cold_to_tank", kind: "cold", role: "cold_water", flow: "water_pump", points: [[250, 470], [250, 545], [760, 545], [760, 380]] },
+      { id: "cold_to_tap", kind: "cold", role: "cold_water", flow: "water_pump", points: [[760, 545], [965, 545], [965, 188]] },
     ],
   },
   tall: {
@@ -147,6 +151,7 @@ export function mirrorLayout(L: LayoutDef): LayoutDef {
     tank: box(L.tank, BOX_WIDTH.tank * (L.tankScale ?? 1)),
     tap: box(L.tap, BOX_WIDTH.tap),
     well: box(L.well, BOX_WIDTH.well),
+    coldTap: L.coldTap && box(L.coldTap, BOX_WIDTH.tap),
     gauge: pt(L.gauge), autofill: pt(L.autofill),
     radPump: pt(L.radPump), radValve: pt(L.radValve), floorPump: pt(L.floorPump), floorValve: pt(L.floorValve),
     ihbPump: pt(L.ihbPump), recircPump: pt(L.recircPump), coldPump: pt(L.coldPump),

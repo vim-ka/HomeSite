@@ -189,3 +189,35 @@ describe("SchemeCanvas pumps", () => {
   });
 });
 
+
+describe("SchemeCanvas taps and TEH", () => {
+  it("hot tap is labelled ГВС with red streams, cold tap ХВС with blue ones", () => {
+    const { container } = render(<SchemeCanvas state={makeState()} layout="wide" onOpen={() => {}} />);
+    const hot = container.querySelector("[data-element='tap']")!;
+    const cold = container.querySelector("[data-element='cold_tap']")!;
+    expect(hot.textContent).toContain("ГВС");
+    expect(cold.textContent).toContain("ХВС");
+    expect(hot.querySelector("[data-part='streams']")!.getAttribute("stroke")).toBe("#ef4444");
+    expect(cold.querySelector("[data-part='streams']")!.getAttribute("stroke")).toBe("#0ea5e9");
+  });
+
+  it("TEH in the tank: left click switches it, glows when on, blinks while switching", () => {
+    const state = makeState();
+    state.settings.watersupply_ihb_teh_power = "0";
+    state.controller.relays.teh = false;
+    const onToggle = vi.fn();
+    const { container, rerender } = render(<SchemeCanvas state={state} layout="wide" onOpen={() => {}} onToggle={onToggle} />);
+    const teh = container.querySelector("[data-element='teh']")!;
+    expect(teh.querySelector("[data-state='off']")).not.toBeNull();
+    fireEvent.pointerDown(teh, { pointerType: "mouse" });
+    fireEvent.click(teh);
+    expect(onToggle).toHaveBeenCalledWith("watersupply_ihb_teh_power", "ТЭН", "1");
+
+    const on = makeState();
+    on.controller.relays.teh = true;
+    on.sync.pending = ["watersupply_ihb_teh_power"];
+    rerender(<SchemeCanvas state={on} layout="wide" onOpen={() => {}} onToggle={onToggle} />);
+    expect(container.querySelector("[data-element='teh'] [data-state='on']")).not.toBeNull();
+    expect(container.querySelector("[data-element='teh'] .scheme-teh-switching")).not.toBeNull();
+  });
+});
