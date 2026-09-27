@@ -26,12 +26,16 @@ export interface LayoutDef {
   labels: { text: string; at: Pt; align?: "middle" }[];
   badges: { rad: Pt; floor: Pt; tank: Pt };
   pipes: PipeDef[];
+  /** Free corner where the message panel is laid over the scheme; none → the panel goes below it */
+  panel?: { at: Pt; width: number; height: number };
 }
 
 /** Layouts as drawn originally (boiler on the left); the scheme shows them mirrored. */
 export const BASE_LAYOUTS: Record<LayoutName, LayoutDef> = {
   wide: {
     width: 1000, height: 524,
+    // right of the radiators, above the boiler (top right on screen after mirroring)
+    panel: { at: [10, 8], width: 320, height: 138 },
     // Circuit risers (536 / 496) straddle the collector's middle (416 + 200 / 2 = 516), the gauge beside them.
     // Middle part raised so each circuit has room for its mixing unit: collector → 3-way valve → pump.
     boiler: [90, 154], separator: [380, 174], gauge: [562, 244], autofill: [350, 434],
@@ -153,6 +157,7 @@ export function mirrorLayout(L: LayoutDef): LayoutDef {
     tap: box(L.tap, BOX_WIDTH.tap),
     well: box(L.well, BOX_WIDTH.well),
     coldTap: L.coldTap && box(L.coldTap, BOX_WIDTH.tap),
+    panel: L.panel && { ...L.panel, at: box(L.panel.at, L.panel.width) },
     gauge: pt(L.gauge), autofill: pt(L.autofill),
     radPump: pt(L.radPump), radValve: pt(L.radValve), floorPump: pt(L.floorPump), floorValve: pt(L.floorValve),
     ihbPump: pt(L.ihbPump), recircPump: pt(L.recircPump), coldPump: pt(L.coldPump),

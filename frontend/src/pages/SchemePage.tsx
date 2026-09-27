@@ -8,12 +8,14 @@ import { toggleLock } from "@/scheme/toggles";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import { AlarmPanel } from "@/scheme/AlarmPanel";
 import { ControlDialog } from "@/scheme/ControlDialog";
-import { chooseLayout, type LayoutName } from "@/scheme/layouts";
+import { chooseLayout, LAYOUTS, type LayoutName } from "@/scheme/layouts";
 import { SchemeCanvas } from "@/scheme/SchemeCanvas";
 import { TopStrip } from "@/scheme/TopStrip";
 import type { ElementKind, RoleKey } from "@/scheme/types";
 import { SCHEME_QUERY_KEY, stillAwaiting, useSchemeRefreshOnWs, useSchemeState } from "@/scheme/useSchemeState";
 import type { SchemeState } from "@/scheme/types";
+
+const pct = (v: number, of: number) => `${Math.round((v / of) * 10000) / 100}%`;
 
 /** Toast after a quick toggle; autofill only arms the controller, it doesn't open the valve by itself. */
 function toggleMessage(key: string, label: string, next: "0" | "1", settings: Record<string, string>): string {
@@ -96,13 +98,24 @@ export default function SchemePage() {
   }, [appliedAt, data]);
 
   if (isLoading || !data) return <LoadingSpinner />;
+  const L = LAYOUTS[layout];
+  const panel = L.panel;
 
   return (
     <div className="space-y-3" ref={box}>
       <TopStrip state={data} canRetry={role === "admin" || role === "operator"} />
-      <SchemeCanvas state={data} layout={layout} onOpen={(kind, r) => setDialog({ kind, role: r })} onToggle={quickToggle} busyKeys={busyKeys} />
-      {/* Below the scheme, never over it: on top it hid the tank and the water inlet */}
-      <AlarmPanel state={data} collapsible={layout === "tall"} />
+      <div className="relative">
+        <SchemeCanvas state={data} layout={layout} onOpen={(kind, r) => setDialog({ kind, role: r })} onToggle={quickToggle} busyKeys={busyKeys} />
+        {/* Messages go into the layout's free corner (it scales with the scheme); without one, below it */}
+        {panel && (
+          <div data-panel="overlay" className="absolute overflow-y-auto rounded-lg"
+               style={{ left: pct(panel.at[0], L.width), top: pct(panel.at[1], L.height),
+                        width: pct(panel.width, L.width), maxHeight: pct(panel.height, L.height) }}>
+            <AlarmPanel state={data} collapsible={false} />
+          </div>
+        )}
+      </div>
+      {!panel && <AlarmPanel state={data} collapsible={layout === "tall"} />}
       {dialog && (
         <ControlDialog kind={dialog.kind} role={dialog.role} state={data} userRole={role}
                        onClose={() => setDialog(null)}

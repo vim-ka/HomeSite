@@ -172,3 +172,24 @@ describe("radiators label", () => {
     expect(L.radiators[1]).toBeLessThanOrEqual(16);
   });
 });
+
+describe("message panel area", () => {
+  it("wide: a free box top right — right of the radiators, above the boiler, clear of tags and labels", () => {
+    const L = LAYOUTS.wide;
+    const p = L.panel!;
+    const [x0, y0, x1, y1] = [p.at[0], p.at[1], p.at[0] + p.width, p.at[1] + p.height];
+    expect(x1).toBeLessThanOrEqual(L.width);
+    expect(x0).toBeGreaterThanOrEqual(L.radiators[0] + 260 + 8);
+    expect(y1).toBeLessThanOrEqual(L.boiler[1] - 6);
+    expect(y1).toBeLessThanOrEqual(L.separator[1] - 20);   // separator air vent
+    expect(p.width).toBeGreaterThanOrEqual(280);
+    for (const [k, [tx, ty]] of Object.entries(L.tags)) {
+      expect(tx > x0 && tx - 90 < x1 && ty < y1 && ty + 20 > y0, `tag ${k}`).toBe(false);
+    }
+    for (const l of L.labels) expect(l.at[0] > x0 && l.at[1] < y1 + 12, `label ${l.text}`).toBe(false);
+  });
+
+  it("tall: no room — the panel stays below the scheme", () => {
+    expect(LAYOUTS.tall.panel).toBeUndefined();
+  });
+});

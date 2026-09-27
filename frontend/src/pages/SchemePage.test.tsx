@@ -47,6 +47,19 @@ describe("SchemePage", () => {
 });
 
 describe("SchemePage layout", () => {
+  it("wide: the message panel sits over the free top-right corner of the scheme", () => {
+    const { container } = render(
+      <QueryClientProvider client={new QueryClient()}>
+        <ToastProvider><MemoryRouter><SchemePage /></MemoryRouter></ToastProvider>
+      </QueryClientProvider>,
+    );
+    const overlay = container.querySelector<HTMLElement>("[data-panel='overlay']")!;
+    expect(overlay).not.toBeNull();
+    expect(overlay.style.left).toBe("67%");
+    expect(overlay.textContent).toContain("Сигнализация");
+  });
+
+
   it("switches to the tall layout on a narrow screen once the data has loaded", () => {
     const original = globalThis.ResizeObserver;
     class NarrowObserver {
