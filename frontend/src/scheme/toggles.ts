@@ -1,4 +1,4 @@
-import type { RelayName } from "./types";
+import type { RelayName, SchemeState } from "./types";
 
 /** On/off controls reachable by a left click on the scheme. */
 export interface ToggleDef {
@@ -22,10 +22,28 @@ export const TOGGLES: Record<string, ToggleDef> = {
   teh: { key: "watersupply_ihb_teh_power", label: "ТЭН", relay: "teh", autoKey: "watersupply_ihb_teh_automode" },
 };
 
+/** Circuit pump → its "switch off while the tank heats" (DHW priority) setting. */
+const PRIORITY_KEYS: Record<string, string> = {
+  heating_radiator_pump: "heating_radiator_off_ihb",
+  heating_floorheating_pump: "heating_floorheating_off_ihb",
+};
+
+/** The controller holds this circuit pump off right now: DHW priority (same rule as the firmware's updatePumps). */
+export function dhwPriority(pumpKey: string, settings: Record<string, string>, controller: SchemeState["controller"]): boolean {
+  const off = PRIORITY_KEYS[pumpKey];
+  return !!off && settings[off] === "1" && !!controller.flags.ihb_heating && controller.relays.ihb_pump;
+}
+
 /** Why a quick toggle would have no effect right now (the controller ignores it), or null. */
-export function toggleLock(key: string, settings: Record<string, string>): string | null {
+export function toggleLock(
+  key: string, settings: Record<string, string>, next?: "0" | "1", controller?: SchemeState["controller"],
+): string | null {
   const def = Object.values(TOGGLES).find((t) => t.key === key);
-  return def?.autoKey && settings[def.autoKey] === "1" ? `${def.label} в авто-режиме — управление по правому клику` : null;
+  if (def?.autoKey && settings[def.autoKey] === "1") return `${def.label} в авто-режиме — управление по правому клику`;
+  if (next === "1" && controller && def && dhwPriority(key, settings, controller)) {
+    return `${def.label} не включится — приоритет ГВС: сейчас греется бойлер`;
+  }
+  return null;
 }
 
 /** The controller runs the element by itself (auto mode). */

@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { chooseLayout } from "./layouts";
+import { chooseLayout, LAYOUTS } from "./layouts";
 import { SchemeCanvas } from "./SchemeCanvas";
 import { makeState } from "./testing";
 
@@ -36,12 +36,34 @@ describe("SchemeCanvas", () => {
     expect(container.querySelector("[data-offline='true']")).not.toBeNull();
   });
 
-  it("shows night and DHW priority badges", () => {
+  it("shows night and DHW priority badges; priority sits right beside the pump it holds off", () => {
     const state = makeState({ flags: { schedule_rad: true, ihb_heating: true } });
-    state.settings.heating_floorheating_pump = "1";   // floor pump commanded on, relay off → DHW priority
-    const { container } = render(<SchemeCanvas state={state} layout="wide" onOpen={() => {}} />);
-    expect(container.querySelector("[data-badges='rad']")?.textContent).toContain("Ночь");
-    expect(container.querySelector("[data-badges='floor']")?.textContent).toContain("Приоритет ГВС");
+    state.controller.relays.ihb_pump = true;
+    state.settings.heating_floorheating_off_ihb = "1";
+    for (const layout of ["wide", "tall"] as const) {
+      const { container, unmount } = render(<SchemeCanvas state={state} layout={layout} onOpen={() => {}} />);
+      expect(container.querySelector("[data-badges='rad']")?.textContent).toContain("Ночь");
+      expect(container.querySelector("[data-badges='rad_priority']")).toBeNull();
+      const badge = container.querySelector("[data-badges='floor_priority']")!;
+      expect(badge.textContent).toBe("Приоритет ГВС");
+      const L = LAYOUTS[layout];
+      expect(Number(badge.getAttribute("x"))).toBeLessThan(L.floorPump[0]);           // to its left on screen
+      expect(L.floorPump[0] - Number(badge.getAttribute("x"))).toBeLessThanOrEqual(25);
+      expect(Math.abs(Number(badge.getAttribute("y")) - L.floorPump[1])).toBeLessThanOrEqual(6);
+      // the badge (≈ 90 wide, 13 tall, right-anchored) must not run into a value tag or a label
+      for (const [k, py] of [["rad", L.radPump[1]], ["floor", L.floorPump[1]]] as const) {
+        const bx1 = (k === "rad" ? L.radPump[0] : L.floorPump[0]) - 16, bx0 = bx1 - 90, by1 = py + 4, by0 = by1 - 11;
+        for (const [role, [tx, ty]] of Object.entries(L.tags)) {
+          const hit = tx > bx0 && tx - 90 < bx1 && ty < by1 && ty + 20 > by0;
+          expect(hit, `${k} priority badge vs ${role} tag`).toBe(false);
+        }
+        for (const l of L.labels) {
+          const hit = l.at[0] > bx0 && l.at[0] - 60 < bx1 && l.at[1] - 10 < by1 && l.at[1] > by0;
+          expect(hit, `${k} priority badge vs label ${l.text}`).toBe(false);
+        }
+      }
+      unmount();
+    }
   });
 
   it("shows autofill lockout", () => {

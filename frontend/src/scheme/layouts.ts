@@ -94,12 +94,12 @@ export const BASE_LAYOUTS: Record<LayoutName, LayoutDef> = {
     boilerScale: 0.55, tankScale: 0.6, collectorWidth: 110,
     tags: {
       boiler_supply: [8, 226], rad_supply: [208, 150], rad_return: [95, 150], floor_supply: [210, 430],
-      tank: [285, 372], heating_pressure: [30, 398], hot_water: [236, 196],
+      tank: [285, 366], heating_pressure: [30, 398], hot_water: [236, 226],
       cold_water: [150, 575], water_pressure: [250, 575],
     },
     labels: [
       { text: "Радиаторы", at: [180, 54], align: "middle" }, { text: "Тёплый пол", at: [130, 540] },
-      { text: "Бойлер", at: [290, 406] }, { text: "Скважина", at: [6, 545] },
+      { text: "Бойлер", at: [290, 400] }, { text: "Скважина", at: [6, 545] },
     ],
     badges: { rad: [180, 54], floor: [230, 540], tank: [262, 410] },
     pipes: [

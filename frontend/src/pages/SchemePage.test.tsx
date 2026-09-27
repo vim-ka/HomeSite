@@ -8,7 +8,7 @@ import { ToastProvider } from "@/components/Toast";
 import { makeState } from "@/scheme/testing";
 import SchemePage from "./SchemePage";
 
-const mocked = vi.hoisted(() => ({ loading: false, role: "operator" }));
+const mocked = vi.hoisted(() => ({ loading: false, role: "operator", priority: false }));
 vi.mock("@/api/client", () => ({ default: { put: vi.fn(), post: vi.fn(), get: vi.fn() } }));
 vi.mock("@/stores/authStore", () => ({
   useAuthStore: (sel: (s: { user: { role: string } }) => unknown) => sel({ user: { role: mocked.role } }),
@@ -25,6 +25,11 @@ function withAlarm() {
   const s = makeState();
   s.alarms = [{ level: "ERROR", code: "pressure_low", text: "Давление 0.92 бар ниже нормы 1" }];
   s.sync.unsynced = ["heating_boiler_temp"];
+  if (mocked.priority) {   // tank heating with DHW priority for the floor circuit
+    s.settings.heating_floorheating_off_ihb = "1";
+    s.controller.flags.ihb_heating = true;
+    s.controller.relays.ihb_pump = true;
+  }
   return s;
 }
 
@@ -86,6 +91,20 @@ describe("SchemePage quick toggle", () => {
     fireEvent.click(container.querySelector("[data-element='rad_pump']")!);
     expect(await screen.findByText("Насос радиаторов выключается")).toBeInTheDocument();
     await waitFor(() => expect(api.put).toHaveBeenCalledWith("/settings", { settings: { heating_radiator_pump: "0" } }));
+  });
+
+  it("a pump held off by DHW priority is not switched on and no 'switching on' toast appears", () => {
+    vi.mocked(api.put).mockClear();
+    mocked.priority = true;
+    try {
+      const { container } = renderPage();
+      fireEvent.click(container.querySelector("[data-element='floor_pump']")!);
+      expect(screen.getByText(/приоритет ГВС/)).toBeInTheDocument();
+      expect(screen.queryByText(/включается/)).toBeNull();
+      expect(api.put).not.toHaveBeenCalled();
+    } finally {
+      mocked.priority = false;
+    }
   });
 
   it("boiler power can't be toggled in auto mode", () => {

@@ -36,7 +36,7 @@ export default function SchemePage() {
       toast.error("Недостаточно прав");
       return;
     }
-    const lock = toggleLock(key, data.settings);
+    const lock = toggleLock(key, data.settings, next, data.controller);
     if (lock) {
       toast.error(lock);
       return;

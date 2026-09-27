@@ -2,7 +2,7 @@ import { useRef, type KeyboardEvent, type MouseEvent, type ReactNode } from "rea
 import { Boiler, FillValve, FloorLoops, Gauge, MixingValve, Pipe, Pump, Radiators, Separator, Tank, Tap, Teh, ValueTag, Well } from "./elements";
 import { LAYOUTS, type LayoutName } from "./layouts";
 import { pipeColor } from "./pipeColor";
-import { isAuto, isOn, TOGGLES } from "./toggles";
+import { dhwPriority, isAuto, isOn, TOGGLES } from "./toggles";
 import { elementName } from "./names";
 import type { ElementKind, RoleKey, SchemeState } from "./types";
 
@@ -170,16 +170,17 @@ export function SchemeCanvas({ state, layout, onOpen, onToggle, busyKeys = [] }:
                 textAnchor={l.align ?? (L.mirrored ? "end" : "start")}>{l.text}</text>
         ))}
 
-        {/* State badges: night setback, DHW priority (pump held off while the tank heats), anti-legionella */}
+        {/* State badges: night setback at the circuit; DHW priority right beside the pump it holds off */}
+        {(["rad", "floor"] as const).map((k) => (
+          c.flags[`schedule_${k}`] ? (
+            <text key={k} data-badges={k} x={L.badges[k][0]} y={L.badges[k][1]} fontSize={11} fill="#7c3aed" textAnchor={L.mirrored ? "end" : "start"}>🌙 Ночь</text>
+          ) : null
+        ))}
         {(["rad", "floor"] as const).map((k) => {
-          const prefix = k === "rad" ? "heating_radiator" : "heating_floorheating";
-          const pumpRelay = k === "rad" ? r.rad_pump : r.floor_pump;
-          const badges = [
-            c.flags[`schedule_${k}`] && "🌙 Ночь",
-            s[`${prefix}_pump`] === "1" && !pumpRelay && c.flags.ihb_heating && "Приоритет ГВС",
-          ].filter(Boolean) as string[];
-          return badges.length ? (
-            <text key={k} data-badges={k} x={L.badges[k][0]} y={L.badges[k][1]} fontSize={11} fill="#7c3aed" textAnchor={L.mirrored ? "end" : "start"}>{badges.join(" · ")}</text>
+          const [px, py] = k === "rad" ? L.radPump : L.floorPump;
+          return dhwPriority(TOGGLES[`${k}_pump`]!.key, s, c) ? (
+            <text key={`${k}_priority`} data-badges={`${k}_priority`} x={L.mirrored ? px - 16 : px + 16} y={py + 4}
+                  fontSize={11} fontWeight={600} fill="#7c3aed" textAnchor={L.mirrored ? "end" : "start"}>Приоритет ГВС</text>
           ) : null;
         })}
         {c.flags.alm_active && (
