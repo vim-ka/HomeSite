@@ -45,9 +45,13 @@ describe("radiator flow direction", () => {
     });
   }
 
-  it("the scheme is centred on the right edge of the pressure gauge (user's reference point)", () => {
-    const gaugeRightEdge = LAYOUTS.wide.gauge[0] + 18;
-    expect(Math.abs(gaugeRightEdge - 500)).toBeLessThanOrEqual(10);
+  it("wide: the circuit risers sit in the middle of the collector, the gauge left of them", () => {
+    const L = BASE_LAYOUTS.wide;
+    const collectorMid = L.separator[0] + 36 + (L.collectorWidth ?? 200) / 2;
+    const returnRiser = L.pipes.find((p) => p.id === "rad_bypass")!.points[0]![0];
+    expect(Math.abs((L.radPump[0] + returnRiser) / 2 - collectorMid)).toBeLessThanOrEqual(5);
+    expect(L.floorPump[0]).toBe(L.radPump[0]);
+    expect(L.gauge[0]).toBeGreaterThan(L.radPump[0]);  // base is mirrored: greater x = further left on screen
   });
 
   it("the tank connection is long enough to fit the loading pump comfortably", () => {
@@ -134,8 +138,8 @@ describe("DHW tank", () => {
     expect(L.recircPump[0] - (L.tank[0] + 80)).toBeLessThanOrEqual(40);
   });
 
-  it("wide: cold water rises from the main to its own tap", () => {
-    const L = BASE_LAYOUTS.wide;
+  it.each(["wide", "tall"] as const)("%s: cold water rises from the main to its own tap", (name) => {
+    const L = BASE_LAYOUTS[name];
     const pipe = L.pipes.find((p) => p.id === "cold_to_tap")!;
     const toTank = L.pipes.find((p) => p.id === "cold_to_tank")!;
     expect(toTank.points.some(([x, y]) => x === pipe.points[0]![0] && y === pipe.points[0]![1])).toBe(true);
