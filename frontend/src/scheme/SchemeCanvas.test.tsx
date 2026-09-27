@@ -221,3 +221,62 @@ describe("SchemeCanvas taps and TEH", () => {
     expect(container.querySelector("[data-element='teh'] .scheme-teh-switching")).not.toBeNull();
   });
 });
+
+describe("SchemeCanvas enabled vs working", () => {
+  it("boiler in auto with the burner paused: green dot, no flame, tooltip says it's waiting", () => {
+    const state = makeState();
+    state.settings.heating_boiler_automode = "1";
+    state.controller.relays.boiler = false;
+    const { container } = render(<SchemeCanvas state={state} layout="wide" onOpen={() => {}} onToggle={() => {}} />);
+    const boiler = container.querySelector("[data-element='boiler']")!;
+    expect(boiler.querySelector("[data-part='led']")!.getAttribute("fill")).toBe("#22c55e");
+    expect(boiler.querySelector("[data-part='flame']")).toBeNull();
+    expect(boiler.querySelector("title")!.textContent).toMatch(/авто-режим, сейчас в ожидании/);
+  });
+
+  it("boiler switched off by hand: grey dot", () => {
+    const state = makeState();
+    state.settings.heating_boiler_automode = "0";
+    state.settings.heating_boiler_power = "0";
+    state.controller.relays.boiler = false;
+    const { container } = render(<SchemeCanvas state={state} layout="wide" onOpen={() => {}} />);
+    expect(container.querySelector("[data-element='boiler'] [data-part='led']")!.getAttribute("fill")).not.toBe("#22c55e");
+  });
+
+  it("TEH switched on but held off by the controller: orange, no heat waves; heating: heat waves", () => {
+    const state = makeState();
+    state.settings.watersupply_ihb_teh_power = "1";
+    state.controller.relays.teh = false;
+    const { container, rerender } = render(<SchemeCanvas state={state} layout="wide" onOpen={() => {}} />);
+    const teh = () => container.querySelector("[data-element='teh']")!;
+    expect(teh().querySelector("[data-state='standby']")).not.toBeNull();
+    expect(teh().querySelector("[data-part='element']")!.getAttribute("stroke")).toBe("#f97316");
+    expect(teh().querySelector("[data-part='heat']")).toBeNull();
+
+    const heating = makeState();
+    heating.settings.watersupply_ihb_teh_power = "1";
+    heating.controller.relays.teh = true;
+    rerender(<SchemeCanvas state={heating} layout="wide" onOpen={() => {}} />);
+    expect(teh().querySelector("[data-state='on'] [data-part='heat']")).not.toBeNull();
+  });
+});
+
+describe("SchemeCanvas mixing valves", () => {
+  it("valves face their flow: radiators out upwards, floor out downwards, third port towards the bypass", () => {
+    const { container } = render(<SchemeCanvas state={makeState()} layout="wide" onOpen={() => {}} />);
+    const rad = container.querySelector("[data-element='rad_valve'] [data-out]")!;
+    const floor = container.querySelector("[data-element='floor_valve'] [data-out]")!;
+    expect(rad.getAttribute("data-out")).toBe("up");
+    expect(floor.getAttribute("data-out")).toBe("down");
+    // mirrored layout: the return riser (bypass) is on the valves' right on screen
+    expect(rad.getAttribute("data-bypass")).toBe("right");
+    expect(floor.getAttribute("data-bypass")).toBe("right");
+  });
+
+  it("TEH heating: heat waves float up", () => {
+    const state = makeState();
+    state.controller.relays.teh = true;
+    const { container } = render(<SchemeCanvas state={state} layout="wide" onOpen={() => {}} />);
+    expect(container.querySelectorAll("[data-element='teh'] [data-part='heat'] .scheme-heat").length).toBe(2);
+  });
+});

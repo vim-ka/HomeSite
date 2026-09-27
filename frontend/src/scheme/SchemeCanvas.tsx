@@ -2,7 +2,7 @@ import { useRef, type KeyboardEvent, type MouseEvent, type ReactNode } from "rea
 import { Boiler, FillValve, FloorLoops, Gauge, MixingValve, Pipe, Pump, Radiators, Separator, Tank, Tap, Teh, ValueTag, Well } from "./elements";
 import { LAYOUTS, type LayoutName } from "./layouts";
 import { pipeColor } from "./pipeColor";
-import { isOn, TOGGLES } from "./toggles";
+import { isAuto, isOn, TOGGLES } from "./toggles";
 import { elementName } from "./names";
 import type { ElementKind, RoleKey, SchemeState } from "./types";
 
@@ -41,11 +41,22 @@ export function SchemeCanvas({ state, layout, onOpen, onToggle, busyKeys = [] }:
     return !!key && (busyKeys.includes(key) || state.sync.pending.includes(key));
   };
   const autofillEnabled = isOn(TOGGLES.autofill!, s, r);
+  // switched on = by hand or handed to the controller (auto); whether it works right now is the relay
+  const enabled = (id: string) => isAuto(TOGGLES[id]!, s) || isOn(TOGGLES[id]!, s, r);
   const autofillState = c.flags.autofill_fault ? "fault" : r.af_open ? "opening" : r.af_close ? "closing" : "closed";
+
+  // valve orientation follows the pipes: where the mixed water leaves, which side the bypass joins
+  const valveGeometry = (c: "rad" | "floor", [vx, vy]: [number, number]) => {
+    const mixed = L.pipes.find((p) => p.id === `${c}_mixed`)!.points.at(-1)!;
+    const bypass = L.pipes.find((p) => p.id === `${c}_bypass`)!.points[0]!;
+    return { out: mixed[1] < vy ? "up" : "down", bypass: bypass[0] < vx ? "left" : "right" } as const;
+  };
 
   const hit = (id: string, kind: ElementKind, child: ReactNode, role?: RoleKey) => {
     const toggle = onToggle ? TOGGLES[id] : undefined;
     const on = toggle ? isOn(toggle, s, r) : undefined;
+    const auto = toggle ? isAuto(toggle, s) : false;
+    const idle = toggle?.relay && (on || auto) && c.online && !r[toggle.relay] ? ", сейчас в ожидании" : "";
     const open = () => onOpen(kind, role);
     // only a mouse click switches equipment; touch and stylus taps open the settings
     const click = () =>
@@ -72,9 +83,9 @@ export function SchemeCanvas({ state, layout, onOpen, onToggle, busyKeys = [] }:
         }}
       >
         <title>
-          {toggle
-            ? `${toggle.label}: ${on ? "включено" : "выключено"}. Клик — ${on ? "выключить" : "включить"}, правый клик — настройки`
-            : "Настройки"}
+          {!toggle ? "Настройки"
+            : auto ? `${toggle.label}: авто-режим${idle}. Правый клик — настройки`
+            : `${toggle.label}: ${on ? "включено" : "выключено"}${idle}. Клик — ${on ? "выключить" : "включить"}, правый клик — настройки`}
         </title>
         {child}
       </g>
@@ -106,13 +117,13 @@ export function SchemeCanvas({ state, layout, onOpen, onToggle, busyKeys = [] }:
 
         {hit("radiators", "rad", <Radiators x={L.radiators[0]} y={L.radiators[1]} warmth={warmth("rad_supply")} />)}
         {hit("rad_pump", "rad", <Pump x={L.radPump[0]} y={L.radPump[1]} running={r.rad_pump} switching={switching("rad_pump")} />)}
-        {hit("rad_valve", "rad", <MixingValve x={L.radValve[0]} y={L.radValve[1]} direction={valveDirection(r.rad_open, r.rad_close)} />)}
+        {hit("rad_valve", "rad", <MixingValve x={L.radValve[0]} y={L.radValve[1]} direction={valveDirection(r.rad_open, r.rad_close)} {...valveGeometry("rad", L.radValve)} />)}
         {hit("floor", "floor", <FloorLoops x={L.floor[0]} y={L.floor[1]} warmth={warmth("floor_supply")} />)}
         {hit("floor_pump", "floor", <Pump x={L.floorPump[0]} y={L.floorPump[1]} running={r.floor_pump} switching={switching("floor_pump")} />)}
-        {hit("floor_valve", "floor", <MixingValve x={L.floorValve[0]} y={L.floorValve[1]} direction={valveDirection(r.floor_open, r.floor_close)} />)}
+        {hit("floor_valve", "floor", <MixingValve x={L.floorValve[0]} y={L.floorValve[1]} direction={valveDirection(r.floor_open, r.floor_close)} {...valveGeometry("floor", L.floorValve)} />)}
         {hit("boiler", "boiler", (
           <g transform={`translate(${L.boiler[0]} ${L.boiler[1]}) scale(${L.boilerScale ?? 1})`}>
-            <Boiler x={0} y={0} on={r.boiler} auto={s.heating_boiler_automode === "1"}
+            <Boiler x={0} y={0} enabled={enabled("boiler")} burning={r.boiler} auto={s.heating_boiler_automode === "1"}
                     alarm={!!(c.flags.overtemp || c.flags.boiler_sensor_lost)} />
           </g>
         ))}
@@ -130,7 +141,7 @@ export function SchemeCanvas({ state, layout, onOpen, onToggle, busyKeys = [] }:
         ))}
         {hit("teh", "tank", (
           <g transform={`translate(${L.tank[0]} ${L.tank[1]}) scale(${L.tankScale ?? 1})`}>
-            <Teh on={r.teh} switching={switching("teh")} />
+            <Teh enabled={enabled("teh")} heating={r.teh} auto={isAuto(TOGGLES.teh!, s)} switching={switching("teh")} />
           </g>
         ))}
         {hit("well", "cold", <Well x={L.well[0]} y={L.well[1]} />)}

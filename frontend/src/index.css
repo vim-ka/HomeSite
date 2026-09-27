@@ -126,15 +126,18 @@ html.dark {
 @keyframes scheme-blink { 50% { opacity: 0.35; } }
 @keyframes scheme-flicker { 50% { transform: scale(0.94); } }
 @keyframes scheme-pump-switch { 0% { fill: #9ca3af; } 50% { fill: #16a34a; } }
+@keyframes scheme-heat-rise { 0% { transform: translateY(0); opacity: 0; } 20% { opacity: 1; } 100% { transform: translateY(-22px); opacity: 0; } }
 @keyframes scheme-teh-switch { 0% { stroke: #9ca3af; } 50% { stroke: #f97316; } }
 .scheme-spin { animation: scheme-spin 1.2s linear infinite; transform-box: fill-box; transform-origin: center; }
 .scheme-flow { animation: scheme-flow 1s linear infinite; }
 .scheme-blink { animation: scheme-blink 1s step-end infinite; }
 .scheme-flicker { animation: scheme-flicker 0.6s ease-in-out infinite; transform-box: fill-box; transform-origin: bottom; }
 .scheme-pump-switching { animation: scheme-pump-switch 0.8s step-end infinite; }
+.scheme-heat { animation: scheme-heat-rise 1.6s ease-out infinite; opacity: 0; }
 .scheme-teh-switching { animation: scheme-teh-switch 0.8s step-end infinite; }
 @media (prefers-reduced-motion: reduce) {
-  .scheme-spin, .scheme-flow, .scheme-blink, .scheme-flicker, .scheme-pump-switching, .scheme-teh-switching { animation: none; }
+  .scheme-spin, .scheme-flow, .scheme-blink, .scheme-flicker, .scheme-pump-switching, .scheme-heat { animation: scheme-heat-rise 1.6s ease-out infinite; opacity: 0; }
+.scheme-teh-switching { animation: none; }
 }
 
 /* Scheme hit areas: no focus frame after a mouse click, keyboard focus still visible */

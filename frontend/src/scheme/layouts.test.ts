@@ -146,3 +146,17 @@ describe("DHW tank", () => {
     expect(pipe.points.at(-1)).toEqual([L.coldTap![0] + 12, L.coldTap![1] + 26]);
   });
 });
+
+describe("pumps and valves mounted on the collector", () => {
+  it.each(["wide", "tall"] as const)("%s: mixing units and the tank loading pump sit right at the collector", (name) => {
+    const L = BASE_LAYOUTS[name];
+    const [sx, sy] = L.separator;
+    const supplyTop = sy + 15, returnBottom = sy + 125;
+    const collectorEnd = sx + 36 + (L.collectorWidth ?? 200);
+    expect(supplyTop - L.radValve[1]).toBeLessThanOrEqual(14);
+    expect(L.floorValve[1] - returnBottom).toBeLessThanOrEqual(14);
+    expect(L.radValve[1] - L.radPump[1]).toBeLessThanOrEqual(35);
+    expect(L.floorPump[1] - L.floorValve[1]).toBeLessThanOrEqual(35);
+    expect(L.ihbPump[0] - collectorEnd).toBeLessThanOrEqual(16);
+  });
+});

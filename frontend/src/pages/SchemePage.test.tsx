@@ -64,7 +64,7 @@ describe("SchemePage layout", () => {
       const { rerender } = render(page());
       mocked.loading = false;
       rerender(page());
-      expect(screen.getByRole("group", { name: "Схема котельной" })).toHaveAttribute("viewBox", "0 0 360 640");
+      expect(screen.getByRole("group", { name: "Схема котельной" })).toHaveAttribute("viewBox", "0 0 384 640");
     } finally {
       mocked.loading = false;
       globalThis.ResizeObserver = original;
