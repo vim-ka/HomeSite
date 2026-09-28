@@ -2,6 +2,8 @@ from datetime import datetime
 
 from pydantic import BaseModel
 
+from app.schemas.types import UTCDateTime
+
 
 # ---- Reference data (dropdowns) ----
 
@@ -117,7 +119,7 @@ class SensorDetailResponse(BaseModel):
     actuator_mqtt_device_name: str | None = None
     datatype_ids: list[int] = []
     offsets: list[SensorOffsetBadge] = []
-    last_reading: datetime | None = None
+    last_reading: UTCDateTime | None = None
 
     model_config = {"from_attributes": True}
 
@@ -162,8 +164,8 @@ class PendingSensorResponse(BaseModel):
     last_payload: str
     last_value: float | None
     message_count: int
-    first_seen: datetime
-    last_seen: datetime
+    first_seen: UTCDateTime
+    last_seen: UTCDateTime
 
     model_config = {"from_attributes": True}
 

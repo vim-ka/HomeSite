@@ -8,9 +8,11 @@ This is a one-time operation, NOT run on every startup (unlike v1's populate_db)
 """
 
 import asyncio
+import os
+import secrets
 from datetime import time
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.core.config import get_settings
@@ -125,21 +127,17 @@ async def seed(session: AsyncSession) -> None:
     ]
 
     # --- Users (bcrypt instead of werkzeug scrypt) ---
+    # No well-known default password: take ADMIN_INITIAL_PASSWORD from the
+    # environment or generate one and print it once (only used on a fresh DB).
 
+    admin_password = os.environ.get("ADMIN_INITIAL_PASSWORD") or secrets.token_urlsafe(12)
     users = [
         {
             "id": 1,
             "username": "admin",
-            "password_hash": get_password_hash("123"),
+            "password_hash": get_password_hash(admin_password),
             "email": "admin@example.com",
             "role": "admin",
-        },
-        {
-            "id": 2,
-            "username": "user1",
-            "password_hash": get_password_hash("123"),
-            "email": "user1@example.com",
-            "role": "viewer",
         },
     ]
 
@@ -366,13 +364,27 @@ async def seed(session: AsyncSession) -> None:
 
     # --- Users / settings / schedules ---
 
+    admin_exists = (await session.execute(select(User.id).where(User.username == "admin"))).first()
     await merge_if_missing(session, User, users)
+    if admin_exists is None and not os.environ.get("ADMIN_INITIAL_PASSWORD"):
+        print(f"Created user 'admin' with generated password: {admin_password}  (change it after login)")
     await merge_if_missing(session, ConfigKV, default_settings)
     await merge_if_missing(session, Schedule, schedules)
     await session.flush()
 
     await merge_if_missing(session, ScheduleDetail, schedule_details)
     await merge_if_missing(session, HeatingCircuit, heating_circuits)
+
+    # Rows above were inserted with explicit ids: on PostgreSQL move the id
+    # sequences past them, otherwise the next INSERT hits a duplicate key.
+    if session.bind.dialect.name == "postgresql":
+        for model in (SystemType, Place, SensorType, SensorDataType, MountPoint, Sensor,
+                      User, ConfigKV, Schedule, ScheduleDetail, HeatingCircuit, Actuator):
+            table = model.__tablename__
+            await session.execute(text(
+                f"SELECT setval(pg_get_serial_sequence('{table}', 'id'), "
+                f"COALESCE((SELECT MAX(id) FROM {table}), 0) + 1, false)"
+            ))
 
     await session.commit()
     print("Seed data inserted successfully.")

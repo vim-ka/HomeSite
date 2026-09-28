@@ -49,6 +49,24 @@ docker compose up -d
 
 **Health monitoring**: `HealthMonitor` background task (single source of truth) → cached state read by `/health/*` endpoints → frontend polls via `useServiceHealth` hook
 
+**Alarms**: every poll the HealthMonitor builds the scheme state and runs `app/services/alarm_rules.py` —
+`evaluate()` (pure rules: rooms / boiler room / cold water temperature, heating pressure, controller link and
+safety flags, circuits and DHW tank not heating, tank overheat, anti-legionella result) → `AlarmTracker`
+(per-alarm raise delay, hysteresis in the rules) → raise/clear events in the log + `state.active_alarms`,
+which `/scheme/state` returns as `alarms`. Add a new alarm as a rule with a test in `tests/test_alarm_rules.py`.
+`/api/v1/alarms` (list), `POST /alarms/ack` and `POST /alarms/buzzer-mute` (operator/admin); the frontend shows
+unacknowledged alarms in a banner on every page (`AlarmBanner`) and counts them on the bell. Acknowledgements
+live in memory (a backend restart shows active alarms as new again).
+
+**Scheme page** (`/scheme`): SCADA-style mnemonic of the boiler room. Backend `GET /api/v1/scheme/state`
+(`app/services/scheme_service.py`) aggregates sensors by role (circuit mount points), controller heartbeat
+(relays, flags, targets), gateway sync lists and alarms. Frontend `src/scheme/*`: pure SVG elements,
+two layouts (`layouts.ts`: wide ≥ 900 px / tall, both mirrored by `mirrorLayout` — boiler on the right),
+left click on a pump/boiler/autofill toggles it (`toggles.ts`), right click / touch opens the control
+dialog that applies changed keys via `PUT /settings`. Admin-only keys in `scheme/permissions.ts` must
+mirror `setting_rules.py` (enforced by a test). E2E check: `python3 tools/scheme_screenshots.py <password>`
+against the dev stand (`bash tools/dev_stack.sh`).
+
 **Settings**: All runtime config stored in `config_kv` table (single source of truth). `.env` only for infrastructure (JWT secret, DB URL, CORS). Gateway reads MQTT settings from `config_kv` at startup and on `/reload-mqtt`.
 
 ## Key Patterns
@@ -90,6 +108,12 @@ Runtime settings stored in `config_kv` table (not in `.env`):
 - Range alerts: `heating_pressure_min`, `heating_pressure_max`, `heating_boiler_max_temp`
 - System: `access_token_expire_minutes`, `refresh_token_expire_days`, `log_level`, `device_gateway_url`
 - Charts: `chart_history_days`
+- PZA outdoor source: `pza_outdoor_sensor` (sensor name), `pza_outdoor_device` (controller that gets it forwarded as `outdoor_temp`)
+- Backups: `backup_enabled`, `backup_interval`, `backup_time` (UTC), `backup_last_run` — set via `/settings/backup-schedule`
+
+Every key writable via `PUT /settings` must be in the allowlist `backend/app/core/setting_rules.py`
+(type, range, admin-only flag). Device ranges there mirror the firmware SETTINGS table in
+`firmware/esp32-homesite/src/boiler_logic.cpp` — change both together.
 
 Infrastructure settings in `.env` only (not runtime-changeable):
 - `DATABASE_URL`, `JWT_SECRET_KEY`, `INTERNAL_API_SECRET`, `CORS_ORIGINS`
@@ -111,14 +135,30 @@ Tests use pytest-asyncio, httpx AsyncClient, isolated SQLite DB per session.
 ## Command Dispatch
 
 Settings changes → Gateway → grouped MQTT message per device:
-1. Frontend `PUT /settings` → Backend saves to `config_kv` + calls Gateway `POST /settings`
+1. Frontend `PUT /settings` → Backend validates (allowlist), saves to `config_kv` + calls Gateway `POST /settings`;
+   response carries `delivery` (`queued`/`failed`/`none`) and `unrouted` keys
 2. Gateway matches `config_key` to device via `config_prefix` in `heating_circuits` table (longest prefix wins)
-3. Dispatcher accumulates params per device, deduplicates (last write wins), debounces 5s
+3. Dispatcher accumulates params per device, deduplicates (last write wins), debounces 5s (max wait 15s);
+   failed publishes are re-queued
 4. Publishes single MQTT message: `home/devices/{mqtt_device_name}/cmd` → `{"key1": "val1", "key2": "val2"}`
-5. ESP32 should respond with ack: `home/devices/{name}/ack` → `{"key1": "ok"}`
+   — **never retained** (a retained `restart` boot-loops the device)
+5. ESP32 responds with ack: `home/devices/{name}/ack` → `{"key1": "ok"}`; non-`ok` values
+   (`invalid_value`, `unknown_key`, `persist_failed`) mark the key unsynced + ERROR event
 6. Watchdog checks for ack timeout (configurable `ack_timeout_seconds`, default 30s)
 
-ESP32 should also publish periodic heartbeat: `home/devices/{name}/heartbeat` (any payload).
+`config_kv` is the desired state: when a device reboots (heartbeat `uptime` decreases) or is first
+seen after a gateway restart, the gateway re-sends all of its keys (`device_gateway/sync.py`).
+
+ESP32 publishes a periodic heartbeat: `home/devices/{name}/heartbeat` (JSON with `uptime`, relays,
+safety flags — `backend/app/services/controller_flags.py` maps each to an alarm level and text).
+Controller safety rules (firmware `boiler_logic.cpp`, mirrored in `tools/house_emulator/controller.py` with tests):
+frost protection (water < 7 °C → boiler and pumps forced on, beats manual OFF), zero pressure = alarm and no
+blind autofill, boiler-doesn't-heat detection, well dry-run stop/retry/latch, TEH never heats without a tank
+sensor, auto boiler target capped at max − 7 so regulation never hits the overtemp trip, lost boiler sensor
+switches the boiler off only in mild weather (else it runs on its own thermostat), lost floor supply sensor stops the
+floor pump (no mechanical limit thermostat on the floor; beats frost protection), frost protection doesn't run pumps
+at 0 bar, buzzer mute forgets a cause absent 5 min. Relays are written once per control cycle
+(`RelayController::beginBatch/commit`) so a safety override never opens a contact for a moment.
 Heartbeat loss detected after `heartbeat_timeout_seconds` (default 60s) → ERROR in event log.
 
 ## Deployment Target

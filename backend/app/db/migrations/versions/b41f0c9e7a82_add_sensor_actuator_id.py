@@ -20,7 +20,7 @@ depends_on: Union[str, Sequence[str], None] = None
 def upgrade() -> None:
     conn = op.get_bind()
 
-    existing_cols = {row[1] for row in conn.execute(sa.text("PRAGMA table_info(sensors)"))}
+    existing_cols = {col["name"] for col in sa.inspect(conn).get_columns("sensors")}
     if "actuator_id" not in existing_cols:
         with op.batch_alter_table("sensors") as batch_op:
             batch_op.add_column(sa.Column("actuator_id", sa.Integer(), nullable=True))

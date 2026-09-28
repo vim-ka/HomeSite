@@ -21,38 +21,62 @@ export function useSettings() {
   });
 }
 
+interface SettingsUpdateResponse {
+  delivery?: "queued" | "failed" | "none";
+  unrouted?: string[];
+}
+
 export function useSettingUpdate() {
   const queryClient = useQueryClient();
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Everything changed during the debounce window is sent, not just the last key
+  const pendingRef = useRef<Record<string, string>>({});
 
   const mutation = useMutation({
     mutationFn: async (payload: Record<string, string>) => {
-      await api.put("/settings", { settings: payload });
+      const { data } = await api.put<SettingsUpdateResponse>("/settings", { settings: payload });
+      return data;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["dashboard"] });
-      showToast("Сохранено");
+      if (data?.delivery === "failed") {
+        showToast("Сохранено, но шлюз недоступен — отправится при переподключении");
+      } else if (data?.unrouted?.length) {
+        showToast(`Нет устройства для: ${data.unrouted.join(", ")}`);
+      } else {
+        showToast("Сохранено");
+      }
     },
-    onError: () => {
-      showToast("Ошибка сохранения");
+    onError: (err: any) => {
+      const status = err?.response?.status;
+      showToast(
+        status === 403 ? "Недостаточно прав" : status === 422 ? "Недопустимое значение" : "Ошибка сохранения"
+      );
       queryClient.invalidateQueries({ queryKey: ["settings"] });
     },
   });
 
+  const mutateRef = useRef(mutation.mutate);
+  mutateRef.current = mutation.mutate;
+
   const update = useCallback(
-    (key: string, value: string) => {
+    (keyOrValues: string | Record<string, string>, value?: string) => {
+      const values = typeof keyOrValues === "string" ? { [keyOrValues]: value ?? "" } : keyOrValues;
+
       // Optimistic update
       queryClient.setQueryData<Record<string, string>>(["settings"], (old) =>
-        old ? { ...old, [key]: value } : old
+        old ? { ...old, ...values } : old
       );
 
-      // Debounced API call
+      pendingRef.current = { ...pendingRef.current, ...values };
       if (timerRef.current) clearTimeout(timerRef.current);
       timerRef.current = setTimeout(() => {
-        mutation.mutate({ [key]: value });
+        const batch = pendingRef.current;
+        pendingRef.current = {};
+        mutateRef.current(batch);
       }, 300);
     },
-    [mutation, queryClient]
+    [queryClient]
   );
 
   return update;

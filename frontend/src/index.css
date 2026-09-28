@@ -36,12 +36,17 @@
 
   /* Borders */
   html.dark .border-gray-200 { border-color: #374151 !important; }
-  html.dark .border-gray-100 { border-color: #1f2937 !important; }
+  /* was #1f2937 = the card background itself, so every gray-100 divider vanished */
+  html.dark .border-gray-100 { border-color: #2f3a4a !important; }
 
   /* Hover states */
   html.dark .hover\:bg-gray-50:hover { background-color: #374151 !important; }
   html.dark .hover\:bg-gray-100:hover { background-color: #374151 !important; }
   html.dark .hover\:bg-gray-200\/60:hover { background-color: rgba(55, 65, 81, 0.6) !important; }
+  html.dark .hover\:bg-gray-200:hover { background-color: #4b5563 !important; }
+
+  /* Neutral chips / pills (e.g. unselected PZA curve buttons) */
+  html.dark .bg-gray-100 { background-color: #374151 !important; }
 
   /* Inputs */
   html.dark input,
@@ -95,3 +100,46 @@
   0%, 100% { text-shadow: 0 0 6px rgba(59, 130, 246, 0.3); }
   50% { text-shadow: 0 0 14px rgba(59, 130, 246, 0.7), 0 0 24px rgba(59, 130, 246, 0.3); }
 }
+/* ---- Scheme (SCADA page) ---- */
+:root {
+  --scheme-bg: #f1f5f9;
+  --scheme-device: #ffffff;
+  --scheme-panel: #e2e8f0;
+  --scheme-stroke: #64748b;
+  --scheme-muted: #94a3b8;
+  --scheme-text: #0f172a;
+  --scheme-tag-bg: #0f172a;
+  --scheme-tag-fg: #fde68a;
+}
+html.dark {
+  --scheme-bg: #111827;
+  --scheme-device: #1f2937;
+  --scheme-panel: #374151;
+  --scheme-stroke: #94a3b8;
+  --scheme-muted: #6b7280;
+  --scheme-text: #f3f4f6;
+  --scheme-tag-bg: #000000;
+  --scheme-tag-fg: #fde68a;
+}
+@keyframes scheme-spin { to { transform: rotate(360deg); } }
+@keyframes scheme-flow { to { stroke-dashoffset: -36; } }
+@keyframes scheme-blink { 50% { opacity: 0.35; } }
+@keyframes scheme-flicker { 50% { transform: scale(0.94); } }
+@keyframes scheme-pump-switch { 0% { fill: #9ca3af; } 50% { fill: #16a34a; } }
+@keyframes scheme-heat-rise { 0% { transform: translateY(0); opacity: 0; } 20% { opacity: 1; } 100% { transform: translateY(-22px); opacity: 0; } }
+@keyframes scheme-teh-switch { 0% { stroke: #9ca3af; } 50% { stroke: #f97316; } }
+.scheme-spin { animation: scheme-spin 1.2s linear infinite; transform-box: fill-box; transform-origin: center; }
+.scheme-flow { animation: scheme-flow 1s linear infinite; }
+.scheme-blink { animation: scheme-blink 1s step-end infinite; }
+.scheme-flicker { animation: scheme-flicker 0.6s ease-in-out infinite; transform-box: fill-box; transform-origin: bottom; }
+.scheme-pump-switching { animation: scheme-pump-switch 0.8s step-end infinite; }
+.scheme-heat { animation: scheme-heat-rise 1.6s ease-out infinite; opacity: 0; }
+.scheme-teh-switching { animation: scheme-teh-switch 0.8s step-end infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .scheme-spin, .scheme-flow, .scheme-blink, .scheme-flicker, .scheme-pump-switching, .scheme-heat { animation: scheme-heat-rise 1.6s ease-out infinite; opacity: 0; }
+.scheme-teh-switching { animation: none; }
+}
+
+/* Scheme hit areas: no focus frame after a mouse click, keyboard focus still visible */
+.scheme-hit:focus { outline: none; }
+.scheme-hit:focus-visible { outline: 2px solid #60a5fa; outline-offset: 2px; }

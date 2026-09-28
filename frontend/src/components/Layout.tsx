@@ -3,6 +3,7 @@ import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
   LayoutDashboard,
+  Workflow,
   Flame,
   Droplets,
   BarChart3,
@@ -15,13 +16,16 @@ import {
 import { useAuthStore } from "@/stores/authStore";
 import { useWebSocket } from "@/hooks/useWebSocket";
 import AlertBell from "@/components/AlertBell";
+import AlarmBanner from "@/components/AlarmBanner";
 import ThemeToggle from "@/components/ThemeToggle";
 import LanguageToggle from "@/components/LanguageToggle";
 import ServiceStatus from "@/components/ServiceStatus";
 import { cn } from "@/lib/utils";
+import { initialSidebarCollapsed } from "@/components/layoutPrefs";
 
 const NAV_ITEMS = [
   { to: "/dashboard", key: "dashboard", icon: LayoutDashboard },
+  { to: "/scheme", key: "scheme", icon: Workflow },
   { to: "/heating", key: "heating", icon: Flame },
   { to: "/water-supply", key: "waterSupply", icon: Droplets },
   { to: "/statistics", key: "statistics", icon: BarChart3 },
@@ -36,7 +40,7 @@ export default function Layout() {
   const navigate = useNavigate();
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(initialSidebarCollapsed);
 
   useWebSocket();
 
@@ -136,7 +140,7 @@ export default function Layout() {
       <div className="flex flex-1 flex-col overflow-hidden">
         {/* Header */}
         <header className="flex h-14 items-center justify-between border-b border-gray-200 bg-white px-4 shadow-sm">
-          <span className="text-sm text-gray-500">{formattedDate}</span>
+          <span className="hidden text-sm text-gray-500 md:inline">{formattedDate}</span>
           <ServiceStatus />
           <div className="flex items-center gap-4">
             <LanguageToggle />
@@ -157,6 +161,7 @@ export default function Layout() {
 
         {/* Page content */}
         <main className="flex-1 overflow-y-auto p-6">
+          <AlarmBanner />
           <Outlet />
         </main>
       </div>

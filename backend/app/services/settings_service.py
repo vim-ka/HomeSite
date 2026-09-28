@@ -1,4 +1,5 @@
 from app.core.logging import get_logger
+from app.core.setting_rules import is_device_setting, validate_settings
 from app.repositories.settings_repository import SettingsRepository
 from app.schemas.settings import MqttSettingsResponse
 
@@ -28,19 +29,40 @@ class SettingsService:
             password=settings.get("mqtt_pass", ""),
         )
 
-    async def update_settings(self, updates: dict[str, str | int | float | bool | None]) -> bool:
-        """Persist settings to Config_KV and dispatch command to DeviceGateway."""
-        str_updates = {k: str(v) for k, v in updates.items()}
-        await self.settings_repo.upsert_many(str_updates)
+    async def update_settings(
+        self, updates: dict[str, str | int | float | bool | None], role: str
+    ) -> dict:
+        """Validate, persist to Config_KV and hand device keys to DeviceGateway.
 
-        # Dispatch to device gateway if available
-        if self.gateway_client:
-            try:
-                await self.gateway_client.dispatch_settings(str_updates)
-            except Exception:
-                logger.warning("gateway_dispatch_failed", updates=str_updates)
+        config_kv is the desired state: even if delivery fails now, the gateway
+        re-sends it when the device reboots or reappears.
 
-        return True
+        Returns {"settings": normalized, "delivery": "queued"|"failed"|"none",
+                 "unrouted": [...], "error": str|None}.
+        Raises SettingsValidationError / SettingsPermissionError.
+        """
+        current = await self.settings_repo.get_all()
+        normalized = validate_settings(updates, current, role)
+        await self.settings_repo.upsert_many(normalized)
+
+        device_updates = {k: v for k, v in normalized.items() if is_device_setting(k)}
+        result: dict = {"settings": normalized, "delivery": "none", "unrouted": [], "error": None}
+        if not device_updates or not self.gateway_client:
+            return result
+
+        dispatch = await self.gateway_client.dispatch_settings(device_updates)
+        if not dispatch.accepted:
+            logger.warning("gateway_dispatch_failed", keys=list(device_updates), error=dispatch.error)
+            result.update(delivery="failed", error=dispatch.error)
+            return result
+
+        result["delivery"] = "queued"
+        # A device setting nobody consumes is a configuration error (missing
+        # heating_circuits prefix) — surface it instead of dropping silently
+        result["unrouted"] = [k for k in dispatch.unrouted if k in device_updates]
+        if result["unrouted"]:
+            logger.warning("settings_unrouted", keys=result["unrouted"])
+        return result
 
     async def update_mqtt_settings(
         self, host: str, port: str, user: str, password: str

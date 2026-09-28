@@ -458,7 +458,9 @@ async def send_device_command(
     if not ok:
         raise HTTPException(status_code=502, detail="Gateway error")
 
-    summary = ", ".join(f"{k}={v}" for k, v in payload.params.items())
+    summary = ", ".join(
+        f"{k}={'****' if 'pass' in k else v}" for k, v in payload.params.items()
+    )
     db.add(EventLog(
         level="INFO", source="catalog", method="POST",
         path=f"/api/v1/catalog/devices/{mqtt_device_name}/command",

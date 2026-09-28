@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { authFetch } from "@/api/client";
 
 export interface ServiceHealth {
   backend: boolean;
@@ -40,7 +41,7 @@ export function useServiceHealth() {
       const [statusRes, sensorsRes, devicesRes] = await Promise.all([
         fetch("/health/status", { signal: controller.signal }),
         fetch("/health/sensors", { signal: controller.signal }),
-        fetch("/health/devices", { signal: controller.signal }),
+        authFetch("/health/devices", { signal: controller.signal }),
       ]);
 
       if (statusRes.ok) {

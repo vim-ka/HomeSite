@@ -34,11 +34,21 @@ public:
     void set(RelayChannel ch, bool on);
     bool get(RelayChannel ch) const;
 
+    /// Control cycle: set() only records the state; commit() writes the changed outputs once.
+    /// Without it a relay the logic switches off and a later safety rule switches back on in the same
+    /// cycle (frost protection over manual OFF) would really open for a moment — the boiler may take
+    /// that as a dropped heat demand.
+    void beginBatch() { _batch = true; }
+    void commit();
+
     /// Bitmask of all relay states (bit 0 = ch0, etc.). 1 = ON.
     uint16_t getAllStates() const;
 
 private:
     uint8_t _pins[RELAY_COUNT] = {};
     bool _states[RELAY_COUNT] = {};
+    bool _written[RELAY_COUNT] = {};   // what the output pins actually carry
+    bool _batch = false;
     bool _invert = true;
+    void write(uint8_t ch, bool on);
 };

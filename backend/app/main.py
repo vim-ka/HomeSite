@@ -2,13 +2,14 @@ from contextlib import asynccontextmanager
 from collections.abc import AsyncGenerator
 
 import httpx
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 from sqlalchemy import func, select, text
 
+from app.api.deps import get_current_user
 from app.api.router import api_v1_router
 from app.core.config import get_settings
 from app.core.logging import get_logger, setup_logging
@@ -101,6 +102,17 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         log_max_bytes=settings.log_max_bytes,
         log_backup_count=settings.log_backup_count,
     )
+    weak = settings.insecure_secrets()
+    if weak and settings.is_production:
+        # A known JWT secret lets anyone forge an admin token; a known internal
+        # secret lets anyone on the LAN command the boiler through the gateway.
+        raise RuntimeError(
+            f"Refusing to start in production with placeholder secrets: {', '.join(weak)}. "
+            "Generate them with `openssl rand -hex 32` in /opt/homesite/.env"
+        )
+    if weak:
+        logger.warning("insecure_default_secrets", secrets=weak)
+
     await ensure_tables_exist()
     await ensure_seed_data()
     await ensure_config_kv_populated()
@@ -114,8 +126,14 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     app.state.health_monitor = monitor
     monitor_task = asyncio.create_task(monitor.run())
 
+    # Executes the backup schedule configured in Settings (backup_* keys)
+    from app.services.backup_service import run_backup_scheduler
+
+    backup_task = asyncio.create_task(run_backup_scheduler(AsyncSessionLocal))
+
     yield
 
+    backup_task.cancel()
     monitor_task.cancel()
     await engine.dispose()
     logger.info("application_shutdown")
@@ -173,9 +191,11 @@ def create_app() -> FastAPI:
                 await session.execute(text("SELECT 1"))
             return {"status": "ready", "database": "ok"}
         except Exception as e:
+            # Unauthenticated endpoint: log the details, don't leak them
+            logger.error("readiness_db_error", error=str(e))
             return JSONResponse(
                 status_code=503,
-                content={"status": "not_ready", "database": str(e)},
+                content={"status": "not_ready", "database": "error"},
             )
 
     # Aggregated status — reads from HealthMonitor cache (no extra DB/HTTP calls)
@@ -189,6 +209,8 @@ def create_app() -> FastAPI:
             "gateway": s.gateway,
             "mqtt": s.mqtt,
             "poll_seconds": s.poll_seconds,
+            # Lets the UI flag a monitor that stopped updating
+            "updated_at": s.updated_at.isoformat(),
         }
 
     # Sensor health — reads from HealthMonitor cache
@@ -201,8 +223,9 @@ def create_app() -> FastAPI:
             "pending": s.sensor_pending,
         }
 
-    # Device health — live query (pending/unsynced change rapidly, can't use cache)
-    @app.get("/health/devices", tags=["health"])
+    # Device health — live query (pending/unsynced change rapidly, can't use cache).
+    # Requires login: exposes device names, relay states, pressures.
+    @app.get("/health/devices", tags=["health"], dependencies=[Depends(get_current_user)])
     async def health_devices(request: Request):
         from datetime import UTC, datetime
 
@@ -224,8 +247,10 @@ def create_app() -> FastAPI:
                 select(ConfigKV.value).where(ConfigKV.key == "heartbeat_timeout_seconds")
             )
             kv_val = kv_result.scalar_one_or_none()
-            if kv_val:
-                hb_timeout = int(kv_val)
+            try:
+                hb_timeout = int(kv_val) if kv_val else hb_timeout
+            except ValueError:
+                logger.warning("invalid_heartbeat_timeout", value=kv_val)
 
         # Fetch gateway health (heartbeats + command queues)
         pending_commands = 0
@@ -284,7 +309,7 @@ def create_app() -> FastAPI:
         }
 
     # Alert count for frontend bell indicator
-    @app.get("/health/alerts", tags=["health"])
+    @app.get("/health/alerts", tags=["health"], dependencies=[Depends(get_current_user)])
     async def health_alerts(since: str | None = None):
         from datetime import UTC, datetime, timedelta
         from app.models.event import EventLog

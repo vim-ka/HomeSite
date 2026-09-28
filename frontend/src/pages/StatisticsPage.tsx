@@ -24,7 +24,7 @@ import {
 import api from "@/api/client";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import { useDashboard } from "@/hooks/useDashboard";
-import { fmt } from "@/lib/utils";
+import { parseServerTs, fmt } from "@/lib/utils";
 import CollapsibleSection from "@/components/CollapsibleSection";
 
 /* ------------------------------------------------------------------ */
@@ -67,7 +67,7 @@ function periodDates(period: Period) {
 
 function formatLabel(label: string, period: Period): string {
   try {
-    const d = new Date(label);
+    const d = parseServerTs(label);
     if (period === "24h") {
       return d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
     }

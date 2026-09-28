@@ -3,6 +3,8 @@ from typing import Literal
 
 from pydantic import BaseModel
 
+from app.schemas.types import UTCDateTime
+
 
 class SettingUpdateRequest(BaseModel):
     """Typed replacement for v1's SettingUpdateModel with extra='allow'."""
@@ -62,7 +64,7 @@ class DatabaseUpdateRequest(BaseModel):
 class BackupResponse(BaseModel):
     filename: str
     size_bytes: int
-    created_at: datetime
+    created_at: UTCDateTime
 
 
 class BackupScheduleResponse(BaseModel):

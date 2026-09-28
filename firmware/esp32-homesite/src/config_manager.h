@@ -76,7 +76,14 @@ public:
 
     // --- Boiler settings (persisted from MQTT commands, survive reboot) ---
     String getSetting(const String& key, const String& defaultVal = "");
-    void setSetting(const String& key, const String& value);
+    /// Returns false if the value could not be persisted
+    bool setSetting(const String& key, const String& value);
+
+    // Small persistent flags in the settings namespace (key must be <= 15 chars)
+    bool getFlag(const char* nvsKey);
+    void setFlag(const char* nvsKey, bool value);
+
+    static String settingNvsKey(const String& key);
 
 private:
     Preferences _prefs;

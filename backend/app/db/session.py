@@ -25,6 +25,9 @@ if settings.is_sqlite:
         cursor = dbapi_conn.cursor()
         cursor.execute("PRAGMA journal_mode=WAL")
         cursor.execute("PRAGMA busy_timeout=5000")
+        # SQLite ignores FOREIGN KEY / ON DELETE CASCADE unless enabled per
+        # connection — keep behaviour identical to PostgreSQL
+        cursor.execute("PRAGMA foreign_keys=ON")
         cursor.close()
 
 AsyncSessionLocal = async_sessionmaker(

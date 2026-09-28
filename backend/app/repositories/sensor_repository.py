@@ -1,7 +1,7 @@
 from collections import defaultdict
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import Float, case, cast, select
+from sqlalchemy import Float, case, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.config import ConfigKV
@@ -18,6 +18,23 @@ from app.models.sensor import (
 )
 
 DEFAULT_STALE_MINUTES = 5
+
+# Legacy location of the street sensor (seed data) — used when
+# config_kv "pza_outdoor_sensor" does not name the outdoor sensor explicitly
+LEGACY_OUTDOOR_PLACE_ID = 7
+CLIMATE_SYSTEM_ID = 3
+TEMPERATURE = 1
+PRESSURE = 2
+
+
+def _to_float(raw: str | None, default: float | None = None) -> float | None:
+    """config_kv values are free text — never let one bad value 500 the dashboard."""
+    if raw is None or raw == "":
+        return default
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
+        return default
 
 
 class SensorRepository:
@@ -135,17 +152,7 @@ class SensorRepository:
             )
         ).scalars().all()
 
-        # Get outdoor temperature for PZA (system_id=3, place_id=7=Улица)
-        outdoor_temp: float | None = None
-        outdoor_stmt = (
-            select(SensorData.value)
-            .join(Sensor, SensorData.sensor_id == Sensor.id)
-            .join(MountPoint, Sensor.mount_point_id == MountPoint.id)
-            .where(MountPoint.place_id == 7, MountPoint.system_id == 3, SensorData.datatype_id == 1)
-        )
-        outdoor_row = (await self.db.execute(outdoor_stmt)).scalar_one_or_none()
-        if outdoor_row is not None:
-            outdoor_temp = float(outdoor_row)
+        outdoor_temp = await self.get_outdoor_temp()
 
         # PZA config mapping: prefix → (wbm_key, curve_key, curve_type)
         pza_config = {
@@ -167,8 +174,7 @@ class SensorRepository:
             temp_ret = await self._get_mount_point_value(c.return_mount_point_id, 1)
             pressure = await self._get_mount_point_value(c.supply_mount_point_id, 2)
 
-            temp_set_raw = await self._get_config_value(c.config_temp_key)
-            temp_set = float(temp_set_raw) if temp_set_raw else None
+            temp_set = _to_float(await self._get_config_value(c.config_temp_key))
             pump = await self._get_config_value(c.config_pump_key)
 
             # Check PZA mode and override temp_set if enabled
@@ -180,8 +186,7 @@ class SensorRepository:
                 wbm = await self._get_config_value(wbm_key)
                 if wbm == "1":
                     pza_mode = True
-                    curve_str = await self._get_config_value(curve_key)
-                    pza_curve = int(curve_str) if curve_str else 3
+                    pza_curve = int(_to_float(await self._get_config_value(curve_key), 3))
                     pza_target = get_pza_target(curve_type, pza_curve, outdoor_temp)
                     if pza_target is not None:
                         temp_set = pza_target
@@ -235,13 +240,11 @@ class SensorRepository:
             if await self._get_config_value(pump_key) != "1":
                 return None
             if await self._get_config_value(wbm_key) == "1" and outdoor_temp is not None:
-                curve_str = await self._get_config_value(curve_key)
-                curve_idx = int(curve_str) if curve_str else 3
+                curve_idx = int(_to_float(await self._get_config_value(curve_key), 3))
                 pza = get_pza_target(curve_type, curve_idx, outdoor_temp)
                 if pza is not None:
                     return pza
-            raw = await self._get_config_value(temp_key)
-            return float(raw) if raw else default_temp
+            return _to_float(await self._get_config_value(temp_key), default_temp)
 
         target = 0.0
 
@@ -265,18 +268,15 @@ class SensorRepository:
             or await self._get_config_value("watersupply_ihb_pump") == "1"
         )
         if ihb_active:
-            ihb_raw = await self._get_config_value("watersupply_ihb_temp")
-            ihb = float(ihb_raw) if ihb_raw else 45.0
+            ihb = _to_float(await self._get_config_value("watersupply_ihb_temp"), 45.0)
             if ihb > target:
                 target = ihb
 
         # Fallback when no circuits active.
         if target <= 0:
-            fallback_raw = await self._get_config_value("heating_boiler_temp")
-            target = float(fallback_raw) if fallback_raw else 50.0
+            target = _to_float(await self._get_config_value("heating_boiler_temp"), 50.0)
 
-        max_raw = await self._get_config_value("heating_boiler_max_temp")
-        max_temp = float(max_raw) if max_raw else 85.0
+        max_temp = _to_float(await self._get_config_value("heating_boiler_max_temp"), 85.0)
         if target > max_temp:
             target = max_temp
 
@@ -299,18 +299,26 @@ class SensorRepository:
         )
         rows = (await self.db.execute(stmt)).all()
 
-        ihb_temp = await self._get_config_value("watersupply_ihb_temp")
+        ihb_temp = _to_float(await self._get_config_value("watersupply_ihb_temp"))
         cold_pump = await self._get_config_value("watersupply_pump")
         hot_pump = await self._get_config_value("watersupply_pump_hot")
 
+        # IHB (hot water tank) mount point comes from its heating circuit, not a fixed id
+        ihb_mp_id = (await self.db.execute(
+            select(HeatingCircuit.supply_mount_point_id)
+            .where(HeatingCircuit.config_prefix == "watersupply_ihb")
+            .limit(1)
+        )).scalar_one_or_none()
+
         results = []
         for row in rows:
+            is_ihb = ihb_mp_id is not None and row.id == ihb_mp_id
             results.append({
                 "type": row.type,
-                "tempSet": float(ihb_temp) if row.id == 10 and ihb_temp else None,
+                "tempSet": ihb_temp if is_ihb else None,
                 "tempFact": row.tempFact,
                 "pressure": None,
-                "Pump": hot_pump if row.id == 10 else cold_pump,
+                "Pump": hot_pump if is_ihb else cold_pump,
             })
 
         return results
@@ -318,42 +326,55 @@ class SensorRepository:
     async def get_sensor_value(self, sensor_id: int, datatype_id: int) -> float | None:
         return await self._get_sensor_value(sensor_id, datatype_id)
 
-    async def get_history_for_stats(
+    async def get_outdoor_sensor_id(self) -> int | None:
+        """Sensor used as outdoor temperature (config_kv pza_outdoor_sensor, else legacy place)."""
+        name = await self._get_config_value("pza_outdoor_sensor")
+        if name:
+            return (await self.db.execute(
+                select(Sensor.id).where(Sensor.name == name)
+            )).scalar_one_or_none()
+        return (await self.db.execute(
+            select(MountPoint.temperature_sensor_id)
+            .where(
+                MountPoint.place_id == LEGACY_OUTDOOR_PLACE_ID,
+                MountPoint.system_id == CLIMATE_SYSTEM_ID,
+                MountPoint.temperature_sensor_id.is_not(None),
+            )
+            .order_by(MountPoint.id)
+            .limit(1)
+        )).scalar_one_or_none()
+
+    async def get_outdoor_temp(self) -> float | None:
+        """Fresh outdoor temperature or None (stale data must not drive PZA targets)."""
+        sensor_id = await self.get_outdoor_sensor_id()
+        return await self._get_sensor_value(sensor_id, TEMPERATURE)
+
+    async def get_minute_averages(
         self, sensor_ids: list[int], datatype_id: int, since: datetime
     ) -> list[dict]:
-        """Get sampled history rows for 24h stats.
+        """Per-sensor per-minute averages since ``since``, aggregated in SQL.
 
-        Takes every Nth row to keep total under ~5000 rows for performance.
+        Returns rows {sensor_id, bucket: "YYYY-MM-DD HH:MM", value}. Replaces the
+        old ``id % N`` sampling, which aliased with the fixed write order of the
+        sensors and could drop whole sensors from the sample.
         """
-        # Count total rows first
-        from sqlalchemy import func as sa_func
-
-        count_stmt = (
-            select(sa_func.count())
-            .select_from(SensorDataHistory)
-            .where(
-                SensorDataHistory.datatype_id == datatype_id,
-                SensorDataHistory.timestamp >= since,
-                SensorDataHistory.sensor_id.in_(sensor_ids),
+        if not sensor_ids:
+            return []
+        if self.db.bind.dialect.name == "postgresql":
+            bucket = func.to_char(
+                func.date_trunc("minute", SensorDataHistory.timestamp), "YYYY-MM-DD HH24:MI"
             )
-        )
-        total = (await self.db.execute(count_stmt)).scalar() or 0
-
-        # Sample: keep ~3000 rows max
-        sample_every = max(1, total // 3000)
-
+        else:
+            bucket = func.strftime("%Y-%m-%d %H:%M", SensorDataHistory.timestamp)
+        bucket = bucket.label("bucket")
         stmt = (
-            select(
-                SensorDataHistory.sensor_id,
-                SensorDataHistory.timestamp,
-                SensorDataHistory.value,
-            )
+            select(SensorDataHistory.sensor_id, bucket, func.avg(SensorDataHistory.value).label("value"))
             .where(
                 SensorDataHistory.datatype_id == datatype_id,
                 SensorDataHistory.timestamp >= since,
                 SensorDataHistory.sensor_id.in_(sensor_ids),
-                SensorDataHistory.id % sample_every == 0,
             )
+            .group_by(SensorDataHistory.sensor_id, bucket)
         )
         result = await self.db.execute(stmt)
         return [dict(row._mapping) for row in result]
@@ -366,7 +387,7 @@ class SensorRepository:
             SensorData.sensor_id == sensor_id,
             SensorData.datatype_id == datatype_id,
             SensorData.timestamp >= stale_threshold,
-        )
+        ).order_by(SensorData.timestamp.desc()).limit(1)
         result = await self.db.execute(stmt)
         row = result.scalar_one_or_none()
         return float(row) if row is not None else None

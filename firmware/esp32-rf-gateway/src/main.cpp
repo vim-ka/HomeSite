@@ -49,7 +49,10 @@ void publishRawDebug(const String& msg);
 // rtl_433_ESP вызывает callback из main loop, передавая JSON-строку
 // вида: {"model":"LaCrosse-TX141THBv2","id":42,"channel":1,
 //        "battery_ok":1,"temperature_C":22.5,"humidity":48,"rssi":-72}
-void rtlCallback(char* message, void* /*ctx*/) {
+// Buffer the library writes decoded JSON into before calling rtlCallback
+static char rtlMessageBuffer[1024];
+
+void rtlCallback(char* message) {
     JsonDocument doc;
     if (deserializeJson(doc, message)) {
         framesUnknown++;
@@ -135,6 +138,18 @@ void sendAck() {
     ackDoc.clear();
 }
 
+// Ack first, then restart: otherwise the gateway retries the command
+// (restarting the device again) and finally marks it NOT SYNCED.
+void restartAfterAck() {
+    sendAck();
+    unsigned long start = millis();
+    while (millis() - start < 500) {
+        mqtt.loop();
+        delay(10);
+    }
+    ESP.restart();
+}
+
 void publishScanResult() {
     JsonDocument doc;
     JsonArray arr = doc.to<JsonArray>();
@@ -176,8 +191,8 @@ void onCommand(const String& key, const String& value) {
     Serial.print("CMD: "); Serial.print(key); Serial.print(" = "); Serial.println(value);
     ackDoc[key] = "ok";
 
-    if (key == "reset_config") { config.clear(); ESP.restart(); return; }
-    if (key == "restart")      { ESP.restart(); return; }
+    if (key == "reset_config") { config.clear(); restartAfterAck(); return; }
+    if (key == "restart")      { restartAfterAck(); return; }
 
     if (key == "node_name") {
         config.setNodeName(value);
@@ -358,15 +373,15 @@ void setup() {
         return;
     }
 
+    // Router may boot slower than us after a power cut: never drop into the
+    // open AP portal here — keep retrying WiFi from loop()
     if (!connectWiFi()) {
-        Serial.println("WiFi failed — starting AP portal");
-        portal.start(config);
-        return;
+        Serial.println("WiFi not available — will keep retrying");
     }
 
     // rtl_433_ESP: пин CS/GDO0/GDO2 заданы через build_flags (см. platformio.ini)
     rf.initReceiver(RF_MODULE_GDO0, RF_MODULE_FREQUENCY);
-    rf.setCallback(rtlCallback, nullptr, 0);
+    rf.setCallback(rtlCallback, rtlMessageBuffer, sizeof(rtlMessageBuffer));
     rf.enableReceiver();
     Serial.printf("rtl_433_ESP started @ %.2f MHz\n", (float)RF_MODULE_FREQUENCY);
 

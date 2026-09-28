@@ -1,5 +1,6 @@
 import csv
 import io
+from datetime import UTC
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
@@ -72,7 +73,8 @@ async def export_csv(
     writer = csv.writer(output)
     writer.writerow(["id", "timestamp", "level", "source", "method", "path", "user", "message"])
     for event, username in rows:
-        writer.writerow([event.id, event.timestamp, event.level, event.source,
+        ts = event.timestamp.replace(tzinfo=UTC) if event.timestamp.tzinfo is None else event.timestamp
+        writer.writerow([event.id, ts.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"), event.level, event.source,
                          event.method, event.path, username or "", event.message])
 
     output.seek(0)

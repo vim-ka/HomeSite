@@ -50,3 +50,10 @@ backend/app/db/migrations/versions/__pycache__/
 .coverage
 htmlcov/
 .claude/
+*.db-shm
+*.db-wal
+tools/.emulator_state.json
+tools/.sensor_emulator_state.json
+.pytest_cache/
+tools/.dev_stack/
+.superpowers/

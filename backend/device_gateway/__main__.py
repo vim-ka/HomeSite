@@ -13,6 +13,7 @@ from device_gateway.config import get_gateway_settings
 from device_gateway.dispatcher import AsyncCommandDispatcher, MAX_RETRIES
 from device_gateway.handler import MQTTHandler
 from device_gateway.publisher import CommandPublisher
+from device_gateway.sync import resync_device
 
 
 def setup_logging(level: str) -> None:
@@ -31,6 +32,14 @@ async def main() -> None:
     settings = get_gateway_settings()
     setup_logging(settings.log_level)
     logger = structlog.get_logger("device_gateway")
+
+    if settings.secret_is_placeholder:
+        if settings.is_production:
+            raise SystemExit(
+                "Refusing to start in production with placeholder INTERNAL_API_SECRET "
+                "(anyone who can reach the gateway API could command devices)"
+            )
+        logger.warning("insecure_default_internal_secret")
 
     # Override MQTT settings from config_kv (single source of truth)
     from device_gateway.config_db import load_mqtt_from_db
@@ -53,11 +62,17 @@ async def main() -> None:
     session_factory = async_sessionmaker(engine, expire_on_commit=False)
 
     # MQTT publisher + dispatcher
-    publisher = CommandPublisher(settings)
+    publisher = CommandPublisher()
     dispatcher = AsyncCommandDispatcher(publisher, debounce_seconds=settings.debounce_seconds)
 
-    # MQTT handler (subscriber) — receives sensor data, acks, heartbeats
-    handler = MQTTHandler(settings, session_factory, dispatcher=dispatcher)
+    async def on_device_boot(device_name: str) -> None:
+        # Commands are not retained — re-send the device's desired state from config_kv
+        await resync_device(dispatcher, settings.database_url, device_name)
+
+    # MQTT handler (subscriber) — receives sensor data, acks, heartbeats.
+    # The publisher sends through the handler's connection (shared reconnect).
+    handler = MQTTHandler(settings, session_factory, dispatcher=dispatcher, on_device_boot=on_device_boot)
+    publisher.attach(handler)
 
     # Internal API
     api_app = create_gateway_api(
@@ -71,7 +86,7 @@ async def main() -> None:
     # Run MQTT handler and API server concurrently
     api_config = uvicorn.Config(
         api_app,
-        host="0.0.0.0",
+        host=settings.gateway_api_host,
         port=settings.gateway_api_port,
         log_level=settings.log_level.lower(),
     )
@@ -86,8 +101,8 @@ async def main() -> None:
 
     async def watchdog() -> None:
         """Check for unacknowledged commands and stale heartbeats."""
-        from datetime import UTC, datetime, timedelta
-        from device_gateway.config_db import load_mqtt_from_db
+        from datetime import UTC, datetime
+        from device_gateway.config_db import load_device_prefixes, load_mqtt_from_db
 
         await asyncio.sleep(10)  # Initial delay
         while True:
@@ -96,9 +111,12 @@ async def main() -> None:
                 db_kv = await load_mqtt_from_db(settings.database_url)
                 ack_timeout = int(db_kv.get("ack_timeout_seconds", "30"))
                 hb_timeout = int(db_kv.get("heartbeat_timeout_seconds", "60"))
+                outdoor_sensor = db_kv.get("pza_outdoor_sensor", "").strip()
+                outdoor_device = db_kv.get("pza_outdoor_device", "").strip()
+                handler.outdoor_forward = (
+                    (outdoor_sensor, outdoor_device) if outdoor_sensor and outdoor_device else None
+                )
 
-                # Update dispatcher ack timeout
-                from device_gateway.dispatcher import ACK_TIMEOUT_SECONDS
                 dispatcher._ack_timeout = ack_timeout
 
                 events = []
@@ -109,18 +127,13 @@ async def main() -> None:
                     events.append({
                         "level": "ERROR",
                         "source": "gateway_watchdog",
-                        "message": f"Command '{key}' to '{device_id}' failed after {MAX_RETRIES} retries — NOT SYNCED",
+                        "message": f"Команда «{key}» устройству «{device_id}» не подтверждена после "
+                                   f"{MAX_RETRIES} повторов — настройка не синхронизирована",
                     })
 
-                # Check heartbeat timeouts
-                now = datetime.now(UTC)
-                heartbeat_timeout = timedelta(seconds=hb_timeout)
-                for device_name, hb_record in list(handler.heartbeats.items()):
-                    if now - hb_record["timestamp"] > heartbeat_timeout:
-                        msg = f"Device '{device_name}' heartbeat lost"
-                        logger.warning("heartbeat_lost", device=device_name)
-                        events.append({"level": "ERROR", "source": "gateway_watchdog", "message": msg})
-                        del handler.heartbeats[device_name]
+                # Heartbeat timeouts; command devices (the controller) are the backend's no-link alarm
+                command_devices = {name for _prefix, name in await load_device_prefixes(settings.database_url)}
+                events.extend(handler.check_heartbeats(datetime.now(UTC), hb_timeout, command_devices))
 
                 # Write events to DB
                 if events:
@@ -131,12 +144,11 @@ async def main() -> None:
                         await session.commit()
 
             except Exception as e:
-                logger.error("watchdog_error", error=str(e))
+                logger.exception("watchdog_error", error=str(e))
 
             await asyncio.sleep(15)
 
     try:
-        await publisher.connect()
         await asyncio.gather(
             handler.run(),
             api_server.serve(),
@@ -146,7 +158,7 @@ async def main() -> None:
         logger.info("gateway_shutdown_requested")
     finally:
         await dispatcher.shutdown()
-        await publisher.disconnect()
+        await handler.close()
         await engine.dispose()
         logger.info("gateway_stopped")
 

@@ -1,7 +1,8 @@
-from sqlalchemy import select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.user import User
+from app.models.event import EventLog
+from app.models.user import User, UserRole
 
 
 class UserRepository:
@@ -38,6 +39,11 @@ class UserRepository:
         user = await self.get_by_id(user_id)
         if user is None:
             return False
+        # Keep the audit trail but detach it: event_logs.user_id → NULL.
+        # (Orphaned ids break FK checks and the PostgreSQL migration.)
+        await self.db.execute(
+            update(EventLog).where(EventLog.user_id == user_id).values(user_id=None)
+        )
         await self.db.delete(user)
         await self.db.commit()
         return True
@@ -53,3 +59,11 @@ class UserRepository:
     async def list_all(self) -> list[User]:
         result = await self.db.execute(select(User).order_by(User.id))
         return list(result.scalars().all())
+
+    async def count_active_admins(self) -> int:
+        result = await self.db.execute(
+            select(func.count()).select_from(User).where(
+                User.role == UserRole.ADMIN.value, User.is_active.is_(True)
+            )
+        )
+        return result.scalar() or 0

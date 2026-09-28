@@ -1,5 +1,6 @@
 """Internal FastAPI for DeviceGateway — accepts commands from backend, exposes health."""
 
+import hmac
 from typing import Any
 
 from fastapi import Depends, FastAPI, Header, HTTPException
@@ -7,6 +8,7 @@ from pydantic import BaseModel
 
 from device_gateway.config import GatewaySettings, get_gateway_settings
 from device_gateway.dispatcher import AsyncCommandDispatcher
+from device_gateway.publisher import PublishError
 
 import structlog
 
@@ -40,7 +42,7 @@ def create_gateway_api(
     app = FastAPI(title="DeviceGateway Internal API", docs_url=None, redoc_url=None)
 
     def verify_secret(x_internal_secret: str = Header()) -> None:
-        if x_internal_secret != _settings.internal_api_secret:
+        if not hmac.compare_digest(x_internal_secret.encode(), _settings.internal_api_secret.encode()):
             raise HTTPException(status_code=403, detail="Invalid internal secret")
 
     @app.post("/commands")
@@ -59,6 +61,15 @@ def create_gateway_api(
         )
         return {"queued": True, "device_id": payload.device_id}
 
+    async def publish_now(device_id: str, params: dict[str, str]) -> None:
+        """Bypass debounce for one-shot commands; surface broker problems as 503."""
+        if publisher is None:
+            raise HTTPException(status_code=503, detail="publisher not available")
+        try:
+            await publisher.publish_grouped(device_id, params)
+        except PublishError as e:
+            raise HTTPException(status_code=503, detail=f"MQTT publish failed: {e}") from e
+
     @app.post("/settings")
     async def receive_settings(
         payload: SettingsRequest,
@@ -66,29 +77,38 @@ def create_gateway_api(
     ) -> dict:
         """Accept settings update. Maps config_key → device via prefix from heating_circuits."""
         from device_gateway.config_db import load_device_prefixes
+        from device_gateway.sync import route_key
 
         prefixes = await load_device_prefixes(_settings.database_url)
         dispatched = 0
+        unrouted: list[str] = []
 
         for config_key, value in payload.settings.items():
-            for prefix, mqtt_device in prefixes:
-                if config_key.startswith(prefix + "_") or config_key == prefix:
-                    await dispatcher.add_param(mqtt_device, config_key, value)
-                    dispatched += 1
-                    break
+            mqtt_device = route_key(config_key, prefixes)
+            if mqtt_device is None:
+                unrouted.append(config_key)
+                continue
+            await dispatcher.add_param(mqtt_device, config_key, value)
+            dispatched += 1
 
         logger.info(
             "settings_dispatched",
             total_keys=len(payload.settings),
             dispatched=dispatched,
+            unrouted=unrouted,
         )
 
-        return {"status": "ok", "dispatched": dispatched}
+        return {
+            "status": "ok",
+            "dispatched": dispatched,
+            "unrouted": unrouted,
+            "mqtt_connected": mqtt_connected_fn(),
+        }
 
     @app.get("/health")
     async def health() -> dict:
         """Health check — reports MQTT status, heartbeats, and pending commands."""
-        connected = mqtt_connected_fn()
+        connected = mqtt_connected_fn() and (publisher is None or publisher.is_connected)
         heartbeats = {}
         if handler:
             heartbeats = {
@@ -106,6 +126,8 @@ def create_gateway_api(
             "queued_commands": dispatcher.queued_count,
             "pending_commands": dispatcher.awaiting_ack_count,
             "unsynced_commands": dispatcher.unsynced_count,
+            "sync": dispatcher.sync_status(),
+            "last_publish_error": dispatcher.last_publish_error,
         }
 
     @app.post("/retry-unsynced")
@@ -142,10 +164,9 @@ def create_gateway_api(
 
         device_id = payload.device_id
 
-        # Send scan command directly (bypass debounce)
-        if publisher is None:
-            raise HTTPException(status_code=503, detail="publisher not available")
-        await publisher.publish_grouped(device_id, {"scan_sensors": "1"})
+        # Register the waiter first, then send the command directly (bypass debounce)
+        handler.begin_scan(device_id)
+        await publish_now(device_id, {"scan_sensors": "1"})
 
         # Wait for response on home/devices/{device_id}/sensors
         result = await handler.wait_for_scan(device_id, timeout=10.0)
@@ -165,9 +186,7 @@ def create_gateway_api(
         if not address or not name:
             raise HTTPException(status_code=400, detail="address and name required")
 
-        if publisher is None:
-            raise HTTPException(status_code=503, detail="publisher not available")
-        await publisher.publish_grouped(payload.device_id, {"sensor_assign": f"{address}:{name}"})
+        await publish_now(payload.device_id, {"sensor_assign": f"{address}:{name}"})
         return {"status": "ok"}
 
     @app.post("/sensor-remove")
@@ -180,9 +199,7 @@ def create_gateway_api(
         if not address:
             raise HTTPException(status_code=400, detail="address required")
 
-        if publisher is None:
-            raise HTTPException(status_code=503, detail="publisher not available")
-        await publisher.publish_grouped(payload.device_id, {"sensor_remove": address})
+        await publish_now(payload.device_id, {"sensor_remove": address})
         return {"status": "ok"}
 
     @app.post("/sensor-offset")
@@ -204,9 +221,7 @@ def create_gateway_api(
                 detail="sensor_name, datatype_code, value required",
             )
 
-        if publisher is None:
-            raise HTTPException(status_code=503, detail="publisher not available")
-        await publisher.publish_grouped(
+        await publish_now(
             payload.device_id,
             {"sensor_offset": f"{sensor_name}:{datatype_code}:{value}"},
         )
@@ -235,16 +250,8 @@ def create_gateway_api(
         if db_mqtt.get("mqtt_topic_prefix"):
             new_settings.mqtt_topic_prefix = db_mqtt["mqtt_topic_prefix"]
 
+        # Publisher shares the handler's connection, so it follows the reconnect
         handler.reload_settings(new_settings)
-
-        # Reconnect publisher too
-        if publisher is not None:
-            try:
-                await publisher.disconnect()
-                publisher.settings = new_settings
-                await publisher.connect()
-            except Exception as e:
-                logger.warning("publisher_reconnect_error", error=str(e))
 
         return {"reloaded": True}
 

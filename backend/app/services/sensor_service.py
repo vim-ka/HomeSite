@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.heating import HeatingCircuit
 from app.models.sensor import MountPoint, Sensor
-from app.repositories.sensor_repository import SensorRepository
+from app.repositories.sensor_repository import CLIMATE_SYSTEM_ID, SensorRepository
 from app.schemas.sensor import (
     ClimateRoomResponse,
     DashboardResponse,
@@ -14,6 +14,10 @@ from app.schemas.sensor import (
     Stats24h,
     WaterSupplyStatus,
 )
+
+
+STATS_CACHE_TTL = timedelta(minutes=2)
+_stats_cache: tuple[datetime, Stats24h] | None = None
 
 
 class SensorService:
@@ -55,7 +59,7 @@ class SensorService:
             for w in water_raw
         ]
 
-        stats = await self._calc_24h_stats()
+        stats = await self._cached_24h_stats()
 
         return DashboardResponse(
             climate=climate,
@@ -63,6 +67,17 @@ class SensorService:
             water_supply=water_supply,
             stats=stats,
         )
+
+    async def _cached_24h_stats(self) -> Stats24h:
+        """24h stats change slowly; recomputing them on every dashboard load
+        (triggered by each WS sensor_update) was the heaviest query we ran."""
+        global _stats_cache
+        now = datetime.now(UTC)
+        if _stats_cache is not None and now - _stats_cache[0] < STATS_CACHE_TTL:
+            return _stats_cache[1]
+        stats = await self._calc_24h_stats()
+        _stats_cache = (now, stats)
+        return stats
 
     async def _calc_24h_stats(self) -> Stats24h:
         """Compute 24h heating operation stats.
@@ -103,58 +118,51 @@ class SensorService:
             if ret_id is not None:
                 all_sensor_ids.add(ret_id)
 
-        # Climate sensors: system_id=3, exclude street (place_id=7)
+        # Climate sensors (system 3) except the outdoor one
+        outdoor_id = await self.sensor_repo.get_outdoor_sensor_id()
         climate_stmt = (
             select(Sensor.id)
             .join(MountPoint, Sensor.mount_point_id == MountPoint.id)
-            .where(MountPoint.system_id == 3, MountPoint.place_id != 7)
+            .where(MountPoint.system_id == CLIMATE_SYSTEM_ID)
         )
         climate_result = await db.execute(climate_stmt)
-        climate_sensor_ids = [row[0] for row in climate_result]
+        climate_sensor_ids = [row[0] for row in climate_result if row[0] != outdoor_id]
         all_sensor_ids.update(climate_sensor_ids)
 
         if not all_sensor_ids:
             return Stats24h()
 
-        # Fetch all history for last 24h (datatype_id=1 = Temperature)
+        # Per-minute averages for the last 24h, aggregated in SQL (datatype 1 = temperature)
         since = datetime.now(UTC) - timedelta(days=1)
-        rows = await self.sensor_repo.get_history_for_stats(
+        rows = await self.sensor_repo.get_minute_averages(
             list(all_sensor_ids), datatype_id=1, since=since
         )
 
         if not rows:
             return Stats24h()
 
-        # Group: timestamp (rounded to minute) → {sensor_id: value}
+        # bucket "YYYY-MM-DD HH:MM" → {sensor_id: value}
         ts_data: dict[str, dict[int, float]] = defaultdict(dict)
         for row in rows:
-            ts = row["timestamp"]
-            if isinstance(ts, datetime):
-                bucket = ts.strftime("%Y-%m-%d %H:%M")
-            else:
-                bucket = str(ts)[:16]  # "2026-03-15 18:35"
-            ts_data[bucket][row["sensor_id"]] = row["value"]
+            ts_data[row["bucket"]][row["sensor_id"]] = row["value"]
 
-        # Calculate time span
-        timestamps_sorted = sorted(ts_data.keys())
-        if len(timestamps_sorted) >= 2:
-            span_hours = len(timestamps_sorted) / 60.0
-        else:
-            span_hours = 24.0
-        if span_hours <= 0:
-            span_hours = 24.0
+        # Hours actually covered by data (first..last minute), capped at 24h
+        buckets = sorted(ts_data)
+        first = datetime.strptime(buckets[0], "%Y-%m-%d %H:%M")
+        last = datetime.strptime(buckets[-1], "%Y-%m-%d %H:%M")
+        span_hours = min(24.0, (last - first).total_seconds() / 3600 + 1 / 60)
 
-        # Map circuit_name -> stat key
+        # Stat key by circuit role (config_prefix), not by display name
         stat_key_map = {
-            "Котёл": "whk24",
-            "БКН": "whb24",
-            "Радиаторы": "whr24",
-            "Тёплый пол": "whf24",
+            "heating_boiler": "whk24",
+            "watersupply_ihb": "whb24",
+            "heating_radiator": "whr24",
+            "heating_floorheating": "whf24",
         }
 
         result_dict: dict[str, float] = {}
         for c in circuits:
-            key = stat_key_map.get(c.circuit_name)
+            key = stat_key_map.get(c.config_prefix or "")
             sup_id, ret_id = circuit_sensors.get(c.id, (None, None))
             if not key or sup_id is None or ret_id is None:
                 continue

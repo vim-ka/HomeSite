@@ -27,7 +27,10 @@ export default function HeatingScreen() {
   const boilerPower = s.heating_boiler_power === "1";
   const radPZA = s.heating_radiator_wbm === "1";
   const floorPZA = s.heating_floorheating_wbm === "1";
-  const schedEnabled = s.heating_schedule_enabled === "1";
+  // Night schedule is stored per circuit; like the web UI, edit both together
+  const schedEnabled = s.heating_radiator_schedule_enabled === "1";
+  const schedSet = (suffix: string, value: string) =>
+    update({ [`heating_radiator_${suffix}`]: value, [`heating_floorheating_${suffix}`]: value });
   const autofillEnabled = s.heating_autofill_enabled === "1";
 
   if (isLoading) {
@@ -173,22 +176,22 @@ export default function HeatingScreen() {
           <Toggle
             label={t("heating.scheduleEnabled")}
             value={schedEnabled}
-            onValueChange={(v) => update("heating_schedule_enabled", v ? "1" : "0")}
+            onValueChange={(v) => schedSet("schedule_enabled", v ? "1" : "0")}
           />
           <TempSlider
             label={t("heating.scheduleDeltaRadiators")}
-            value={parseInt(s.heating_schedule_delta_radiators ?? "-10")}
+            value={parseInt(s.heating_radiator_schedule_delta ?? "-10")}
             min={-20}
             max={0}
-            onValueChange={(v) => update("heating_schedule_delta_radiators", String(v))}
+            onValueChange={(v) => update("heating_radiator_schedule_delta", String(v))}
             disabled={!schedEnabled}
           />
           <TempSlider
             label={t("heating.scheduleDeltaFloor")}
-            value={parseInt(s.heating_schedule_delta_floor ?? "-5")}
+            value={parseInt(s.heating_floorheating_schedule_delta ?? "-5")}
             min={-20}
             max={0}
-            onValueChange={(v) => update("heating_schedule_delta_floor", String(v))}
+            onValueChange={(v) => update("heating_floorheating_schedule_delta", String(v))}
             disabled={!schedEnabled}
           />
           {schedEnabled && (
@@ -196,7 +199,7 @@ export default function HeatingScreen() {
               <Text style={[styles.smallLabel, { color: colors.gray[600] }]}>{t("heating.scheduleDays")}</Text>
               <View style={styles.daysRow}>
                 {DAYS.map((d) => {
-                  const days = (s.heating_schedule_days ?? "1,2,3,4,5").split(",").filter(Boolean);
+                  const days = (s.heating_radiator_schedule_days ?? "1,2,3,4,5").split(",").filter(Boolean);
                   const active = days.includes(String(d));
                   return (
                     <TouchableOpacity
@@ -209,7 +212,7 @@ export default function HeatingScreen() {
                       onPress={() => {
                         const ds = new Set(days.map(Number));
                         if (ds.has(d)) ds.delete(d); else ds.add(d);
-                        update("heating_schedule_days", Array.from(ds).sort().join(","));
+                        schedSet("schedule_days", Array.from(ds).sort().join(","));
                       }}
                     >
                       <Text style={[{ fontSize: 11, color: colors.gray[600] }, active && { color: "#ffffff", fontWeight: "600" }]}>
@@ -220,7 +223,7 @@ export default function HeatingScreen() {
                 })}
               </View>
               <View style={styles.timeRow}>
-                <Text style={[styles.smallLabel, { color: colors.gray[600] }]}>{s.heating_schedule_start ?? "23:00"} — {s.heating_schedule_end ?? "06:00"}</Text>
+                <Text style={[styles.smallLabel, { color: colors.gray[600] }]}>{s.heating_radiator_schedule_start ?? "23:00"} — {s.heating_radiator_schedule_end ?? "06:00"}</Text>
               </View>
             </>
           )}
@@ -236,8 +239,8 @@ export default function HeatingScreen() {
           <TempSlider
             label={t("heating.pressureMin")}
             value={parseFloat(s.heating_pressure_min ?? "1.0")}
-            min={0.1}
-            max={3.0}
+            min={0.5}
+            max={2.0}
             step={0.1}
             unit=" бар"
             onValueChange={(v) => update("heating_pressure_min", v.toFixed(1))}
@@ -246,8 +249,8 @@ export default function HeatingScreen() {
           <TempSlider
             label={t("heating.pressureMax")}
             value={parseFloat(s.heating_pressure_max ?? "1.8")}
-            min={0.1}
-            max={3.0}
+            min={1.0}
+            max={2.8}
             step={0.1}
             unit=" бар"
             onValueChange={(v) => update("heating_pressure_max", v.toFixed(1))}

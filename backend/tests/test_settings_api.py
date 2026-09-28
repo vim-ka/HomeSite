@@ -155,3 +155,115 @@ async def test_chart_dynamic_empty(client, seeded_settings):
     data = response.json()
     assert "labels" in data
     assert "datasets" in data
+
+
+@pytest.mark.asyncio
+async def test_update_settings_out_of_range_rejected(client, seeded_settings):
+    token = await _get_token(client)
+    response = await client.put(
+        "/api/v1/settings",
+        json={"settings": {"heating_boiler_max_temp": "150"}},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 422
+    assert "heating_boiler_max_temp" in response.json()["detail"]["errors"]
+
+
+@pytest.mark.asyncio
+async def test_update_settings_garbage_and_unknown_rejected(client, seeded_settings):
+    token = await _get_token(client)
+    for payload in ({"heating_boiler_temp": "abc"}, {"no_such_key": "1"}, {"mqtt_pass": "x"}):
+        response = await client.put(
+            "/api/v1/settings",
+            json={"settings": payload},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert response.status_code == 422, payload
+
+
+@pytest.mark.asyncio
+async def test_update_settings_cross_field_pressure(client, seeded_settings):
+    token = await _get_token(client)
+    response = await client.put(
+        "/api/v1/settings",
+        json={"settings": {"heating_pressure_min": "1.8", "heating_pressure_max": "1.5"}},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_operator_cannot_change_safety_limits(client, seeded_settings, db_session):
+    db_session.add(User(
+        username="operator",
+        password_hash=get_password_hash("operator123"),
+        email="operator@test.com",
+        role=UserRole.OPERATOR.value,
+    ))
+    await db_session.commit()
+    token = await _get_token(client, "operator", "operator123")
+
+    forbidden = await client.put(
+        "/api/v1/settings",
+        json={"settings": {"heating_boiler_max_temp": "80"}},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert forbidden.status_code == 403
+
+    allowed = await client.put(
+        "/api/v1/settings",
+        json={"settings": {"heating_boiler_temp": "60"}},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert allowed.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_update_settings_reports_failed_delivery(client, seeded_settings):
+    """Gateway is not running in tests — the API must say so instead of pretending success."""
+    token = await _get_token(client)
+    response = await client.put(
+        "/api/v1/settings",
+        json={"settings": {"heating_boiler_temp": "56"}},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 200
+    assert response.json()["delivery"] == "failed"
+
+
+@pytest.mark.asyncio
+async def test_get_settings_hides_mqtt_password(client, seeded_settings):
+    token = await _get_token(client, "viewer", "viewer123")
+    response = await client.get(
+        "/api/v1/settings",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    keys = {s["key"] for s in response.json()}
+    assert "mqtt_pass" not in keys
+    assert "mqtt_host" in keys
+
+
+@pytest.mark.asyncio
+async def test_toggle_only_bool_settings(client, seeded_settings):
+    token = await _get_token(client)
+    response = await client.post(
+        "/api/v1/settings/toggle",
+        json={"id": "mqtt_host", "toggle": True},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 422
+
+
+def test_anti_legionella_temperature_must_be_reachable_by_the_boiler():
+    """The boiler's auto target is capped at max - 7: a higher disinfection temperature fails every time."""
+    from app.core.setting_rules import SettingsValidationError, validate_settings
+
+    current = {"heating_boiler_max_temp": "70", "watersupply_ihb_alm_mode": "1", "watersupply_alm_temp": "60"}
+    with pytest.raises(SettingsValidationError) as e:
+        validate_settings({"watersupply_alm_temp": "65"}, current, "admin")
+    assert "watersupply_alm_temp" in e.value.errors
+    with pytest.raises(SettingsValidationError):
+        validate_settings({"heating_boiler_max_temp": "65"}, current, "admin")
+    assert validate_settings({"watersupply_alm_temp": "63"}, current, "admin") == {"watersupply_alm_temp": "63"}
+    # an unrelated change is never blocked by an old combination
+    assert validate_settings({"heating_boiler_temp": "50"}, {**current, "watersupply_alm_temp": "75"}, "admin")

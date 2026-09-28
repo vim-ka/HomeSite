@@ -11,7 +11,10 @@ void MqttClient::begin(ConfigManager& config) {
     _mqttClient.setClient(_wifiClient);
     _applyServer(config.mqttHost(), config.mqttPort());
     _mqttClient.setCallback(_staticCallback);
-    _mqttClient.setBufferSize(1024);
+    // the heartbeat alone is ~800 bytes and grows with every flag — keep a margin
+    _mqttClient.setBufferSize(2048);
+    // connect() blocks the control loop; keep a dead broker from stalling it for long
+    _mqttClient.setSocketTimeout(3);
 }
 
 void MqttClient::setCommandCallback(CommandCallback cb) {
@@ -89,12 +92,19 @@ void MqttClient::publishGrouped(const String& sensorName, const std::vector<std:
 
 void MqttClient::publishRaw(const String& topic, const String& payload, bool retained) {
     if (!_mqttClient.connected()) return;
-    _mqttClient.publish(topic.c_str(), payload.c_str(), retained);
+    if (!_mqttClient.publish(topic.c_str(), payload.c_str(), retained)) {
+        // too big for the buffer or the socket failed — say so instead of losing it silently
+        Serial.print("MQTT: publish failed (");
+        Serial.print(payload.length());
+        Serial.print(" bytes) to ");
+        Serial.println(topic);
+    }
 }
 
 void MqttClient::publishReliable(const String& topic, const String& payload) {
     if (!_mqttClient.connected()) return;
-    // QoS 1 via beginPublish/endPublish for ack and scan results
+    // PubSubClient can only publish QoS 0 — this streams larger payloads
+    // (ack / scan results). Lost acks are covered by the gateway's retries.
     _mqttClient.beginPublish(topic.c_str(), payload.length(), false);
     _mqttClient.print(payload);
     _mqttClient.endPublish();

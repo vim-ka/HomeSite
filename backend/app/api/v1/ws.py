@@ -4,6 +4,7 @@ Clients connect via /api/v1/ws/sensors?token=<JWT> and receive broadcasts
 when DeviceGateway reports new sensor values.
 """
 
+import asyncio
 import json
 from typing import Any
 
@@ -39,19 +40,25 @@ class ConnectionManager:
         logger.info("ws_client_disconnected", total=len(self._connections))
 
     async def broadcast(self, data: dict[str, Any]) -> None:
-        """Send data to all connected clients. Removes stale connections."""
-        stale: list[WebSocket] = []
+        """Send data to all connected clients concurrently. Removes stale connections.
+
+        Each send is bounded by a timeout so one slow client (bad WiFi) can't
+        stall the others — or the gateway HTTP callback that triggered this.
+        """
         message = json.dumps(data)
+        targets = [ws for ws in self._connections if ws.client_state == WebSocketState.CONNECTED]
 
-        for ws in self._connections:
+        async def _send(ws: WebSocket) -> WebSocket | None:
             try:
-                if ws.client_state == WebSocketState.CONNECTED:
-                    await ws.send_text(message)
+                await asyncio.wait_for(ws.send_text(message), timeout=2.0)
+                return None
             except Exception:
-                stale.append(ws)
+                return ws
 
-        for ws in stale:
-            self.disconnect(ws)
+        results = await asyncio.gather(*(_send(ws) for ws in targets))
+        for ws in results:
+            if ws is not None:
+                self.disconnect(ws)
 
 
 # Singleton — shared across the app

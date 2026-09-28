@@ -41,7 +41,9 @@ class GatewaySettings(BaseSettings):
     # Database (same DB as backend — gateway writes sensor data directly)
     database_url: str = "sqlite+aiosqlite:///./sensors.db"
 
-    # Internal API
+    # Internal API — loopback only by default: it accepts device commands
+    # (override with GATEWAY_API_HOST=0.0.0.0 when backend runs on another host/container)
+    gateway_api_host: str = "127.0.0.1"
     gateway_api_port: int = 8001
     internal_api_secret: str = "CHANGE-ME-internal-secret"
 
@@ -53,6 +55,17 @@ class GatewaySettings(BaseSettings):
 
     # Logging
     log_level: str = "INFO"
+
+    # Application environment (shared .env with backend)
+    app_env: str = "dev"
+
+    @property
+    def secret_is_placeholder(self) -> bool:
+        return self.internal_api_secret.startswith("CHANGE-ME") or len(self.internal_api_secret) < 16
+
+    @property
+    def is_production(self) -> bool:
+        return self.app_env.lower() in ("prod", "production")
 
     @property
     def is_sqlite(self) -> bool:

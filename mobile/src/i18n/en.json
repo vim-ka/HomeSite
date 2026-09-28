@@ -220,7 +220,7 @@
     "size": "Size",
     "scheduleEnabled": "Schedule enabled",
     "scheduleInterval": "Interval",
-    "scheduleTime": "Time",
+    "scheduleTime": "Time (UTC)",
     "daily": "Daily",
     "weekly": "Weekly",
     "tokenExpireMinutes": "Access token (min)",

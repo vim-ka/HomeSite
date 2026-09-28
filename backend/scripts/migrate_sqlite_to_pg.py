@@ -42,6 +42,7 @@ COPY_ORDER: list[str] = [
     "schedule_details",
     "event_logs",
     "sensors",
+    "sensor_offsets",
     "sensor_type_datatype_link",
     "sensor_data",
     "sensor_data_history",
@@ -169,6 +170,29 @@ async def _truncate_all(dst: AsyncConnection, tables: list[str]) -> None:
     print(f"  truncated: {joined}")
 
 
+async def _find_orphans(src: AsyncConnection, selected: list[str]) -> list[str]:
+    """FK values pointing at missing parent rows.
+
+    SQLite did not enforce foreign keys before, so such rows can exist; the
+    PostgreSQL insert would fail half-way through on them.
+    """
+    problems: list[str] = []
+    for name in selected:
+        table = Base.metadata.tables[name]
+        for fk in table.foreign_keys:
+            child = fk.parent
+            parent = fk.column
+            stmt = (
+                select(func.count())
+                .select_from(table.outerjoin(parent.table, child == parent))
+                .where(child.is_not(None), parent.is_(None))
+            )
+            n = (await src.execute(stmt)).scalar_one()
+            if n:
+                problems.append(f"{name}.{child.name} → {parent.table.name}.{parent.name}: {n} row(s)")
+    return problems
+
+
 async def _dry_run(src: AsyncConnection, selected: list[str]) -> None:
     print("Row counts in source:")
     for name in selected:
@@ -204,6 +228,11 @@ async def migrate(
     unknown = set(selected) - set(Base.metadata.tables)
     if unknown:
         raise SystemExit(f"Unknown tables: {sorted(unknown)}")
+    if tables is None:
+        forgotten = set(Base.metadata.tables) - set(COPY_ORDER)
+        if forgotten:
+            # A new model table that nobody added here would silently not be copied
+            raise SystemExit(f"Tables missing from COPY_ORDER: {sorted(forgotten)}")
 
     if not target_url.startswith("postgresql"):
         raise SystemExit("--target must be a postgresql+asyncpg:// URL")
@@ -215,9 +244,19 @@ async def migrate(
 
     try:
         async with src_engine.connect() as src:
+            orphans = await _find_orphans(src, selected)
+            if orphans:
+                print("Orphaned foreign-key references in source:")
+                for line in orphans:
+                    print(f"  {line}")
             if dry_run:
                 await _dry_run(src, selected)
                 return
+            if orphans:
+                raise SystemExit(
+                    "\nFix the orphaned rows above (delete them or set the column to NULL) "
+                    "before migrating — PostgreSQL enforces foreign keys."
+                )
 
             dst_engine = create_async_engine(target_url)
             async with dst_engine.begin() as dst:

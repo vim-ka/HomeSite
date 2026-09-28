@@ -1,28 +1,31 @@
 from datetime import UTC, datetime, timedelta
 
 from app.repositories.chart_repository import ChartRepository
+from app.services.pza import get_pza_target
 
 
-# Static PZA curve data (default curve 3)
-PZA_RADIATORS = {
-    "labels": ["20", "15", "10", "5", "0", "-5", "-10", "-15", "-20", "-25", "-30", "-35"],
-    "datasets": [
-        {
-            "label": "Кривая ПЗА (радиаторы)",
-            "data": [20, 31, 38, 44, 48, 52, 56, 60, 64, 67, 69, 70],
-        }
-    ],
-}
+# PZA curve charts are generated from app.services.pza — the same curves the
+# firmware and the heating page use (the old hardcoded copy had drifted)
+PZA_CHART_OUTDOOR = list(range(20, -40, -5))  # 20, 15, ..., -35
+DEFAULT_PZA_CURVE = 3
+# Longest history a single chart request may cover
+MAX_CHART_DAYS = 3660
 
-PZA_FLOOR = {
-    "labels": ["20", "15", "10", "5", "0", "-5", "-10", "-15", "-20", "-25", "-30", "-35"],
-    "datasets": [
-        {
-            "label": "Кривая ПЗА (тёплый пол)",
-            "data": [20, 22, 24, 25.5, 27, 28.5, 30, 31.5, 33, 34, 35, 36],
-        }
-    ],
-}
+
+def _pza_chart(circuit_type: str, label: str) -> dict:
+    return {
+        "labels": [str(t) for t in PZA_CHART_OUTDOOR],
+        "datasets": [
+            {
+                "label": label,
+                "data": [get_pza_target(circuit_type, DEFAULT_PZA_CURVE, t) for t in PZA_CHART_OUTDOOR],
+            }
+        ],
+    }
+
+
+PZA_RADIATORS = _pza_chart("radiator", "Кривая ПЗА (радиаторы)")
+PZA_FLOOR = _pza_chart("floor", "Кривая ПЗА (тёплый пол)")
 
 # Mapping: chart param → (SensorDataType.id, system_id or None)
 CHART_CONFIG = {
@@ -62,6 +65,10 @@ class ChartService:
             end = datetime.now(UTC)
         if start is None:
             start = end - timedelta(days=default_days)
+        if end < start:
+            start, end = end, start
+        if end - start > timedelta(days=MAX_CHART_DAYS):
+            start = end - timedelta(days=MAX_CHART_DAYS)
 
         return await self.chart_repo.get_history(
             datatype_id=config["datatype_id"],

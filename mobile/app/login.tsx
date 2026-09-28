@@ -72,7 +72,7 @@ export default function LoginScreen() {
           style={[styles.input, { borderColor: colors.gray[200], backgroundColor: colors.gray[50], color: colors.gray[800] }]}
           value={url}
           onChangeText={setUrl}
-          placeholder="http://192.168.1.100:8000"
+          placeholder="https://homesite.local"
           placeholderTextColor={colors.gray[400]}
           autoCapitalize="none"
           keyboardType="url"

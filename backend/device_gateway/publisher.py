@@ -1,66 +1,72 @@
 """MQTT command publisher — sends grouped commands to devices."""
 
 import json
+from typing import Protocol
 
 import aiomqtt
-
-from device_gateway.config import GatewaySettings
 
 import structlog
 
 logger = structlog.get_logger(__name__)
 
 
+class PublishError(Exception):
+    """Command could not be handed to the broker (not connected / publish failed)."""
+
+
+class MqttConnectionSource(Protocol):
+    """Anything that owns the live MQTT connection (MQTTHandler)."""
+
+    @property
+    def active_client(self) -> aiomqtt.Client | None: ...
+
+    @property
+    def topic_prefix(self) -> str: ...
+
+
 class CommandPublisher:
     """Publishes grouped commands to MQTT topics.
 
-    Topic format: home/devices/{device_id}/command
+    Topic format: {prefix}{device_id}/cmd
     Payload: JSON {"key1": "value1", "key2": "value2", ...}
-    QoS: 1 (at least once), retain: True
+    QoS: 1 (at least once), retain: False
+
+    Commands are never retained: the broker would replay the last message on
+    every device reconnect, so a one-shot command like ``restart`` would put the
+    device into a boot loop. Desired state is instead re-sent from config_kv by
+    the gateway when a device (re)boots — see ``device_gateway.sync``.
+
+    Publishing goes through the subscriber's connection, which already
+    reconnects on its own, so a broker restart does not leave a dead publisher.
     """
 
-    def __init__(self, settings: GatewaySettings):
-        self.settings = settings
-        self._client: aiomqtt.Client | None = None
+    def __init__(self, source: MqttConnectionSource | None = None):
+        self._source = source
 
-    async def connect(self) -> None:
-        """Create a persistent MQTT client for publishing."""
-        connect_kwargs: dict = {
-            "hostname": self.settings.mqtt_broker_host,
-            "port": self.settings.mqtt_broker_port,
-        }
-        if self.settings.mqtt_username:
-            connect_kwargs["username"] = self.settings.mqtt_username
-            connect_kwargs["password"] = self.settings.mqtt_password
+    def attach(self, source: MqttConnectionSource) -> None:
+        self._source = source
 
-        self._client = aiomqtt.Client(**connect_kwargs)
-        await self._client.__aenter__()
-        logger.info("publisher_connected")
+    @property
+    def is_connected(self) -> bool:
+        return self._source is not None and self._source.active_client is not None
 
-    async def disconnect(self) -> None:
-        if self._client:
-            await self._client.__aexit__(None, None, None)
-            self._client = None
-            logger.info("publisher_disconnected")
-
-    async def publish_grouped(self, device_id: str, params: dict[str, str]) -> str | None:
+    async def publish_grouped(self, device_id: str, params: dict[str, str]) -> str:
         """Publish grouped commands as a single MQTT message.
 
-        Topic: {prefix}{device_id}/command
-        Payload: {"heating_boiler_temp": "60", "heating_boiler_power": "1", ...}
+        Returns the topic on success, raises PublishError otherwise.
         Duplicate keys are already deduplicated by the dispatcher.
         """
-        if self._client is None:
-            logger.warning("publisher_not_connected")
-            return None
+        client = self._source.active_client if self._source else None
+        if client is None:
+            logger.warning("publisher_not_connected", device_id=device_id)
+            raise PublishError("MQTT not connected")
 
-        topic = f"{self.settings.mqtt_topic_prefix}{device_id}/cmd"
-
+        topic = f"{self._source.topic_prefix}{device_id}/cmd"
         try:
-            payload = json.dumps(params)
-            await self._client.publish(topic, payload, qos=1, retain=True)
-            logger.info("command_published", topic=topic, params=list(params.keys()))
-            return topic
-        except Exception as e:
+            await client.publish(topic, json.dumps(params), qos=1, retain=False)
+        except aiomqtt.MqttError as e:
             logger.error("publish_failed", topic=topic, error=str(e))
-            return None
+            raise PublishError(str(e)) from e
+
+        logger.info("command_published", topic=topic, params=list(params.keys()))
+        return topic

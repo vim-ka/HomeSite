@@ -28,6 +28,9 @@ class Settings(BaseSettings):
 
     # Database
     database_url: str = "sqlite+aiosqlite:///./sensors.db"
+    # .env file that PUT /settings/database rewrites. Must be the file systemd
+    # loads (EnvironmentFile), otherwise the change is silently ignored.
+    env_file_path: str = ""
 
     # JWT
     jwt_secret_key: str = "CHANGE-ME-to-a-random-secret-key"
@@ -63,6 +66,23 @@ class Settings(BaseSettings):
     @property
     def is_sqlite(self) -> bool:
         return self.database_url.startswith("sqlite")
+
+    @property
+    def resolved_env_file(self) -> Path:
+        return Path(self.env_file_path or _find_env_file()).resolve()
+
+    @property
+    def is_production(self) -> bool:
+        return self.app_env.lower() in ("prod", "production")
+
+    def insecure_secrets(self) -> list[str]:
+        """Names of secrets still set to the shipped placeholder values."""
+        weak = []
+        for name in ("jwt_secret_key", "internal_api_secret"):
+            value = getattr(self, name)
+            if value.startswith("CHANGE-ME") or len(value) < 16:
+                weak.append(name.upper())
+        return weak
 
 
 def get_settings() -> Settings:
