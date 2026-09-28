@@ -36,7 +36,7 @@ describe("AlarmBanner", () => {
     wrap(<AlarmBanner />);
     expect(await screen.findByText(/Холодно в помещении «Детская»/)).toBeInTheDocument();
     expect(screen.getByText(/2 аварии/)).toBeInTheDocument();          // the acknowledged one is not counted
-    fireEvent.click(screen.getByRole("button", { name: "Подтвердить" }));
+    fireEvent.click(screen.getByRole("button", { name: "Подтвердить все (2)" }));
     await waitFor(() => expect(api.post).toHaveBeenCalledWith("/alarms/ack", { code: "room:Детская" }));
     expect(api.post).toHaveBeenCalledWith("/alarms/ack", { code: "pza_no_outdoor" });
   });
@@ -53,7 +53,15 @@ describe("AlarmBanner", () => {
     vi.mocked(api.get).mockResolvedValue({ data: { alarms: ALARMS } });
     wrap(<AlarmBanner />);
     await screen.findByText(/Холодно в помещении «Детская»/);
-    expect(screen.queryByRole("button", { name: "Подтвердить" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Подтвердить/ })).toBeNull();
+  });
+
+  it("one alarm already cleared does not stop the others from being acknowledged", async () => {
+    vi.mocked(api.get).mockResolvedValue({ data: { alarms: ALARMS } });
+    vi.mocked(api.post).mockRejectedValueOnce(new Error("404")).mockResolvedValue({ data: { status: "ok" } });
+    wrap(<AlarmBanner />);
+    fireEvent.click(await screen.findByRole("button", { name: "Подтвердить все (2)" }));
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith("/alarms/ack", { code: "pza_no_outdoor" }));
   });
 });
 

@@ -18,8 +18,9 @@ export function useActiveAlarms() {
 export function useAckAlarms() {
   const qc = useQueryClient();
   return useMutation({
+    // each on its own: one alarm cleared meanwhile (404) must not stop the others
     mutationFn: async (codes: string[]) => {
-      for (const code of codes) await api.post("/alarms/ack", { code });
+      await Promise.allSettled(codes.map((code) => api.post("/alarms/ack", { code })));
     },
     onSettled: () => {
       qc.invalidateQueries({ queryKey: ALARMS_QUERY_KEY });

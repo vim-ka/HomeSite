@@ -44,6 +44,9 @@ public:
     /// Silence the critical lamp + buzzer for the causes active now; a new cause sounds again
     void muteBuzzer();
 
+    /// Clear the well pump dry-run latch (the pump tries again right away)
+    void resetWell();
+
     bool isStarted() const { return _relays != nullptr; }
 
     /// Add status fields to heartbeat JSON
@@ -214,6 +217,7 @@ private:
     static constexpr unsigned long NO_HEAT_WINDOW_MS = 15UL * 60UL * 1000UL;
     static constexpr float NO_HEAT_MIN_RISE = 2.0;
     static constexpr float NO_HEAT_GAP = 10.0;
+    static constexpr float NO_HEAT_MANUAL_BELOW = 30.0;  // manual: the boiler's own thermostat decides
     bool _boilerOnActive = false;
     unsigned long _boilerOnSince = 0;
     unsigned long _noHeatCheckAt = 0;

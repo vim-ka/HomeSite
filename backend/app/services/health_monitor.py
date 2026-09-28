@@ -16,7 +16,7 @@ from app.models.config import Actuator, ConfigKV
 from app.models.event import EventLog
 from app.models.pending_sensor import PendingSensor
 from app.models.sensor import MountPoint, Sensor, SensorData
-from app.services.alarm_rules import AlarmTracker, Snapshot, evaluate
+from app.services.alarm_rules import Alarm, AlarmTracker, Snapshot, evaluate, unknown
 from app.services.scheme_service import SchemeService
 
 logger = get_logger(__name__)
@@ -210,6 +210,12 @@ class HealthMonitor:
                 await self._check_alarms(session, now, services, gateway_health, events)
             except Exception as e:
                 logger.exception("health_alarm_check_error", error=str(e))
+                await session.rollback()  # keep the session usable for the rest of the poll
+                # a crashing rule set must not look like "no alarms"
+                broken = Alarm("alarm_check_failed", "ERROR",
+                               "Проверка аварий не работает — смотрите журнал сервера. Аварии сейчас не отслеживаются")
+                raised, _ = self.alarms.update([broken], now, hold_prefixes=("",))
+                events.extend(EventLog(level=a.level, source="alarms", message=a.text) for a in raised)
 
             # --- Write events ---
             if events:
@@ -267,7 +273,7 @@ class HealthMonitor:
         )
         # while the controller is unreachable its flags are unknown, not cleared
         hold = () if c["online"] else ("flag:", "pza_", "alm_")
-        raised, cleared = self.alarms.update(evaluate(snap, set(self.alarms.active)), now, hold)
+        raised, cleared = self.alarms.update(evaluate(snap, set(self.alarms.active)), now, hold, unknown(snap))
         for a in raised:
             events.append(EventLog(level=a.level, source="alarms", message=a.text))
         for a in cleared:

@@ -78,3 +78,17 @@ async def test_operator_silences_the_buzzer(client, db_session, monitor, monkeyp
 
     monkeypatch.setattr("app.services.gateway_client.GatewayClient.dispatch_command", fail)
     assert (await client.post("/api/v1/alarms/buzzer-mute", headers=headers)).status_code == 502
+
+
+@pytest.mark.asyncio
+async def test_operator_resets_the_well_dry_run_lock(client, db_session, monitor, monkeypatch):
+    sent = []
+
+    async def dispatch(self, device, params):
+        sent.append((device, params))
+        return True
+
+    monkeypatch.setattr("app.services.gateway_client.GatewayClient.dispatch_command", dispatch)
+    headers = await _token(client, db_session, UserRole.OPERATOR)
+    assert (await client.post("/api/v1/alarms/well-reset", headers=headers)).status_code == 200
+    assert sent == [("boiler_unit", {"well_reset": "1"})]

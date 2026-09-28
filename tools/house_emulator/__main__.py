@@ -162,6 +162,9 @@ class Emulator:
             elif key == "autofill_reset":
                 c.reset_autofill_fault()
                 ack[key] = "ok"
+            elif key == "well_reset":
+                c.reset_well()
+                ack[key] = "ok"
             elif key == "buzzer_mute":
                 c.buzzer_mute()
                 ack[key] = "ok"

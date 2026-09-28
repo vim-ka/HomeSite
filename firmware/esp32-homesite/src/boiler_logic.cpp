@@ -225,6 +225,12 @@ void BoilerLogic::applySetting(const String& key, const String& value) {
     else if (key == "heating_floorheating_curve") _pza->setFloorCurve(value.toInt());
 }
 
+void BoilerLogic::resetWell() {
+    _wellLocked = _wellWaiting = _wellDry = _wellLowActive = false;
+    _wellFailures = 0;
+    Serial.println("WELL: dry-run lock reset");
+}
+
 void BoilerLogic::muteBuzzer() {
     _mutedCauses = _criticalCauses;
     _relays->set(RELAY_LAMP_CRITICAL, false);
@@ -345,7 +351,8 @@ void BoilerLogic::updateNoHeat(const TempMap& temps) {
         _noHeatCheckAt = now;
         _noHeatCheckTemp = bt;
     }
-    if (bt >= boilerTarget() - NO_HEAT_GAP) {
+    bool cold = _boilerAutomode ? bt < boilerTarget() - NO_HEAT_GAP : bt < NO_HEAT_MANUAL_BELOW;
+    if (!cold) {
         _noHeatCheckAt = now;
         _noHeatCheckTemp = bt;
         _noHeatStalled = false;
@@ -713,8 +720,12 @@ void BoilerLogic::updateTeh(const TempMap& temps) {
 
 void BoilerLogic::updateAntiLegionella(const TempMap& temps) {
     if (!_almMode || _almDays.length() == 0) {
+        // switched off: no cycle, and no stale "failed" from a window that no longer matters
         _almActive = false;
         _almNoTime = false;
+        _almInWindow = false;
+        _almDone = false;
+        _almLast = "";
         return;
     }
     _almNoTime = !_ntp->isReady();

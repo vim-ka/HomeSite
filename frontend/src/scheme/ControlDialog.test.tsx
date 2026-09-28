@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import api from "@/api/client";
@@ -162,5 +162,21 @@ describe("ControlDialog circuits (same rules as the Отопление page)", (
     fireEvent.click(screen.getByLabelText("ПЗА (погодозависимая)"));   // ПЗА off → pump unlocked
     expect(screen.getByLabelText("Насос")).not.toBeDisabled();
     unmount();
+  });
+});
+
+describe("ControlDialog well dry-run lock", () => {
+  it("offers the reset only while the lock is on, to operators", async () => {
+    vi.mocked(api.post).mockReset().mockResolvedValue({ data: { status: "ok" } });
+    const state = makeState({ flags: { well_dry: true } });
+    renderDialog({ kind: "cold", state });
+    fireEvent.click(screen.getByRole("button", { name: "Сбросить блокировку" }));
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith("/alarms/well-reset"));
+    cleanup();
+    renderDialog({ kind: "cold", state, userRole: "viewer" });
+    expect(screen.getByRole("button", { name: "Сбросить блокировку" })).toBeDisabled();
+    cleanup();
+    renderDialog({ kind: "cold", state: makeState() });
+    expect(screen.queryByRole("button", { name: "Сбросить блокировку" })).toBeNull();
   });
 });

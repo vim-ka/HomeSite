@@ -94,6 +94,17 @@ export function ControlDialog({ kind, role, state, userRole, onClose, onApplied 
     }
   };
 
+  const resetWell = async () => {
+    setError(null);
+    try {
+      await api.post("/alarms/well-reset");
+      setNotice("Команда сброса отправлена — насос скважины попробует снова");
+      onApplied([]);
+    } catch {
+      setError("Не удалось сбросить блокировку");
+    }
+  };
+
   const field = (f: FieldDef) => {
     const disabled = isDisabled(f);
     const set = (v: string) => setDraft((d) => ({ ...d, [f.key]: v }));
@@ -161,6 +172,13 @@ export function ControlDialog({ kind, role, state, userRole, onClose, onApplied 
               <div className="mt-3 rounded bg-red-50 p-2 text-sm text-red-700">
                 Подпитка заблокирована после аварийного таймаута. Проверьте систему на утечку.
                 <button type="button" onClick={resetAutofill} disabled={userRole !== "admin"}
+                        className="ml-2 rounded bg-red-600 px-2 py-1 text-white disabled:opacity-50">Сбросить блокировку</button>
+              </div>
+            )}
+            {kind === "cold" && state.controller.flags.well_dry && (
+              <div className="mt-3 rounded bg-red-50 p-2 text-sm text-red-700">
+                Насос скважины остановлен: нет давления в водопроводе (сухой ход).
+                <button type="button" onClick={resetWell} disabled={userRole !== "admin" && userRole !== "operator"}
                         className="ml-2 rounded bg-red-600 px-2 py-1 text-white disabled:opacity-50">Сбросить блокировку</button>
               </div>
             )}

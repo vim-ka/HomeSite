@@ -25,7 +25,7 @@ export default function AlarmBanner() {
       {canActOnAlarms(role) && (
         <button type="button" disabled={ack.isPending} onClick={() => ack.mutate(open.map((a) => a.code))}
                 className="rounded bg-white/70 px-3 py-1 font-medium shadow-sm hover:bg-white disabled:opacity-50">
-          Подтвердить
+          {open.length > 1 ? `Подтвердить все (${open.length})` : "Подтвердить"}
         </button>
       )}
     </div>

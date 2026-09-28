@@ -2,7 +2,7 @@
 
 from datetime import UTC, datetime, timedelta
 
-from app.services.alarm_rules import Alarm, AlarmTracker, Snapshot, evaluate
+from app.services.alarm_rules import Alarm, AlarmTracker, Snapshot, evaluate, unknown
 
 NOW = datetime(2026, 1, 20, 3, 0, tzinfo=UTC)
 
@@ -165,6 +165,8 @@ def test_tracker_raises_after_the_delay_and_clears_with_the_condition():
     raised, _ = t.update([a], NOW + timedelta(seconds=600))
     assert raised == [a] and "room:Детская" in t.active
     _, cleared = t.update([], NOW + timedelta(seconds=700))
+    assert cleared == []                                               # gone, but only just
+    _, cleared = t.update([], NOW + timedelta(seconds=821))
     assert [c.code for c in cleared] == ["room:Детская"] and t.active == {}
 
 
@@ -213,5 +215,66 @@ def test_tracker_acknowledgement_and_its_reset_on_escalation():
     t.update([Alarm("room:Кухня", "ERROR", "Холодно")], NOW + timedelta(minutes=2))
     assert t.active_list()[0]["acked"] is False          # got worse: needs attention again
     t.update([], NOW + timedelta(minutes=3))
-    t.update([Alarm("room:Кухня", "WARNING", "Прохладно")], NOW + timedelta(minutes=4))
+    t.update([], NOW + timedelta(minutes=6))
+    t.update([Alarm("room:Кухня", "WARNING", "Прохладно")], NOW + timedelta(minutes=7))
     assert t.active_list()[0]["acked"] is False          # a new occurrence is not acknowledged
+
+
+# ---------------------------------------------------------------- review fixes (I5, I6)
+def test_worse_pressure_does_not_log_a_false_all_clear_while_the_error_waits_its_delay():
+    t = AlarmTracker()
+    warn = Alarm("pressure_low_long", "WARNING", "ниже нормы", 600, group="pressure_low")
+    err = Alarm("pressure_low", "ERROR", "ниже аварийного", 60, group="pressure_low")
+    t.update([warn], NOW)
+    t.update([warn], NOW + timedelta(seconds=600))
+    _, cleared = t.update([err], NOW + timedelta(seconds=630))
+    assert cleared == [] and "pressure_low_long" in t.active        # still shown until the ERROR takes over
+    raised, cleared = t.update([err], NOW + timedelta(seconds=700))
+    assert [r.code for r in raised] == ["pressure_low"] and [c.code for c in cleared] == ["pressure_low_long"]
+
+
+def test_gateway_down_replaces_no_link_without_a_false_all_clear():
+    s = snap(online=False, hb={})
+    assert codes(s)["no_link"].group == codes(snap(online=False, services={"gateway": False, "mqtt": True}, hb={}))[
+        "svc:gateway"].group
+
+
+def test_a_room_whose_sensor_went_silent_keeps_its_alarm():
+    t = AlarmTracker()
+    s = snap(rooms=[("Детская", 4.0)])
+    t.update(evaluate(s, set()), NOW)
+    t.update(evaluate(s, set(t.active)), NOW + timedelta(minutes=11))
+    assert "room:Детская" in t.active
+    silent = snap(rooms=[("Детская", None)], now=NOW + timedelta(minutes=12))
+    _, cleared = t.update(evaluate(silent, set(t.active)), silent.now, hold_codes=unknown(silent))
+    assert cleared == [] and "room:Детская" in t.active
+
+
+def test_alarm_clears_only_after_its_condition_is_gone_for_two_minutes():
+    t = AlarmTracker()
+    flag = Alarm("flag:well_dry", "ERROR", "сухой ход")
+    t.update([flag], NOW)
+    _, cleared = t.update([], NOW + timedelta(seconds=60))            # the well retry's grace period
+    assert cleared == []
+    t.update([flag], NOW + timedelta(seconds=90))
+    _, cleared = t.update([], NOW + timedelta(seconds=100))
+    assert cleared == []
+    _, cleared = t.update([], NOW + timedelta(seconds=221))
+    assert [c.code for c in cleared] == ["flag:well_dry"]
+
+
+def test_clock_warning_waits_for_ntp_after_a_reboot():
+    a = codes(snap(hb={"rad_wbm": False, "floor_wbm": False, "outdoor": -10, "alm_no_time": True}))
+    assert a["alm_no_time"].delay_s >= 600
+
+
+def test_emergency_pressure_level_never_sits_above_the_normal_minimum():
+    s = snap(values={"heating_pressure": reading(0.7)})
+    s.settings["heating_pressure_min"] = "0.6"
+    assert codes(s) == {}
+
+
+def test_well_dry_text_points_to_the_reset_button():
+    from app.services.controller_flags import CONTROLLER_FLAGS
+    assert "Сбросить блокировку" in CONTROLLER_FLAGS["well_dry"][1]
+    assert "ТЭН отключён" in CONTROLLER_FLAGS["ihb_sensor_lost"][1]

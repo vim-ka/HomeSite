@@ -39,6 +39,7 @@ NO_HEAT_AFTER_S = 30 * 60          # boiler on this long, still far below target
 NO_HEAT_WINDOW_S = 15 * 60         # … by at least NO_HEAT_MIN_RISE over this window
 NO_HEAT_MIN_RISE = 2.0
 NO_HEAT_GAP = 10.0
+NO_HEAT_MANUAL_BELOW = 30.0        # manual mode: the boiler's own thermostat decides — only a cold supply counts
 WELL_MIN_BAR = 0.5                 # well pump on, water pressure below this …
 WELL_GRACE_S = 60.0                # … this long → dry run
 WELL_RETRY_S = 30 * 60
@@ -183,6 +184,12 @@ class Controller:
     def outdoor_fresh(self) -> bool:
         return self.outdoor is not None and self.t - self.outdoor_at < OUTDOOR_TTL_S
 
+    def reset_well(self) -> None:
+        """well_reset command: clear the dry-run latch; the pump tries again right away."""
+        self.well_locked = self.well_waiting = self.well_dry = False
+        self.well_failures, self.well_low_since = 0, None
+        self._log("WELL: dry-run lock reset")
+
     def reset_autofill_fault(self) -> None:
         self.autofill_fault = False
         self._log("AUTOFILL: fault reset")
@@ -319,7 +326,9 @@ class Controller:
             return
         if self.boiler_on_since is None:
             self.boiler_on_since, self.no_heat_check = self.t, (self.t, bt)
-        if bt >= self._boiler_target() - NO_HEAT_GAP:
+        cold = (bt < self._boiler_target() - NO_HEAT_GAP if self.b("heating_boiler_automode")
+                else bt < NO_HEAT_MANUAL_BELOW)
+        if not cold:
             self.no_heat_check, self.no_heat_stalled, self.boiler_no_heat = (self.t, bt), False, False
             return
         t0, bt0 = self.no_heat_check  # type: ignore[misc]
@@ -370,7 +379,9 @@ class Controller:
         the temperature for ALM_HOLD_S; report the window's result (alm_last)."""
         days = self.s("watersupply_alm_days")
         if not self.b("watersupply_ihb_alm_mode") or not days:
-            self.alm_active = False
+            # switched off: no cycle, and no stale "failed" from a window that no longer matters
+            self.alm_active = self.alm_in_window = self.alm_done = False
+            self.alm_last = ""
             return
         sh, sm = (int(x) for x in self.s("watersupply_alm_start_time").split(":"))
         total = sh * 60 + sm + int(self.f("watersupply_alm_duration"))

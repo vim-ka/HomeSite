@@ -50,6 +50,18 @@ async def acknowledge(
     return {"status": "ok"}
 
 
+@router.post("/well-reset")
+async def well_reset(user: User = Depends(operator), db: AsyncSession = Depends(get_db)) -> dict:
+    """Clear the well pump dry-run lock (after 3 failed retries the controller waits for a person)."""
+    from app.services.gateway_client import GatewayClient
+
+    if not await GatewayClient().dispatch_command(CONTROLLER_DEVICE, {"well_reset": "1"}):
+        raise HTTPException(status_code=502, detail="Шлюз недоступен")
+    db.add(EventLog(level="INFO", source="alarms", message="Блокировка сухого хода скважины сброшена", user_id=user.id))
+    await db.commit()
+    return {"status": "ok"}
+
+
 @router.post("/buzzer-mute")
 async def buzzer_mute(user: User = Depends(operator), db: AsyncSession = Depends(get_db)) -> dict:
     """Silence the controller's alarm lamp + buzzer until a NEW critical cause appears."""

@@ -43,3 +43,15 @@ describe("AlarmPanel actions", () => {
     expect(screen.queryByRole("button", { name: "Заглушить зуммер" })).toBeNull();
   });
 });
+
+describe("AlarmPanel buzzer mute failure", () => {
+  it("says the command did not go through", async () => {
+    vi.mocked(api.post).mockReset().mockRejectedValue(new Error("502"));
+    const s = makeState({ flags: { critical: true } });
+    s.controller.relays.lamp_critical = true;
+    s.alarms = [{ level: "ERROR", code: "x", text: "Авария", acked: false }];
+    render(<QueryClientProvider client={new QueryClient()}><MemoryRouter><AlarmPanel state={s} collapsible={false} canAct /></MemoryRouter></QueryClientProvider>);
+    fireEvent.click(screen.getByRole("button", { name: "Заглушить зуммер" }));
+    expect(await screen.findByText(/Не удалось заглушить/)).toBeInTheDocument();
+  });
+});

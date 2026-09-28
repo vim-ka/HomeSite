@@ -30,9 +30,10 @@ BOILER_ROOM_THRESHOLDS = [
 ]
 TEMP_HYSTERESIS = 1.0
 
-PRESSURE_EMERGENCY_FLOOR = 0.8   # the emergency level is min - 0.2, but never below this
+PRESSURE_EMERGENCY_FLOOR = 0.5   # the emergency level is min - 0.2, but never below this (boiler lockout zone)
 PRESSURE_RELIEF_WARN = 2.5       # safety valve opens at ~3 bar
 PRESSURE_HYSTERESIS = 0.05
+CLEAR_AFTER_S = 120              # an alarm clears only after its condition has been gone this long (no flapping)
 
 
 @dataclass(frozen=True)
@@ -41,6 +42,9 @@ class Alarm:
     level: str
     text: str
     delay_s: int = 0
+    # alarms of one group replace each other (warning → error, no link → gateway down): the old one stays
+    # until the new one is raised, so the log never shows a false "all clear" in between
+    group: str | None = None
 
 
 @dataclass
@@ -89,16 +93,17 @@ def evaluate(s: Snapshot, active: set[str]) -> list[Alarm]:
 
     # --- services and the link to the controller
     if not s.services.get("gateway", True):
-        add(Alarm("svc:gateway", "ERROR", "Шлюз устройств недоступен — команды и данные контроллера не проходят", 30))
+        add(Alarm("svc:gateway", "ERROR", "Шлюз устройств недоступен — команды и данные контроллера не проходят", 30,
+                  "link"))
     elif not s.services.get("mqtt", True):
-        add(Alarm("svc:mqtt", "ERROR", "Брокер MQTT недоступен — нет связи с контроллером и датчиками", 60))
+        add(Alarm("svc:mqtt", "ERROR", "Брокер MQTT недоступен — нет связи с контроллером и датчиками", 60, "link"))
     elif not s.online:
         outdoor = _val(s, "outdoor")
         text = "Нет связи с контроллером котельной"
         if outdoor is not None and outdoor < 0:
             text += (f" (на улице {outdoor:.0f} °C)".replace("-", "−")
                      + ". Если контроллер не работает, котёл и насосы выключены — проверьте котельную")
-        add(Alarm("no_link", "ERROR", text, 60))
+        add(Alarm("no_link", "ERROR", text, 60, "link"))
 
     # --- controller safety flags (held by the tracker while the controller is unreachable)
     if s.online:
@@ -115,7 +120,8 @@ def evaluate(s: Snapshot, active: set[str]) -> list[Alarm]:
                       f"{_num(s.settings, 'watersupply_alm_temp', 60):.0f} °C"))
         if s.hb.get("alm_no_time"):
             add(Alarm("alm_no_time", "WARNING",
-                      "Контроллер не знает точного времени — термодезинфекция и ночные режимы не работают"))
+                      "Контроллер не знает точного времени — термодезинфекция и ночные режимы не работают",
+                      10 * 60))  # right after a reboot NTP needs a moment
 
     # --- rooms, boiler room, water pipes
     for name, v in s.rooms:
@@ -140,18 +146,21 @@ def evaluate(s: Snapshot, active: set[str]) -> list[Alarm]:
             return p > limit - (PRESSURE_HYSTERESIS if code in active else 0)
 
         if below("pressure_low", emergency):
-            add(Alarm("pressure_low", "ERROR", f"Давление в отоплении {p:.2f} бар — ниже аварийного {emergency:g} бар", 60))
+            add(Alarm("pressure_low", "ERROR", f"Давление в отоплении {p:.2f} бар — ниже аварийного {emergency:g} бар", 60,
+                      "pressure_low"))
         elif below("pressure_low_long", p_min):
             why = ("подпитка не справляется (утечка?)" if s.settings.get("heating_autofill_enabled") == "1"
                    else "автоподпитка выключена — долейте систему")
             add(Alarm("pressure_low_long", "WARNING", f"Давление {p:.2f} бар ниже нормы {p_min:g} уже 10 мин — {why}",
-                      10 * 60))
+                      10 * 60, "pressure_low"))
         if above("pressure_high", PRESSURE_RELIEF_WARN):
             add(Alarm("pressure_high", "ERROR",
-                      f"Давление в отоплении {p:.2f} бар — близко к срабатыванию предохранительного клапана", 60))
+                      f"Давление в отоплении {p:.2f} бар — близко к срабатыванию предохранительного клапана", 60,
+                      "pressure_high"))
         elif above("pressure_high_long", p_max):
             add(Alarm("pressure_high_long", "WARNING",
-                      f"Давление {p:.2f} бар выше нормы {p_max:g} уже 10 мин — проверьте расширительный бак", 10 * 60))
+                      f"Давление {p:.2f} бар выше нормы {p_max:g} уже 10 мин — проверьте расширительный бак", 10 * 60,
+                      "pressure_high"))
 
     # --- circuits that don't warm up although the boiler is hot (pump or 3-way valve failure)
     boiler = _val(s, "boiler_supply")
@@ -184,20 +193,37 @@ def evaluate(s: Snapshot, active: set[str]) -> list[Alarm]:
     return [a for a in out if a is not None]
 
 
+def unknown(s: Snapshot) -> set[str]:
+    """Codes whose inputs are missing right now: their alarms are held (unknown ≠ all clear)."""
+    codes = {f"room:{name}" for name, v in s.rooms if v is None}
+    for code, role in (("boiler_room", "boiler_room"), ("cold_water", "cold_water"), ("tank_overheat", "tank")):
+        if _val(s, role) is None:
+            codes.add(code)
+    if _val(s, "heating_pressure") is None:
+        codes |= {"pressure_low", "pressure_low_long", "pressure_high", "pressure_high_long"}
+    if not s.online or _val(s, "boiler_supply") is None:
+        codes |= {"no_heat:rad", "no_heat:floor", "tank_no_heat", "supply_below_return"}
+    return codes
+
+
 class AlarmTracker:
     """Active alarms with raise delays. `update()` returns what was raised and what cleared this time."""
 
     def __init__(self) -> None:
         self.active: dict[str, Alarm] = {}
-        self._pending: dict[str, datetime] = {}
+        self._pending: dict[str, tuple[datetime, Alarm]] = {}
+        self._absent: dict[str, datetime] = {}
         self._since: dict[str, datetime] = {}
         self._acked: set[str] = set()   # acknowledged by a person; reset when the alarm gets worse or clears
 
-    def update(self, alarms: Iterable[Alarm], now: datetime,
-               hold_prefixes: tuple[str, ...] = ()) -> tuple[list[Alarm], list[Alarm]]:
+    def update(self, alarms: Iterable[Alarm], now: datetime, hold_prefixes: tuple[str, ...] = (),
+               hold_codes: Iterable[str] = ()) -> tuple[list[Alarm], list[Alarm]]:
         seen = {a.code: a for a in alarms}
+        held = set(hold_codes)
         raised: list[Alarm] = []
+        replaced: list[Alarm] = []
         for code, a in seen.items():
+            self._absent.pop(code, None)
             if code in self.active:
                 old = self.active[code]
                 if LEVEL_RANK[a.level] > LEVEL_RANK[old.level]:
@@ -205,20 +231,36 @@ class AlarmTracker:
                     self._acked.discard(code)
                 self.active[code] = a         # keep the text current (values change)
                 continue
-            since = self._pending.setdefault(code, now)
+            since, _ = self._pending.setdefault(code, (now, a))
+            self._pending[code] = (since, a)
             if (now - since).total_seconds() >= a.delay_s:
                 self._pending.pop(code)
                 self.active[code] = a
                 self._since[code] = now
                 raised.append(a)
+                if a.group:                   # the new one takes over its group
+                    replaced += [old for c, old in self.active.items() if c != code and old.group == a.group]
         for code in [c for c in self._pending if c not in seen]:
             self._pending.pop(code)
-        cleared = [self.active.pop(code) for code in list(self.active)
-                   if code not in seen and not code.startswith(hold_prefixes or ("\0",))]
-        for a in cleared:
-            self._since.pop(a.code, None)
-            self._acked.discard(a.code)
+        pending_groups = {a.group for _, a in self._pending.values() if a.group}
+
+        cleared: list[Alarm] = [self._drop(a.code) for a in replaced if a.code in self.active]
+        for code, a in list(self.active.items()):
+            if code in seen:
+                continue
+            if code.startswith(hold_prefixes or ("\0",)) or code in held or (a.group and a.group in pending_groups):
+                self._absent.pop(code, None)  # unknown or being replaced — not "all clear"
+                continue
+            gone = self._absent.setdefault(code, now)
+            if (now - gone).total_seconds() >= CLEAR_AFTER_S:
+                cleared.append(self._drop(code))
         return raised, cleared
+
+    def _drop(self, code: str) -> Alarm:
+        self._absent.pop(code, None)
+        self._since.pop(code, None)
+        self._acked.discard(code)
+        return self.active.pop(code)
 
     def ack(self, code: str) -> bool:
         if code not in self.active:

@@ -3,6 +3,7 @@
 #include <ArduinoJson.h>
 #include <esp_task_wdt.h>
 #include <esp_system.h>
+#include <esp_timer.h>
 #include "config_manager.h"
 #include "wifi_portal.h"
 #include "mqtt_client.h"
@@ -121,6 +122,10 @@ void onCommand(const String& key, const String& value) {
     }
     if (key == "buzzer_mute") {
         boilerLogic.muteBuzzer();
+        return;
+    }
+    if (key == "well_reset") {
+        boilerLogic.resetWell();
         return;
     }
     if (key == "outdoor_temp") {
@@ -365,7 +370,8 @@ void sendHeartbeat() {
     String topic = "home/devices/" + config.nodeName() + "/heartbeat";
     JsonDocument doc;
 
-    doc["uptime"] = millis() / 1000;
+    // 64-bit microsecond timer: millis()/1000 wraps after 49.7 days and the gateway would see a "reboot"
+    doc["uptime"] = (uint32_t)(esp_timer_get_time() / 1000000ULL);
     doc["free_heap"] = ESP.getFreeHeap();
 
     // PZA status

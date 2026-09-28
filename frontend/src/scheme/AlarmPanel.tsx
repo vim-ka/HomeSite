@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "@/api/client";
 import { useAckAlarms } from "@/hooks/useActiveAlarms";
 import { Link } from "react-router-dom";
@@ -13,7 +13,11 @@ export function AlarmPanel({ state, collapsible, canAct = false }: { state: Sche
   const bad = state.alarms.length > 0;
   const hints = manualHints(state);
   const ack = useAckAlarms();
-  const mute = useMutation({ mutationFn: () => api.post("/alarms/buzzer-mute") });
+  const qc = useQueryClient();
+  const mute = useMutation({
+    mutationFn: () => api.post("/alarms/buzzer-mute"),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["scheme-state"] }),
+  });
   const { flags, relays } = state.controller;
   const buzzing = !!flags.critical && relays.lamp_critical && !flags.buzzer_muted;
   return (
@@ -47,6 +51,7 @@ export function AlarmPanel({ state, collapsible, canAct = false }: { state: Sche
               Заглушить зуммер
             </button>
           )}
+          {mute.isError && <div className="mt-1 text-xs text-red-700">Не удалось заглушить зуммер — шлюз недоступен</div>}
           <div className="mt-2 space-y-0.5 text-xs text-gray-500">
             {state.events.map((e, i) => <div key={i}>{e.ts ? fmtTime(e.ts) : ""} {e.text}</div>)}
           </div>

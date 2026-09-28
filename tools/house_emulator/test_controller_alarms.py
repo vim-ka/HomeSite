@@ -127,7 +127,7 @@ def test_lost_boiler_sensor_in_mild_weather_switches_the_boiler_off():
 # ---------------------------------------------------------------- boiler does not heat
 def test_boiler_that_does_not_heat_for_30_minutes_is_flagged():
     c = make(heating_boiler_automode="0", heating_boiler_power="1", heating_boiler_temp="60")
-    cold = {**WARM, "tsboiler_s": 30.0}
+    cold = {**WARM, "tsboiler_s": 25.0}
     run(c, 29 * 60, cold)
     assert not c.boiler_no_heat
     run(c, 2 * 60, cold)
@@ -287,3 +287,34 @@ def test_one_missed_tank_reading_does_not_sound_the_buzzer():
     run(c, 30, WARM)
     run(c, 10, {k: v for k, v in WARM.items() if k != "tsihb_s"})
     assert not c.relays["lamp_critical"]
+
+
+# ---------------------------------------------------------------- review fixes (I7, M2, M3)
+def test_well_reset_command_clears_the_dry_run_latch():
+    """The gateway merges a quick off→on of the setting into one "1", so a dedicated command is needed."""
+    c = make(watersupply_pump="1")
+    for _ in range(3):
+        run(c, 31 * 60 + 80, WARM, water=0.2)
+    assert c.well_locked
+    c.reset_well()
+    run(c, 10, WARM, water=3.0)
+    assert c.relays["water_pump"] and not c.well_dry and not c.well_locked
+
+
+def test_switching_anti_legionella_off_forgets_its_last_result():
+    c = make(**ALM)
+    t = run_at(c, datetime(2026, 1, 20, 3, 0), 61, tank=55)
+    run_at(c, t, 2, tank=55)
+    assert c.alm_last == "failed"
+    c.on_setting("watersupply_ihb_alm_mode", "0")
+    c.update(NOW, WARM, 1.5)
+    assert c.alm_last == "" and "alm_last" not in c.heartbeat(1.5, None)
+
+
+def test_manual_boiler_below_its_setting_but_warm_is_not_no_heat():
+    """In manual mode the boiler's own thermostat decides — only an obviously cold supply means 'no heat'."""
+    c = make(heating_boiler_automode="0", heating_boiler_power="1", heating_boiler_temp="70")
+    run(c, 40 * 60, {**WARM, "tsboiler_s": 45.0})
+    assert not c.boiler_no_heat
+    run(c, 40 * 60, {**WARM, "tsboiler_s": 25.0})
+    assert c.boiler_no_heat

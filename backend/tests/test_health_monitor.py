@@ -84,6 +84,10 @@ async def test_controller_flag_is_logged_and_cleared(engine, db_session, monkeyp
 
     _with_gateway(m, monkeypatch, gateway(data={**data, "frost_protect": False}))
     await m._check()
+    assert "flag:frost_protect" in [a["code"] for a in m.state.active_alarms]   # gone only just
+    m._now = lambda: NOW + timedelta(seconds=121)
+    _with_gateway(m, monkeypatch, gateway(hb_age_s=-116, data={**data, "frost_protect": False}))
+    await m._check()
     assert "flag:frost_protect" not in [a["code"] for a in m.state.active_alarms]
     assert any(e.level == "INFO" and (e.message or "").startswith("Снято:") for e in await _events(db_session))
 
@@ -115,11 +119,45 @@ async def test_silent_sensor_is_reported_in_russian_with_its_place(engine, db_se
 
 
 async def test_water_pressure_is_not_judged_by_heating_limits(engine, db_session, monkeypatch):
-    """B3: a normal 3 bar in the water main used to raise 'Давление вне нормы' every time."""
+    """B3: a normal 3 bar in the water main used to raise 'Давление вне нормы' every time.
+
+    The controller stays online (its heartbeat moves with the clock) for 20 minutes — longer than every
+    pressure delay — with the heating at 1.43 bar and the water main at 3.05 bar.
+    """
     await seed(db_session)
     m = _monitor(engine)
-    _with_gateway(m, monkeypatch, gateway())   # prs_water 3.05 in the heartbeat
-    for minutes in (0, 5, 11, 20):
-        m._now = lambda minutes=minutes: NOW + timedelta(minutes=minutes, seconds=-60)
+    clock = {"now": NOW}
+    m._now = lambda: clock["now"]
+
+    async def fetch():
+        return {"heartbeats": {"boiler_unit": {
+            "timestamp": (clock["now"] - timedelta(seconds=5)).isoformat(),
+            "data": {"relays": 0b11, "prs_heat": 1.43, "prs_water": 3.05, "rad_target": 54.0},
+        }}, "sync": {}}
+
+    _with_gateway(m, monkeypatch, fetch)
+    for minutes in range(0, 21):
+        clock["now"] = NOW + timedelta(minutes=minutes)
         await m._check()
+        assert m.state.database and m.state.gateway
     assert not any("Давлен" in (e.message or "") for e in await _events(db_session))
+    assert not any(a["code"].startswith("pressure") for a in m.state.active_alarms)
+    assert "no_link" not in [a["code"] for a in m.state.active_alarms]
+
+
+async def test_a_broken_alarm_check_is_itself_an_alarm(engine, db_session, monkeypatch):
+    """If the rules crash, alarms must not silently switch off."""
+    await seed(db_session)
+    m = _monitor(engine)
+    m._now = lambda: NOW
+    _with_gateway(m, monkeypatch, gateway())
+
+    def boom(*_a, **_k):
+        raise RuntimeError("rule bug")
+
+    monkeypatch.setattr("app.services.health_monitor.evaluate", boom)
+    await m._check()
+    await m._check()
+    assert [a["code"] for a in m.state.active_alarms] == ["alarm_check_failed"]
+    failed = [e for e in await _events(db_session) if "Проверка аварий не работает" in (e.message or "")]
+    assert [e.level for e in failed] == ["ERROR"]

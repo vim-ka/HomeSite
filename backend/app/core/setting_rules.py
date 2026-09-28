@@ -227,6 +227,16 @@ def validate_settings(
     if b_temp is not None and b_max is not None and b_temp > b_max:
         errors.setdefault("heating_boiler_temp", "must not exceed heating_boiler_max_temp")
 
+    # Anti-legionella must be reachable: the boiler's auto target is capped at max - 7
+    # (boiler_logic.cpp BOILER_TARGET_MARGIN + BOILER_HYSTERESIS). Checked only when one of these keys
+    # changes, so an old combination never blocks an unrelated save.
+    alm_keys = {"watersupply_alm_temp", "heating_boiler_max_temp", "watersupply_ihb_alm_mode"}
+    alm_temp = _num("watersupply_alm_temp")
+    if (alm_keys & normalized.keys() and merged.get("watersupply_ihb_alm_mode") == "1"
+            and alm_temp is not None and b_max is not None and alm_temp > b_max - 7):
+        key = "watersupply_alm_temp" if "watersupply_alm_temp" in normalized else "heating_boiler_max_temp"
+        errors.setdefault(key, f"anti-legionella {alm_temp:g} needs heating_boiler_max_temp >= {alm_temp + 7:g}")
+
     if errors:
         raise SettingsValidationError(errors)
     return normalized

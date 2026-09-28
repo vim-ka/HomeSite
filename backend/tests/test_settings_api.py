@@ -252,3 +252,18 @@ async def test_toggle_only_bool_settings(client, seeded_settings):
         headers={"Authorization": f"Bearer {token}"},
     )
     assert response.status_code == 422
+
+
+def test_anti_legionella_temperature_must_be_reachable_by_the_boiler():
+    """The boiler's auto target is capped at max - 7: a higher disinfection temperature fails every time."""
+    from app.core.setting_rules import SettingsValidationError, validate_settings
+
+    current = {"heating_boiler_max_temp": "70", "watersupply_ihb_alm_mode": "1", "watersupply_alm_temp": "60"}
+    with pytest.raises(SettingsValidationError) as e:
+        validate_settings({"watersupply_alm_temp": "65"}, current, "admin")
+    assert "watersupply_alm_temp" in e.value.errors
+    with pytest.raises(SettingsValidationError):
+        validate_settings({"heating_boiler_max_temp": "65"}, current, "admin")
+    assert validate_settings({"watersupply_alm_temp": "63"}, current, "admin") == {"watersupply_alm_temp": "63"}
+    # an unrelated change is never blocked by an old combination
+    assert validate_settings({"heating_boiler_temp": "50"}, {**current, "watersupply_alm_temp": "75"}, "admin")
