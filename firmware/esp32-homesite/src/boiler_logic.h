@@ -179,6 +179,10 @@ private:
     bool _criticalActive = false;
     uint16_t _criticalCauses = 0;
     uint16_t _mutedCauses = 0;
+    static constexpr uint8_t CRIT_BITS = 9;
+    static constexpr unsigned long MUTE_FORGET_MS = 5UL * 60UL * 1000UL;  // gone this long → its return sounds
+    static constexpr float PRESSURE_CRIT_HYSTERESIS = 0.05;
+    unsigned long _causeSeenAt[CRIT_BITS] = {};
     enum : uint16_t {
         CRIT_PRESSURE_ZERO = 1 << 0, CRIT_PRESSURE = 1 << 1, CRIT_BOILER_MAX = 1 << 2, CRIT_IHB_SENSOR = 1 << 3,
         CRIT_BOILER_SENSOR = 1 << 4, CRIT_OVERTEMP = 1 << 5, CRIT_AUTOFILL = 1 << 6, CRIT_FROST = 1 << 7,
@@ -191,6 +195,10 @@ private:
     bool _boilerSensorLost = false;
     uint8_t _ihbSensorMissing = 0;
     bool _ihbSensorLost = false;
+    // No mechanical limit thermostat on the floor: without its supply sensor the valve is blind,
+    // so the floor pump stops (beats frost protection — an overheated screed is the bigger harm)
+    uint8_t _floorSensorMissing = 0;
+    bool _floorSensorLost = false;
     bool _overtemp = false;
     // Boiler sensor lost: switch the boiler off only when it's this warm outside;
     // colder (or unknown) it keeps running on its own thermostat — freezing is the bigger danger

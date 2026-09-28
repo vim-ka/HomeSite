@@ -240,6 +240,8 @@ void BoilerLogic::resetAutofillFault() {
 // ── Main update cycle ─────────────────────────────────────────
 
 void BoilerLogic::update(const TempMap& temps, float heatingPressure, float waterPressure) {
+    _relays->beginBatch();  // outputs change once, at the end of the cycle
+
     // Check schedules
     _scheduleRadActive = _radScheduleEnabled && _ntp->isInSchedule(
         _radScheduleDays, _radScheduleStartH, _radScheduleStartM, _radScheduleEndH, _radScheduleEndM);
@@ -262,6 +264,12 @@ void BoilerLogic::update(const TempMap& temps, float heatingPressure, float wate
         _ihbSensorMissing = 0;
     }
     _ihbSensorLost = _ihbSensorMissing >= SENSOR_LOSS_CYCLES;
+    if (getTemp(temps, "tsfloor_s") == TEMP_INVALID) {
+        if (_floorSensorMissing < 255) _floorSensorMissing++;
+    } else {
+        _floorSensorMissing = 0;
+    }
+    _floorSensorLost = _floorSensorMissing >= SENSOR_LOSS_CYCLES;
     _pressureZero = !isnan(heatingPressure) && heatingPressure < PRESSURE_ZERO_BAR;
     updateFrost(temps);
 
@@ -285,6 +293,7 @@ void BoilerLogic::update(const TempMap& temps, float heatingPressure, float wate
     applyInterlocks(temps);
     updateNoHeat(temps);
     updateAlarms(temps, heatingPressure);
+    _relays->commit();
 }
 
 // ── Frost protection ──────────────────────────────────────────
@@ -452,12 +461,14 @@ void BoilerLogic::applyInterlocks(const TempMap& temps) {
         closeAutofill(millis());
     }
 
-    // Frost protection: circulate and heat, whatever the manual commands and DHW priority say
-    if (_frostProtect) {
+    // Frost protection: circulate and heat, whatever the manual commands and DHW priority say —
+    // but never run the pumps dry in an emptied system (0 bar: service drain or a big leak)
+    if (_frostProtect && !_pressureZero) {
         _relays->set(RELAY_RADIATOR_PUMP, true);
         _relays->set(RELAY_FLOOR_PUMP, true);
         if (!_overtemp) _relays->set(RELAY_BOILER_POWER, true);
     }
+    if (_floorSensorLost) _relays->set(RELAY_FLOOR_PUMP, false);
 }
 
 // ── Boiler automode ───────────────────────────────────────────
@@ -507,6 +518,7 @@ void BoilerLogic::updateBoiler(const TempMap& temps) {
         if (target > cap) target = cap;
 
         _boilerAutoTarget = target;
+        if (_frostProtect && !_pressureZero) return;  // applyInterlocks() holds it on; no AUTO OFF/ON churn
         bool isOn = _relays->get(RELAY_BOILER_POWER);
 
         if (!isOn && boilerTemp < target) {
@@ -833,7 +845,8 @@ void BoilerLogic::updateAlarms(const TempMap& temps, float heatingPressure) {
             _warningActive = true;
         }
         // Critical: pressure far out of range (±0.3 bar beyond limits)
-        if (heatingPressure < _pressureMin - 0.3 || heatingPressure > _pressureMax + 0.3) {
+        float hyst = (_criticalCauses & CRIT_PRESSURE) ? PRESSURE_CRIT_HYSTERESIS : 0.0f;
+        if (heatingPressure < _pressureMin - 0.3 + hyst || heatingPressure > _pressureMax + 0.3 - hyst) {
             causes |= CRIT_PRESSURE;
         }
     }
@@ -860,7 +873,7 @@ void BoilerLogic::updateAlarms(const TempMap& temps, float heatingPressure) {
     }
 
     // IHB sensor loss in automode is critical — pump is forced OFF, DHW not regulated
-    if (_ihbAutomode && getTemp(temps, "tsihb_s") == TEMP_INVALID) {
+    if (_ihbAutomode && _ihbSensorLost) {  // a single missed read is not worth a buzzer
         causes |= CRIT_IHB_SENSOR;
     }
 
@@ -873,13 +886,19 @@ void BoilerLogic::updateAlarms(const TempMap& temps, float heatingPressure) {
         if (_pza->hasOutdoorTemp() && _pza->outdoorTemp() < 0) causes |= CRIT_NO_HEAT;
         else _warningActive = true;
     }
-    if (_wellDry || _ihbSensorLost) {
+    if (_wellDry || _ihbSensorLost || _floorSensorLost) {
         _warningActive = true;
     }
 
+    // A muted cause gone for MUTE_FORGET_MS is forgotten (its return is news); a flapping one stays muted
+    unsigned long now = millis();
+    for (uint8_t b = 0; b < CRIT_BITS; b++) {
+        uint16_t bit = 1u << b;
+        if (causes & bit) _causeSeenAt[b] = now;
+        else if ((_mutedCauses & bit) && now - _causeSeenAt[b] >= MUTE_FORGET_MS) _mutedCauses &= ~bit;
+    }
     _criticalCauses = causes;
     _criticalActive = causes != 0;
-    if (!_criticalActive) _mutedCauses = 0;  // all clear: the next alarm sounds again
 
     _relays->set(RELAY_LAMP_WARNING, _warningActive);
     _relays->set(RELAY_LAMP_CRITICAL, (causes & ~_mutedCauses) != 0);
@@ -920,6 +939,7 @@ void BoilerLogic::fillHeartbeat(JsonDocument& doc) {
     doc["boiler_no_heat"] = _boilerNoHeat;
     doc["ihb_sensor_lost"] = _ihbSensorLost;
     doc["well_dry"] = _wellDry;
+    doc["floor_sensor_lost"] = _floorSensorLost;
     doc["alm_no_time"] = _almNoTime;
     doc["buzzer_muted"] = _criticalActive && !_relays->get(RELAY_LAMP_CRITICAL);
     if (_almLast[0] != '\0') doc["alm_last"] = _almLast;

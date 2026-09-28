@@ -155,7 +155,10 @@ Controller safety rules (firmware `boiler_logic.cpp`, mirrored in `tools/house_e
 frost protection (water < 7 °C → boiler and pumps forced on, beats manual OFF), zero pressure = alarm and no
 blind autofill, boiler-doesn't-heat detection, well dry-run stop/retry/latch, TEH never heats without a tank
 sensor, auto boiler target capped at max − 7 so regulation never hits the overtemp trip, lost boiler sensor
-switches the boiler off only in mild weather (else it runs on its own thermostat).
+switches the boiler off only in mild weather (else it runs on its own thermostat), lost floor supply sensor stops the
+floor pump (no mechanical limit thermostat on the floor; beats frost protection), frost protection doesn't run pumps
+at 0 bar, buzzer mute forgets a cause absent 5 min. Relays are written once per control cycle
+(`RelayController::beginBatch/commit`) so a safety override never opens a contact for a moment.
 Heartbeat loss detected after `heartbeat_timeout_seconds` (default 60s) → ERROR in event log.
 
 ## Deployment Target

@@ -43,7 +43,9 @@ WELL_MIN_BAR = 0.5                 # well pump on, water pressure below this …
 WELL_GRACE_S = 60.0                # … this long → dry run
 WELL_RETRY_S = 30 * 60
 WELL_MAX_TRIES = 3
-ALM_HOLD_S = 10 * 60               # anti-legionella counts only after the tank held the temperature this long
+ALM_HOLD_S = 10 * 60
+MUTE_FORGET_S = 5 * 60             # a muted cause gone this long is forgotten: its return sounds again
+PRESSURE_CRIT_HYSTERESIS = 0.05               # anti-legionella counts only after the tank held the temperature this long
 
 # PZA curves — same as backend app/services/pza.py and firmware pza_controller.cpp
 OUTDOOR_POINTS = [20, 10, 0, -10, -20, -35]
@@ -118,6 +120,8 @@ class Controller:
     boiler_sensor_lost: bool = False
     ihb_sensor_missing: int = 0
     ihb_sensor_lost: bool = False
+    floor_sensor_missing: int = 0
+    floor_sensor_lost: bool = False
     pressure_zero: bool = False
     frost_protect: bool = False
     boiler_no_heat: bool = False
@@ -137,6 +141,7 @@ class Controller:
     reset_reason: str = "poweron"
     critical_causes: set[str] = field(default_factory=set)
     muted_causes: set[str] = field(default_factory=set)
+    cause_seen_at: dict[str, float] = field(default_factory=dict)
 
     autofill_active: bool = False
     autofill_closing: bool = False
@@ -264,6 +269,11 @@ class Controller:
         else:
             self.ihb_sensor_missing = 0
         self.ihb_sensor_lost = self.ihb_sensor_missing >= SENSOR_LOSS_CYCLES
+        if temps.get("tsfloor_s") is None:
+            self.floor_sensor_missing = min(255, self.floor_sensor_missing + 1)
+        else:
+            self.floor_sensor_missing = 0
+        self.floor_sensor_lost = self.floor_sensor_missing >= SENSOR_LOSS_CYCLES
         self.pressure_zero = heating_pressure is not None and heating_pressure < PRESSURE_ZERO_BAR
         self._update_frost(temps)
 
@@ -417,6 +427,8 @@ class Controller:
             target = self.f("heating_boiler_temp")
         target = min(target, max_temp - BOILER_TARGET_MARGIN - BOILER_HYSTERESIS)
         self.boiler_auto_target = target
+        if self.frost_protect and not self.pressure_zero:
+            return  # the interlock holds it on (firmware: no AUTO OFF/ON churn)
         on = self.relays["boiler"]
         if not on and bt < target:
             self.relays["boiler"] = True
@@ -544,10 +556,14 @@ class Controller:
             self._log(f"BOILER: INTERLOCK OFF ({reason})")
         if self.autofill_fault and self.relays["af_open"]:
             self._close_autofill()
-        if self.frost_protect:
+        # frost protection — but never run the pumps dry in an emptied system
+        if self.frost_protect and not self.pressure_zero:
             self.relays["rad_pump"] = self.relays["floor_pump"] = True
             if not self.overtemp:
                 self.relays["boiler"] = True
+        # no mechanical limit thermostat on the floor: without its supply sensor the valve is blind
+        if self.floor_sensor_lost:
+            self.relays["floor_pump"] = False
 
     def _update_alarms(self, temps: dict[str, float], pressure: float | None) -> None:
         """Lamps. Critical = a set of named causes, so a buzzer mute covers exactly the causes seen then."""
@@ -561,7 +577,8 @@ class Controller:
         elif pressure is not None:
             if pressure < p_min or pressure > p_max:
                 warning = True
-            if pressure < p_min - 0.3 or pressure > p_max + 0.3:
+            hyst = PRESSURE_CRIT_HYSTERESIS if "pressure" in self.critical_causes else 0.0
+            if pressure < p_min - 0.3 + hyst or pressure > p_max + 0.3 - hyst:
                 causes.add("pressure")
         if bt is not None:
             warning |= bt >= max_temp - 2   # the auto cycle tops out at max - 5; this is the real approach
@@ -573,7 +590,7 @@ class Controller:
             self.b("heating_floorheating_pump") and temps.get("tsfloor_s") is None
         ):
             warning = True
-        if self.b("watersupply_ihb_automode") and temps.get("tsihb_s") is None:
+        if self.b("watersupply_ihb_automode") and self.ihb_sensor_lost:
             causes.add("ihb_sensor")
         for name in ("boiler_sensor_lost", "overtemp", "autofill_fault", "frost_protect"):
             if getattr(self, name):
@@ -583,11 +600,13 @@ class Controller:
                 causes.add("boiler_no_heat")
             else:
                 warning = True
-        if self.well_dry or self.ihb_sensor_lost:
+        if self.well_dry or self.ihb_sensor_lost or self.floor_sensor_lost:
             warning = True
         critical = bool(causes)
-        if not critical:
-            self.muted_causes = set()        # all clear: the next alarm sounds again
+        for cause in causes:
+            self.cause_seen_at[cause] = self.t
+        # a muted cause gone for MUTE_FORGET_S is forgotten (its return is news); a flapping one stays muted
+        self.muted_causes = {m for m in self.muted_causes if self.t - self.cause_seen_at.get(m, -1e9) < MUTE_FORGET_S}
         self.critical_causes = causes
         self.warning, self.critical = warning, critical
         self.relays["lamp_warning"] = warning
@@ -642,6 +661,7 @@ class Controller:
             "boiler_no_heat": self.boiler_no_heat,
             "ihb_sensor_lost": self.ihb_sensor_lost,
             "well_dry": self.well_dry,
+            "floor_sensor_lost": self.floor_sensor_lost,
             "alm_no_time": False,             # the emulator always knows the time
             "reset_reason": self.reset_reason,
             "buzzer_muted": self.critical and not self.relays["lamp_critical"],

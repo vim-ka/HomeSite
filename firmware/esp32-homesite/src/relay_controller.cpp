@@ -5,6 +5,7 @@ void RelayController::begin(const uint8_t pins[RELAY_COUNT], bool invert) {
     for (int i = 0; i < RELAY_COUNT; i++) {
         _pins[i] = pins[i];
         _states[i] = false;
+        _written[i] = false;
         pinMode(pins[i], OUTPUT);
         // Start with all relays OFF
         digitalWrite(pins[i], invert ? HIGH : LOW);
@@ -14,10 +15,22 @@ void RelayController::begin(const uint8_t pins[RELAY_COUNT], bool invert) {
     Serial.println(" channels initialized");
 }
 
+void RelayController::write(uint8_t ch, bool on) {
+    _written[ch] = on;
+    digitalWrite(_pins[ch], (on ^ _invert) ? HIGH : LOW);
+}
+
 void RelayController::set(RelayChannel ch, bool on) {
     if (ch >= RELAY_COUNT) return;
     _states[ch] = on;
-    digitalWrite(_pins[ch], (on ^ _invert) ? HIGH : LOW);
+    if (!_batch) write(ch, on);
+}
+
+void RelayController::commit() {
+    _batch = false;
+    for (uint8_t i = 0; i < RELAY_COUNT; i++) {
+        if (_written[i] != _states[i]) write(i, _states[i]);
+    }
 }
 
 bool RelayController::get(RelayChannel ch) const {

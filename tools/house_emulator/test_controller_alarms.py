@@ -228,8 +228,62 @@ def test_buzzer_mute_silences_until_a_new_critical_cause():
     assert c.relays["lamp_critical"]
     c.buzzer_mute()
     c.autofill_fault = False
-    run(c, 20, WARM, pressure=1.5)                   # everything clear: the mute is forgotten
+    run(c, 6 * 60, WARM, pressure=1.5)               # everything clear for 5+ min: the mute is forgotten
     assert not c.critical
     c.autofill_fault = True
     run(c, 20, WARM)
     assert c.relays["lamp_critical"]
+
+
+# ---------------------------------------------------------------- review fixes (I2, I3, I4, M1)
+def test_floor_pump_stops_when_its_supply_sensor_is_lost_even_in_frost():
+    """No mechanical limit thermostat on the floor: without tsfloor_s the valve is blind — stop the pump."""
+    c = make(heating_floorheating_pump="1", heating_boiler_automode="1")
+    no_floor = {k: v for k, v in WARM.items() if k != "tsfloor_s"}
+    run(c, 20, no_floor)
+    assert c.relays["floor_pump"], "a single missed read is tolerated"
+    run(c, 20, no_floor)
+    assert c.floor_sensor_lost and not c.relays["floor_pump"]
+    assert c.heartbeat(1.5, None)["floor_sensor_lost"] is True
+    run(c, 30, {"tsboiler_s": 5.0, "tsihb_s": 30.0, "tsrad_s": 5.0})       # frost, still no floor sensor
+    assert c.frost_protect and c.relays["rad_pump"] and not c.relays["floor_pump"]
+    run(c, 30, {**WARM, "tsfloor_s": 25.0})
+    assert not c.floor_sensor_lost and c.relays["floor_pump"]
+
+
+def test_frost_protection_does_not_run_pumps_dry_in_an_empty_system():
+    c = make(heating_boiler_automode="0", heating_boiler_power="0",
+             heating_radiator_pump="0", heating_floorheating_pump="0")
+    frozen = {"tsboiler_s": 5.0, "tsihb_s": 30.0, "tsrad_s": 5.0, "tsfloor_s": 5.0}
+    run(c, 30, frozen, pressure=0.0)
+    assert c.frost_protect and c.critical
+    assert not c.relays["rad_pump"] and not c.relays["floor_pump"] and not c.relays["boiler"]
+
+
+def test_muted_cause_is_forgotten_after_it_has_been_gone_for_5_minutes():
+    c = make(heating_autofill_enabled="0")
+    c.autofill_fault = True
+    run(c, 20, WARM, pressure=0.0)
+    c.buzzer_mute()
+    run(c, 20, WARM, pressure=0.0)
+    assert not c.relays["lamp_critical"]
+    run(c, 6 * 60, WARM, pressure=1.5)               # pressure back for 6 min (autofill_fault still latched)
+    run(c, 20, WARM, pressure=0.0)                   # empties again: a new event, must sound
+    assert c.relays["lamp_critical"]
+
+
+def test_muted_pressure_alarm_does_not_resound_while_pressure_hovers_at_the_limit():
+    c = make(heating_autofill_enabled="0", heating_pressure_min="1.0")
+    run(c, 20, WARM, pressure=0.65)                  # below min - 0.3 = 0.7
+    assert c.relays["lamp_critical"]
+    c.buzzer_mute()
+    for p in (0.71, 0.69, 0.72, 0.68, 0.71, 0.69) * 5:
+        run(c, 10, WARM, pressure=p)
+        assert not c.relays["lamp_critical"], p
+
+
+def test_one_missed_tank_reading_does_not_sound_the_buzzer():
+    c = make(watersupply_ihb_automode="1")
+    run(c, 30, WARM)
+    run(c, 10, {k: v for k, v in WARM.items() if k != "tsihb_s"})
+    assert not c.relays["lamp_critical"]
