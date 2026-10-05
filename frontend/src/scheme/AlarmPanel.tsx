@@ -32,6 +32,10 @@ export function AlarmPanel({ state, collapsible, canAct = false }: { state: Sche
       {hints.map((h) => (
         <div key={h.element} className="mt-1 text-amber-700">⚠ {h.text}</div>
       ))}
+      {/* efficiency advice: not an alarm, but something to adjust — visible collapsed too */}
+      {(state.advice ?? []).map((a) => (
+        <div key={a.code} data-advice={a.code} className="mt-1 text-sky-700">💡 {a.text}</div>
+      ))}
       {open && (
         <>
           {state.alarms.map((a) => (

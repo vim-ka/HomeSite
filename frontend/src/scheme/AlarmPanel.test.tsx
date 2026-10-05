@@ -55,3 +55,13 @@ describe("AlarmPanel buzzer mute failure", () => {
     expect(await screen.findByText(/Не удалось заглушить/)).toBeInTheDocument();
   });
 });
+
+describe("AlarmPanel advice", () => {
+  it("shows efficiency advice even collapsed, without counting it as an alarm", () => {
+    const s = makeState();
+    s.advice = [{ level: "WARNING", code: "delta_low:floor", text: "Тёплый пол: разница подачи и обратки 1.5°" }];
+    render(<QueryClientProvider client={new QueryClient()}><MemoryRouter><AlarmPanel state={s} collapsible /></MemoryRouter></QueryClientProvider>);
+    expect(screen.getByText(/Тёплый пол: разница подачи и обратки 1.5°/)).toBeInTheDocument();
+    expect(screen.getByText(/аварий нет/)).toBeInTheDocument();
+  });
+});

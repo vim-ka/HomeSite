@@ -12,6 +12,7 @@ import {
   ResponsiveContainer,
   AreaChart,
   Area,
+  ReferenceLine,
 } from "recharts";
 import {
   Thermometer,
@@ -20,6 +21,7 @@ import {
   Flame,
   Heater,
   Waves,
+  Activity,
 } from "lucide-react";
 import api from "@/api/client";
 import LoadingSpinner from "@/components/LoadingSpinner";
@@ -91,6 +93,9 @@ function SensorChart({
   icon: Icon,
   period,
   area,
+  refLines = [],
+  note,
+  allOn = false,
 }: {
   type: string;
   title: string;
@@ -98,6 +103,12 @@ function SensorChart({
   icon: typeof Thermometer;
   period: Period;
   area?: boolean;
+  /** horizontal guides (norms, limits) */
+  refLines?: { y: number; label: string; color: string }[];
+  /** one line under the title: how to read the chart */
+  note?: string;
+  /** all series shown from the start (instead of picking sensors) */
+  allOn?: boolean;
 }) {
   const { t } = useTranslation();
   const { start, end } = periodDates(period);
@@ -136,10 +147,11 @@ function SensorChart({
     );
   }
 
+  const isOn = (label: string) => enabledSensors[label] ?? allOn;
   const toggle = (label: string) =>
-    setEnabledSensors((prev) => ({ ...prev, [label]: !prev[label] }));
+    setEnabledSensors((prev) => ({ ...prev, [label]: !(prev[label] ?? allOn) }));
 
-  const visibleDatasets = data.datasets.filter((ds) => enabledSensors[ds.label]);
+  const visibleDatasets = data.datasets.filter((ds) => isOn(ds.label));
   const hasVisible = visibleDatasets.length > 0;
 
   const chartData = hasVisible
@@ -159,6 +171,7 @@ function SensorChart({
         <Icon className="h-5 w-5 text-gray-400" />
         <h3 className="text-sm font-semibold text-gray-700">{title}</h3>
       </div>
+      {note && <p className="-mt-2 mb-3 text-xs text-gray-500">{note}</p>}
 
       {/* Sensor checkboxes */}
       <div className="flex flex-wrap gap-x-4 gap-y-1.5 mb-3">
@@ -166,7 +179,7 @@ function SensorChart({
           <label key={ds.label} className="flex items-center gap-1.5 cursor-pointer select-none">
             <input
               type="checkbox"
-              checked={!!enabledSensors[ds.label]}
+              checked={isOn(ds.label)}
               onChange={() => toggle(ds.label)}
               className="rounded border-gray-300 h-3.5 w-3.5"
               style={{ accentColor: COLORS[i % COLORS.length] }}
@@ -203,6 +216,10 @@ function SensorChart({
               iconType="circle"
               iconSize={8}
             />
+            {refLines.map((r) => (
+              <ReferenceLine key={r.label} y={r.y} stroke={r.color} strokeDasharray="4 4"
+                             label={{ value: r.label, fontSize: 10, fill: r.color, position: "insideTopRight" }} />
+            ))}
             {visibleDatasets.map((ds) => {
               const colorIdx = data.datasets.findIndex((d) => d.label === ds.label);
               const color = COLORS[colorIdx % COLORS.length];
@@ -365,6 +382,34 @@ export default function StatisticsPage() {
             unit=" гПа"
             icon={Gauge}
             period={period}
+          />
+        </div>
+      </CollapsibleSection>
+
+      {/* Efficiency: supply − return of the circuits, the boiler return (non-condensing boiler) */}
+      <CollapsibleSection title={t("statistics.efficiency")} icon={Activity} defaultOpen={false} lazy>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+          <SensorChart
+            type="ChartDeltas"
+            title={t("statistics.deltasChart")}
+            note={t("statistics.deltasNote")}
+            unit="°"
+            icon={Activity}
+            period={period}
+            allOn
+            refLines={[{ y: 3, label: "пол от 3°", color: "#0ea5e9" }, { y: 10, label: "пол до 10°", color: "#0ea5e9" },
+                       { y: 20, label: "котёл до 20°", color: "#ef4444" },
+                       { y: 25, label: "радиаторы до 25°", color: "#f59e0b" }]}
+          />
+          <SensorChart
+            type="ChartBoilerReturn"
+            title={t("statistics.boilerReturnChart")}
+            note={t("statistics.boilerReturnNote")}
+            unit="°"
+            icon={Flame}
+            period={period}
+            allOn
+            refLines={[{ y: 50, label: "50° — ниже конденсат", color: "#dc2626" }]}
           />
         </div>
       </CollapsibleSection>

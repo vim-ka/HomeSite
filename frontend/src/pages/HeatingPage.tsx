@@ -21,6 +21,7 @@ import {
   Calendar,
   Droplets,
   ThermometerSun,
+  Home,
 } from "lucide-react";
 import api from "@/api/client";
 import { useDashboard } from "@/hooks/useDashboard";
@@ -455,9 +456,12 @@ export default function HeatingPage() {
 
   const boilerAuto = bool("heating_boiler_automode");
 
-  // Compute boiler auto target — same logic as firmware updateBoiler()
+  // Boiler auto target: the server's value (what the controller reports, or its estimate while offline);
+  // the local estimate — same rules as firmware updateBoiler() — only until the dashboard has loaded
+  const serverBoilerTarget = dashboard?.heating?.find((c) => c.config_prefix === "heating_boiler")?.temp_set ?? null;
   const boilerAutoTarget = (() => {
     if (!boilerAuto) return null;
+    if (serverBoilerTarget != null) return serverBoilerTarget;
     let target = 0;
 
     // Radiator circuit
@@ -484,18 +488,23 @@ export default function HeatingPage() {
       if (t > target) target = t;
     }
 
-    // IHB (DHW) circuit — include if automode (pump cycles automatically) or manual pump on
-    if (bool("watersupply_ihb_automode") || bool("watersupply_ihb_pump")) {
-      const t = num("watersupply_ihb_temp", "45");
+    // IHB (DHW) — only while the tank loads (manual pump on, or auto with the tank below its target),
+    // then 15° above the tank target so the coil can reach it
+    const ihbSet = num("watersupply_ihb_temp", "45");
+    // the tank: its own sleeve sensor (the water supply row with the tank target), not the loading pipe
+    const tank = dashboard?.water_supply?.find((w) => w.temp_set != null)?.temp_fact ?? null;
+    if (bool("watersupply_ihb_pump") || (bool("watersupply_ihb_automode") && tank != null && tank < ihbSet)) {
+      const t = ihbSet + num("watersupply_ihb_boost", "15");
       if (t > target) target = t;
     }
 
-    // Fallback if no circuits active
-    if (target <= 0) target = num("heating_boiler_temp", "50");
+    // Non-condensing boiler minimum; fallback if no circuits active
+    if (target > 0) target = Math.max(target, num("heating_boiler_min_temp", "55"));
+    else target = num("heating_boiler_temp", "50");
 
-    // Safety cap
+    // Safety cap: below the overtemp trip (max − margin 5 − hysteresis 2), like the firmware
     const maxTemp = num("heating_boiler_max_temp", "85");
-    if (target > maxTemp) target = maxTemp;
+    if (target > maxTemp - 7) target = maxTemp - 7;
 
     return Math.round(target * 10) / 10;
   })();
@@ -636,6 +645,15 @@ export default function HeatingPage() {
                   min={boilerAuto ? 60 : Math.max(60, num("heating_boiler_temp", "50"))}
                   max={90}
                   onChange={(v) => set("heating_boiler_max_temp", v)}
+                />
+              </SettingRow>
+              <SettingRow label={t("heating.boilerMinTemp")} hint={t("heating.hints.boilerMinTemp")}>
+                <TempSlider
+                  value={num("heating_boiler_min_temp", "55")}
+                  min={30}
+                  max={70}
+                  onChange={(v) => set("heating_boiler_min_temp", v)}
+                  disabled={!boilerAuto}
                 />
               </SettingRow>
             </div>
@@ -912,6 +930,43 @@ export default function HeatingPage() {
                   }}
                   disabled={!bool("heating_autofill_enabled")}
                   formatValue={(v) => (v / 10).toFixed(1)}
+                />
+              </SettingRow>
+            </div>
+          </CollapsibleSection>
+        </section>
+
+        {/* Room correction of the weather curves */}
+        <section className="bg-white rounded-lg shadow p-4">
+          <CollapsibleSection title={t("heating.roomCorrection")} icon={Home}>
+            <div className="divide-y divide-gray-100">
+              <SettingRow label={t("heating.outdoorTau")} hint={t("heating.hints.outdoorTau")}>
+                <TempSlider
+                  value={num("heating_pza_outdoor_tau_h", "4")}
+                  min={0}
+                  max={24}
+                  unit=""
+                  onChange={(v) => set("heating_pza_outdoor_tau_h", v)}
+                  formatValue={(v) => (v === 0 ? t("heating.roomFactorOff") : `${v} ч`)}
+                />
+              </SettingRow>
+              <SettingRow label={t("heating.roomFactor")} hint={t("heating.hints.roomFactor")}>
+                <TempSlider
+                  value={Math.round(num("heating_room_factor", "0") * 2)}
+                  min={0}
+                  max={10}
+                  unit=""
+                  onChange={(v) => set("heating_room_factor", (v / 2).toFixed(1))}
+                  formatValue={(v) => (v === 0 ? t("heating.roomFactorOff") : `${(v / 2).toFixed(1)} °/°`)}
+                />
+              </SettingRow>
+              <SettingRow label={t("heating.roomTemp")} hint={t("heating.hints.roomTemp")}>
+                <TempSlider
+                  value={num("heating_room_temp", "21")}
+                  min={15}
+                  max={28}
+                  onChange={(v) => set("heating_room_temp", v)}
+                  disabled={num("heating_room_factor", "0") <= 0}
                 />
               </SettingRow>
             </div>

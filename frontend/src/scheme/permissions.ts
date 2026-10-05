@@ -2,6 +2,7 @@
  *  (kept identical by backend/tests/test_scheme_permissions_mirror.py). */
 export const ADMIN_ONLY_KEYS = [
   "heating_boiler_max_temp",
+  "heating_boiler_min_temp",
   "heating_pressure_min",
   "heating_pressure_max",
 ] as const;

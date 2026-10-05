@@ -8,7 +8,7 @@ export interface Reading {
 export type RoleKey =
   | "boiler_supply" | "boiler_return" | "rad_supply" | "rad_return"
   | "floor_supply" | "floor_return" | "tank" | "coil_return"
-  | "cold_water" | "hot_water" | "heating_pressure" | "water_pressure"
+  | "cold_water" | "coil_supply" | "heating_pressure" | "water_pressure"
   | "outdoor" | "indoor_avg" | "boiler_room";
 
 export type RelayName =
@@ -22,6 +22,8 @@ export interface ControllerState {
   relays: Record<RelayName, boolean>;
   flags: Record<string, boolean>;
   targets: { boiler: number | null; rad: number | null; floor: number | null; ihb: number | null };
+  /** The street temperature the weather curves follow (smoothed by the building's inertia) */
+  outdoor_pza?: number | null;
 }
 
 export interface SchemeAlarm { level: "ERROR" | "WARNING"; code: string; text: string; since?: string | null; acked?: boolean }
@@ -34,6 +36,8 @@ export interface SchemeState {
   settings: Record<string, string>;
   sync: { pending: string[]; unsynced: string[] };
   alarms: SchemeAlarm[];
+  /** Efficiency advice (supply − return differences, boiler return, tank coil): level INFO, never a banner */
+  advice?: SchemeAlarm[];
   events: SchemeEvent[];
   stale_minutes: number;
 }

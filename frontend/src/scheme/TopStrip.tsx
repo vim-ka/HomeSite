@@ -20,7 +20,12 @@ export function TopStrip({ state, canRetry }: { state: SchemeState; canRetry: bo
   };
   return (
     <div className="flex flex-wrap items-center gap-x-5 gap-y-1 rounded-lg bg-white px-4 py-2 text-sm text-gray-700 shadow-sm">
-      <span>Улица <b>{fmt(val("outdoor"))}</b></span>
+      <span title="Для погодозависимого регулирования уличная температура сглаживается по инерции дома (Отопление → ПЗА)">
+        Улица <b>{fmt(val("outdoor"))}</b>
+        {c.outdoor_pza != null && val("outdoor") != null && Math.abs(c.outdoor_pza - val("outdoor")!) >= 0.3 && (
+          <span className="text-gray-500"> · для ПЗА {fmt(c.outdoor_pza)}</span>
+        )}
+      </span>
       <span>Дом <b>{fmt(val("indoor_avg"))}</b></span>
       <span>Котельная <b>{fmt(val("boiler_room"))}</b></span>
       <span className="flex items-center gap-1.5">

@@ -1,7 +1,11 @@
-/** Flat (butt) ends so a pipe stops exactly at a device outline; round joins at bends. */
-export function Pipe({ points, color, flowing, width = 6 }: {
-  points: [number, number][]; color: string; flowing: boolean; width?: number;
+/**
+ * Flat (butt) ends so a pipe stops exactly at a device outline; round joins at bends.
+ * `cap`: the pipe ends in the open (at a tap) — a round knob in its colour finishes it.
+ */
+export function Pipe({ points, color, flowing, width = 6, cap = false }: {
+  points: [number, number][]; color: string; flowing: boolean; width?: number; cap?: boolean;
 }) {
+  const [ex, ey] = points.at(-1)!;
   const d = points.map(([x, y], i) => `${i ? "L" : "M"}${x} ${y}`).join(" ");
   return (
     <g>
@@ -13,6 +17,7 @@ export function Pipe({ points, color, flowing, width = 6 }: {
         <path d={d} fill="none" stroke="#fff" strokeOpacity={0.7} strokeWidth={width / 3} strokeLinecap="butt"
               strokeDasharray="4 14" className="scheme-flow" />
       )}
+      {cap && <circle data-part="cap" cx={ex} cy={ey} r={width * 0.8} fill={color} stroke="var(--scheme-stroke)" strokeOpacity={0.6} />}
     </g>
   );
 }

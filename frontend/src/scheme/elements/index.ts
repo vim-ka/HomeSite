@@ -2,7 +2,6 @@ export { Pipe } from "./Pipe";
 export { Pump } from "./Pump";
 export { MixingValve } from "./MixingValve";
 export { FillValve } from "./FillValve";
-export { Gauge } from "./Gauge";
 export { ValueTag } from "./ValueTag";
 export { Boiler } from "./Boiler";
 export { Separator } from "./Separator";

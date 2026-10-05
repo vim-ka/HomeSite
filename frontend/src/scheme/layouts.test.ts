@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { BASE_LAYOUTS, LAYOUTS, mirrorLayout } from "./layouts";
+import { BASE_LAYOUTS, LAYOUTS, mirrorLayout, type LayoutDef } from "./layouts";
+import { PIPE_HALF, deltaBox, elementBoxes, instrumentBoxes, legHits, onPipe, overlaps, pipeBoxes, tagLeg } from "./geometry";
+import type { RoleKey } from "./types";
 
 describe("mirrorLayout", () => {
   const base = BASE_LAYOUTS.wide;
@@ -45,13 +47,12 @@ describe("radiator flow direction", () => {
     });
   }
 
-  it("wide: the circuit risers sit in the middle of the collector, the gauge left of them", () => {
+  it("wide: the circuit risers sit in the middle of the collector", () => {
     const L = BASE_LAYOUTS.wide;
     const collectorMid = L.separator[0] + 36 + (L.collectorWidth ?? 200) / 2;
     const returnRiser = L.pipes.find((p) => p.id === "rad_bypass")!.points[0]![0];
     expect(Math.abs((L.radPump[0] + returnRiser) / 2 - collectorMid)).toBeLessThanOrEqual(5);
     expect(L.floorPump[0]).toBe(L.radPump[0]);
-    expect(L.gauge[0]).toBeGreaterThan(L.radPump[0]);  // base is mirrored: greater x = further left on screen
   });
 
   it("the tank connection is long enough to fit the loading pump comfortably", () => {
@@ -62,16 +63,81 @@ describe("radiator flow direction", () => {
 });
 
 describe("value tags", () => {
-  // tags are ~90×20; mirrored ones are anchored at their right end
+  // where each sensor is mounted (Настройки → точки монтажа): the loading supply (tsihb_s, «БКН, подача») on the
+  // loading pipe; the tank (tswatersupply_h, regulated on) in its upper sleeve, shown with a callout;
+  // heating pressure (prs_heating) on the boiler return; the well water sensors (tswatersupply_c, prs_water)
+  // on the main right after the well pump
+  const source = (L: LayoutDef, role: RoleKey, [x, y]: [number, number]): boolean => {
+    const pin: [number, number] = [x, y];
+    if (role === "coil_supply") return !L.tags.coil_supply!.dial && onPipe(L, pin, (p) => p.id === "ihb_feed");
+    if (role === "tank") {
+      const s = L.tankScale ?? 1;
+      const [x0, y0] = L.tank, [x1, y1] = [x0 + 80 * s, y0 + 190 * s];
+      return !!L.tags.tank!.dial && x > x0 + 10 * s && x < x1 - 10 * s && y > y0 + 20 * s && y < (y0 + y1) / 2;
+    }
+    if (role === "heating_pressure") return onPipe(L, pin, (p) => p.role === "boiler_return");
+    if (role === "cold_water" || role === "water_pressure") {
+      // the stretch of the well pipe from the pump on (water flows in point order), clear of the pump's disc
+      const well = L.pipes.find((p) => p.id === "cold_from_well")!;
+      const seg = well.points.findIndex((a, i) => {
+        const q = well.points[i + 1];
+        return !!q && onPipe({ ...L, pipes: [{ ...well, points: [a, q] }] }, L.coldPump, () => true);
+      });
+      const afterPump = { ...well, points: [L.coldPump, ...well.points.slice(seg + 1)] };
+      const clearOfPump = Math.hypot(pin[0] - L.coldPump[0], pin[1] - L.coldPump[1]) >= 11 + PIPE_HALF;
+      return clearOfPump && onPipe({ ...L, pipes: [afterPump] }, pin, () => true);
+    }
+    return onPipe(L, pin, (p) => p.role === role);
+  };
+
   for (const name of ["wide", "tall"] as const) {
-    it(`${name}: no two value tags overlap`, () => {
-      const L = LAYOUTS[name];
-      const boxes = Object.entries(L.tags).map(([k, [x, y]]) => ({ k, x0: L.mirrored ? x - 90 : x, y0: y }));
-      for (let i = 0; i < boxes.length; i++) {
-        for (let j = i + 1; j < boxes.length; j++) {
-          const a = boxes[i]!, b = boxes[j]!;
-          const overlap = Math.abs(a.x0 - b.x0) < 90 && Math.abs(a.y0 - b.y0) < 20;
-          expect(overlap, `${a.k} overlaps ${b.k}`).toBe(false);
+    const L = LAYOUTS[name];
+    const roles = Object.keys(L.tags) as RoleKey[];
+
+    it(`${name}: every instrument's stem ends on what the reading is measured on`, () => {
+      for (const role of roles) expect(source(L, role, L.tags[role]!.pin), role).toBe(true);
+    });
+
+    it(`${name}: dials and tags sit clear of pipes, devices, captions, the panel and each other`, () => {
+      const others = [...elementBoxes(L), ...pipeBoxes(L)];
+      for (const role of roles) {
+        for (const b of instrumentBoxes(L, role)) {
+          expect(b.x0 >= 0 && b.y0 >= 0 && b.x1 <= L.width && b.y1 <= L.height, `${b.what} inside the scheme`).toBe(true);
+          for (const o of others) expect(overlaps(b, o, 2), `${b.what} runs into ${o.what}`).toBe(false);
+          for (const r2 of roles) {
+            if (r2 === role) continue;
+            for (const o of instrumentBoxes(L, r2)) expect(overlaps(b, o, 4), `${b.what} runs into ${o.what}`).toBe(false);
+          }
+        }
+      }
+    });
+
+    it(`${name}: a reading sits next to its dial, never back towards the pipe`, () => {
+      const back = { left: "right", right: "left", up: "down", down: "up" } as const;
+      for (const role of roles) {
+        const t = L.tags[role]!;
+        expect(t.tag, role).not.toBe(back[t.side]);
+      }
+    });
+
+    it(`${name}: stems are visible and cross nothing on the way to their pipe`, () => {
+      const others = [...elementBoxes(L), ...pipeBoxes(L), ...roles.flatMap((r) => instrumentBoxes(L, r))];
+      for (const role of roles) {
+        const t = L.tags[role]!;
+        const leg = tagLeg(t);
+        const length = Math.hypot(leg[0][0] - leg[1][0], leg[0][1] - leg[1][1]);
+        expect(length, `${role} stem`).toBeGreaterThanOrEqual(6);
+        // the stem stops at the pipe's edge (the tank wall) and never lies on the pipe
+        if (!t.dial) {
+          const [dx, dy] = [Math.sign(leg[0][0] - leg[1][0]), Math.sign(leg[0][1] - leg[1][1])];
+          const off = t.wall ? 0 : PIPE_HALF;
+          expect(leg[1], `${role} stem foot`).toEqual([t.pin[0] + dx * off, t.pin[1] + dy * off]);
+          expect(length, `${role} stem keeps its length`).toBe(t.len);
+        }
+        const [px, py] = t.pin;
+        for (const o of others) {
+          const own = o.what === `tag ${role}` || o.what === `dial ${role}` || (o.x0 <= px && px <= o.x1 && o.y0 <= py && py <= o.y1);
+          if (!own) expect(legHits(leg, o), `${role} leg crosses ${o.what}`).toBe(false);
         }
       }
     });
@@ -174,18 +240,15 @@ describe("radiators label", () => {
 });
 
 describe("message panel area", () => {
-  it("wide: a free box top right — right of the radiators, above the boiler, clear of tags and labels", () => {
+  it("wide: a free box top right — right of the radiators, above the boiler, clear of labels", () => {
     const L = LAYOUTS.wide;
     const p = L.panel!;
-    const [x0, y0, x1, y1] = [p.at[0], p.at[1], p.at[0] + p.width, p.at[1] + p.height];
+    const [x0, x1, y1] = [p.at[0], p.at[0] + p.width, p.at[1] + p.height];
     expect(x1).toBeLessThanOrEqual(L.width);
     expect(x0).toBeGreaterThanOrEqual(L.radiators[0] + 260 + 8);
     expect(y1).toBeLessThanOrEqual(L.boiler[1] - 6);
     expect(y1).toBeLessThanOrEqual(L.separator[1] - 20);   // separator air vent
     expect(p.width).toBeGreaterThanOrEqual(280);
-    for (const [k, [tx, ty]] of Object.entries(L.tags)) {
-      expect(tx > x0 && tx - 90 < x1 && ty < y1 && ty + 20 > y0, `tag ${k}`).toBe(false);
-    }
     for (const l of L.labels) expect(l.at[0] > x0 && l.at[1] < y1 + 12, `label ${l.text}`).toBe(false);
   });
 
@@ -203,5 +266,17 @@ describe("well", () => {
     expect(a![1] - b![1]).toBeGreaterThanOrEqual(16);
     expect(c![1]).toBe(b![1]);                               // …then along to the pump
     expect(L.well[1] + 80).toBeLessThanOrEqual(L.height);
+  });
+});
+
+describe("circuit differences", () => {
+  it.each(["wide", "tall"] as const)("%s: the ΔT labels sit clear of everything", (name) => {
+    const L = LAYOUTS[name];
+    const others = [...elementBoxes(L), ...pipeBoxes(L), ...(Object.keys(L.tags) as RoleKey[]).flatMap((r) => instrumentBoxes(L, r))];
+    for (const k of ["rad", "floor", "coil"] as const) {
+      const b = deltaBox(L.deltas[k], `${k} delta`);
+      expect(b.x0 >= 0 && b.x1 <= L.width && b.y0 >= 0 && b.y1 <= L.height, `${k} inside`).toBe(true);
+      for (const o of others) if (o.what !== `${k} delta`) expect(overlaps(b, o, 2), `${k} ΔT runs into ${o.what}`).toBe(false);
+    }
   });
 });

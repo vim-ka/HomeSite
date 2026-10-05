@@ -1,4 +1,7 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useLayoutEffect } from "react";
+
+const GAP = 4;      // between the "?" and the tip
+const MARGIN = 8;   // the tip keeps this far from the window edges
 import { createPortal } from "react-dom";
 import { HelpCircle } from "lucide-react";
 
@@ -13,6 +16,7 @@ export default function TipLabel({
 }) {
   const [show, setShow] = useState(false);
   const [pos, setPos] = useState({ top: 0, left: 0 });
+  const [anchor, setAnchor] = useState<DOMRect | null>(null);
   const tipRef = useRef<HTMLDivElement>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
 
@@ -28,15 +32,29 @@ export default function TipLabel({
         setShow(false);
       }
     };
+    // the tip is fixed to the window: on scroll it would drift off its "?" — close it
+    const close = () => setShow(false);
     document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
+    window.addEventListener("scroll", close, true);
+    return () => {
+      document.removeEventListener("mousedown", handler);
+      window.removeEventListener("scroll", close, true);
+    };
   }, [show]);
 
+  // `fixed` positions are window coordinates (no scroll offset). Below the "?" if it fits, above otherwise;
+  // never past the right edge.
+  useLayoutEffect(() => {
+    if (!show || !anchor || !tipRef.current) return;
+    const { offsetWidth: w, offsetHeight: h } = tipRef.current;
+    const below = anchor.bottom + GAP;
+    const top = below + h <= window.innerHeight - MARGIN ? below : Math.max(MARGIN, anchor.top - GAP - h);
+    const left = Math.max(MARGIN, Math.min(anchor.left, window.innerWidth - MARGIN - w));
+    setPos({ top, left });
+  }, [show, anchor]);
+
   const open = () => {
-    if (btnRef.current) {
-      const r = btnRef.current.getBoundingClientRect();
-      setPos({ top: r.bottom + window.scrollY + 4, left: r.left + window.scrollX });
-    }
+    if (btnRef.current) setAnchor(btnRef.current.getBoundingClientRect());
     setShow(true);
   };
 
