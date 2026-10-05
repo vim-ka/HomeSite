@@ -1,9 +1,9 @@
 import { useState, useRef, useEffect, useLayoutEffect } from "react";
+import { createPortal } from "react-dom";
+import { HelpCircle } from "lucide-react";
 
 const GAP = 4;      // between the "?" and the tip
 const MARGIN = 8;   // the tip keeps this far from the window edges
-import { createPortal } from "react-dom";
-import { HelpCircle } from "lucide-react";
 
 export default function TipLabel({
   text,

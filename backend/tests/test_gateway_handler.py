@@ -292,3 +292,20 @@ async def test_heartbeat_loss_and_return_in_russian_controller_left_to_the_backe
         await asyncio.sleep(0)
     assert restored == [("INFO", "Устройство «rf-gateway» снова на связи")]
     await handler.close()
+
+
+@pytest.mark.asyncio
+async def test_telemetry_publish_failure_is_a_clean_false(engine):
+    """A broker dropping mid-publish must not escape as an exception (the API answers 503, not 500)."""
+    import aiomqtt
+    from sqlalchemy.ext.asyncio import async_sessionmaker
+
+    class Client:
+        async def publish(self, topic, payload, qos=0, retain=False):
+            raise aiomqtt.MqttError("connection lost")
+
+    handler = MQTTHandler(GatewaySettings(), async_sessionmaker(engine, expire_on_commit=False))
+    handler._connected = True
+    handler._active_client = Client()
+    assert await handler.publish_telemetry("boiler_unit", {"indoor_temp": "20.4"}) is False
+    await handler.close()

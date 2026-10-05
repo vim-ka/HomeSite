@@ -911,11 +911,14 @@ void BoilerLogic::updateValves(const TempMap& temps) {
     // schedule delta. (Before, the delta only lowered the boiler auto target:
     // the valves kept day temperature, and with the boiler in manual mode the
     // night setback did nothing at all.)
-    // Pump states as decided this cycle (updatePumps runs first; the relay batch isn't committed yet)
+    // The pumps as they will run this cycle: updatePumps() has set them (batch not committed yet), and
+    // frost protection forces them on later in applyInterlocks() — the valves must regulate then too
+    bool frost = _frostProtect && !_pressureZero;
     driveValve(_radValve, RELAY_RAD_VALVE_OPEN, RELAY_RAD_VALVE_CLOSE,
-               "RAD", radiatorTarget(), getTemp(temps, "tsrad_s"), _relays->get(RELAY_RADIATOR_PUMP));
+               "RAD", radiatorTarget(), getTemp(temps, "tsrad_s"), _relays->get(RELAY_RADIATOR_PUMP) || frost);
     driveValve(_floorValve, RELAY_FLOOR_VALVE_OPEN, RELAY_FLOOR_VALVE_CLOSE,
-               "FLOOR", floorTarget(), getTemp(temps, "tsfloor_s"), _relays->get(RELAY_FLOOR_PUMP));
+               "FLOOR", floorTarget(), getTemp(temps, "tsfloor_s"),
+               (_relays->get(RELAY_FLOOR_PUMP) || frost) && !_floorSensorLost);
 }
 
 // ── Alarm lamps ───────────────────────────────────────────────

@@ -209,6 +209,19 @@ async def test_water_pressure_range_is_display_only(client, seeded_settings, db_
 
 
 @pytest.mark.asyncio
+async def test_boiler_min_temp_must_stay_below_the_auto_target_cap(client, seeded_settings):
+    """The auto target is capped at max - 7: a higher minimum would be silently ignored (review finding)."""
+    token = await _get_token(client)
+    headers = {"Authorization": f"Bearer {token}"}
+    bad = await client.put("/api/v1/settings", headers=headers,
+                           json={"settings": {"heating_boiler_max_temp": "70", "heating_boiler_min_temp": "65"}})
+    assert bad.status_code == 422
+    ok = await client.put("/api/v1/settings", headers=headers,
+                          json={"settings": {"heating_boiler_max_temp": "70", "heating_boiler_min_temp": "63"}})
+    assert ok.status_code == 200
+
+
+@pytest.mark.asyncio
 async def test_operator_cannot_change_safety_limits(client, seeded_settings, db_session):
     db_session.add(User(
         username="operator",

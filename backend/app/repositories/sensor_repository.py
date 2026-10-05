@@ -134,9 +134,11 @@ class SensorRepository:
 
         return list(merged.values())
 
-    async def get_heating_status(self, controller_targets: dict | None = None) -> list[dict]:
+    async def get_heating_status(self, controller_targets: dict | None = None,
+                                 water: list[dict] | None = None) -> list[dict]:
         """Get heating circuit status using mount point bindings (sensors resolved dynamically).
 
+        `water`: get_water_supply_status() if the caller has it already (the tank reading for the estimate).
         Only circuits with show_on_dashboard=True are included.
         If PZA (weather-dependent) mode is enabled, temp_set is calculated from curve.
         If boiler automode is enabled, the boiler's temp_set is the max of active
@@ -214,7 +216,9 @@ class SensorRepository:
         # that follows firmware updateBoiler() — the dashboard and heating page show the same number.
         boiler_auto = await self._get_config_value("heating_boiler_automode") == "1"
         if boiler_auto:
-            tank = next((w["tempFact"] for w in await self.get_water_supply_status() if w["is_tank"]), None)
+            if water is None:
+                water = await self.get_water_supply_status()
+            tank = next((w["tempFact"] for w in water if w["is_tank"]), None)
             reported = (controller_targets or {}).get("boiler")
             boiler_target = (reported if reported is not None
                              else await self._compute_boiler_auto_target(outdoor_temp, tank))

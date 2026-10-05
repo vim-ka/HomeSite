@@ -613,10 +613,12 @@ class Controller:
         vs.drive_start, vs.drive_s, vs.opening = self.t, pulse, opening
 
     def _update_valves(self, temps: dict[str, float]) -> None:
+        # the pumps as they will run this cycle: frost protection forces them on later, in the interlocks
+        frost = self.frost_protect and not self.pressure_zero
         self._drive_valve(self.rad_valve, "rad_open", "rad_close", self.radiator_target(), temps.get("tsrad_s"),
-                          self.relays["rad_pump"])
+                          self.relays["rad_pump"] or frost)
         self._drive_valve(self.floor_valve, "floor_open", "floor_close", self.floor_target(), temps.get("tsfloor_s"),
-                          self.relays["floor_pump"])
+                          (self.relays["floor_pump"] or frost) and not self.floor_sensor_lost)
 
     def _apply_interlocks(self, temps: dict[str, float]) -> None:
         bt = temps.get("tsboiler_s")

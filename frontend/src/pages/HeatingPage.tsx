@@ -944,7 +944,7 @@ export default function HeatingPage() {
                 <TempSlider
                   value={num("heating_pza_outdoor_tau_h", "4")}
                   min={0}
-                  max={24}
+                  max={48}
                   unit=""
                   onChange={(v) => set("heating_pza_outdoor_tau_h", v)}
                   formatValue={(v) => (v === 0 ? t("heating.roomFactorOff") : `${v} ч`)}

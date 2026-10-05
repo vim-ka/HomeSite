@@ -368,3 +368,12 @@ def test_mixing_valve_regulates_while_its_pump_runs():
     c = make(**{**PRIORITY, "watersupply_ihb_pump": "0"})
     log = valve_log(c, 3 * 60, {**WARM, "tsrad_s": 25.0})
     assert any(o for _, o, _ in log) and not any(cl for _, _, cl in log)
+
+
+def test_frost_protection_lets_the_mixing_valves_regulate():
+    """Frost forces the circuit pumps on in the interlocks (after the valves are evaluated): the valves must
+    still see a running pump, or they freeze in place exactly when the house is in danger (review finding)."""
+    c = make(**{**PRIORITY, "heating_radiator_pump": "0", "watersupply_ihb_pump": "0"})   # radiators switched off
+    log = valve_log(c, 3 * 60, {"tsboiler_s": 60.0, "tswatersupply_h": 50.0, "tsrad_s": 5.0, "tsfloor_s": 5.0})
+    assert c.frost_protect and all(pump for pump, _, _ in log)                  # frost runs the pump …
+    assert any(o for _, o, _ in log)                                            # … and the valve opens to heat

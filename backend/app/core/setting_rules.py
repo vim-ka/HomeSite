@@ -250,6 +250,13 @@ def validate_settings(
     b_temp, b_max = _num("heating_boiler_temp"), _num("heating_boiler_max_temp")
     if b_temp is not None and b_max is not None and b_temp > b_max:
         errors.setdefault("heating_boiler_temp", "must not exceed heating_boiler_max_temp")
+    # The auto target is capped at max - 7 (boiler_logic.cpp BOILER_TARGET_MARGIN + BOILER_HYSTERESIS): a higher
+    # minimum would be silently overridden. Checked only when one of the two changes.
+    b_min = _num("heating_boiler_min_temp")
+    if ({"heating_boiler_min_temp", "heating_boiler_max_temp"} & normalized.keys()
+            and b_min is not None and b_max is not None and b_min > b_max - 7):
+        key = "heating_boiler_min_temp" if "heating_boiler_min_temp" in normalized else "heating_boiler_max_temp"
+        errors.setdefault(key, f"heating_boiler_min_temp {b_min:g} needs heating_boiler_max_temp >= {b_min + 7:g}")
 
     # Anti-legionella must be reachable: the boiler's auto target is capped at max - 7
     # (boiler_logic.cpp BOILER_TARGET_MARGIN + BOILER_HYSTERESIS). Checked only when one of these keys
