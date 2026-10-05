@@ -33,6 +33,11 @@ def _dev(kind: Kind, lo: float | None = None, hi: float | None = None, admin: bo
     return SettingRule(kind=kind, min=lo, max=hi, admin_only=admin, device=True)
 
 
+def _ui(kind: Kind, lo: float | None = None, hi: float | None = None) -> SettingRule:
+    """Display-only setting (not sent to any device), operators may change it."""
+    return SettingRule(kind=kind, min=lo, max=hi)
+
+
 def _sys(kind: Kind, lo: float | None = None, hi: float | None = None, choices: tuple[str, ...] = ()) -> SettingRule:
     return SettingRule(kind=kind, min=lo, max=hi, choices=choices, admin_only=True)
 
@@ -43,6 +48,15 @@ RULES: dict[str, SettingRule] = {
     "heating_boiler_power": _dev("bool"),
     "heating_boiler_temp": _dev("float", 30, 90),
     "heating_boiler_max_temp": _dev("float", 60, 90, admin=True),
+    # non-condensing boiler: the auto target never drops below this (flue condensation)
+    "heating_boiler_min_temp": _dev("float", 30, 70, admin=True),
+    # room correction of the weather curves (factor 0 = off); the house average is forwarded as telemetry
+    "heating_room_temp": _dev("float", 15, 28),
+    "heating_room_factor": _dev("float", 0, 5),
+    # the weather curves follow a smoothed street temperature: building inertia, hours (0 = off)
+    "heating_pza_outdoor_tau_h": _dev("float", 0, 48),
+    # boiler target while the tank loads = tank target + this (lower with hard water: less scale on the coil)
+    "watersupply_ihb_boost": _dev("float", 0, 20),
     # Radiators / floor
     "heating_radiator_pump": _dev("bool"),
     "heating_radiator_off_ihb": _dev("bool"),
@@ -82,6 +96,15 @@ RULES: dict[str, SettingRule] = {
     "watersupply_alm_days": _dev("days"),
     "watersupply_alm_duration": _dev("int", 10, 240),
     "watersupply_alm_start_time": _dev("time"),
+    # DHW recirculation only in two daily windows
+    "watersupply_recirc_schedule_enabled": _dev("bool"),
+    "watersupply_recirc_morning_start": _dev("time"),
+    "watersupply_recirc_morning_end": _dev("time"),
+    "watersupply_recirc_evening_start": _dev("time"),
+    "watersupply_recirc_evening_end": _dev("time"),
+    # Well water pressure working range: the green zone of the manometer on the scheme
+    "water_pressure_min": _ui("float", 0.5, 4.0),
+    "water_pressure_max": _ui("float", 1.0, 6.0),
     # System (admin)
     "access_token_expire_minutes": _sys("int", 5, 1440),
     "refresh_token_expire_days": _sys("int", 1, 90),
@@ -220,9 +243,10 @@ def validate_settings(
         except (KeyError, ValueError):
             return None
 
-    p_min, p_max = _num("heating_pressure_min"), _num("heating_pressure_max")
-    if p_min is not None and p_max is not None and p_min >= p_max:
-        errors.setdefault("heating_pressure_min", "must be lower than heating_pressure_max")
+    for low, high in (("heating_pressure_min", "heating_pressure_max"), ("water_pressure_min", "water_pressure_max")):
+        p_min, p_max = _num(low), _num(high)
+        if p_min is not None and p_max is not None and p_min >= p_max:
+            errors.setdefault(low, f"must be lower than {high}")
     b_temp, b_max = _num("heating_boiler_temp"), _num("heating_boiler_max_temp")
     if b_temp is not None and b_max is not None and b_temp > b_max:
         errors.setdefault("heating_boiler_temp", "must not exceed heating_boiler_max_temp")

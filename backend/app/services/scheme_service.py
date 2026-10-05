@@ -36,9 +36,11 @@ CIRCUIT_ROLES = {
     "heating_boiler": ("boiler_supply", "boiler_return"),
     "heating_radiator": ("rad_supply", "rad_return"),
     "heating_floorheating": ("floor_supply", "floor_return"),
-    "watersupply_ihb": ("tank", "coil_return"),
+    "watersupply_ihb": ("coil_supply", "coil_return"),   # the loading pipes (tsihb_s / tsihb_b)
 }
-WATER_SENSORS = {"cold_water": "tswatersupply_c", "hot_water": "tswatersupply_h"}
+# the tank itself is the sensor in its upper sleeve (the controller regulates the DHW on it)
+TANK_SENSOR = "tswatersupply_h"
+WATER_SENSORS = {"cold_water": "tswatersupply_c", "tank": TANK_SENSOR}
 UNHEATED_SENSORS = {"clm_garage_th"}
 BOILER_ROOM_SENSOR = "clm_boiler_th"
 FLAG_KEYS = [
@@ -46,7 +48,7 @@ FLAG_KEYS = [
     "autofill_active", "autofill_closing", "boiler_auto", "buzzer_muted", *CONTROLLER_FLAGS,
 ]
 ALL_ROLES = [r for pair in CIRCUIT_ROLES.values() for r in pair] + [
-    "cold_water", "hot_water", "heating_pressure", "water_pressure", "outdoor", "indoor_avg", "boiler_room",
+    "cold_water", "tank", "heating_pressure", "water_pressure", "outdoor", "indoor_avg", "boiler_room",
 ]
 
 GatewayFetch = Callable[[], Awaitable[dict | None]]
@@ -200,6 +202,8 @@ class SchemeService:
                 "boiler": data.get("boiler_auto_target"), "rad": data.get("rad_target"),
                 "floor": data.get("floor_target"), "ihb": data.get("ihb_target"),
             },
+            # the street temperature the weather curves follow (smoothed by the building's inertia)
+            "outdoor_pza": data.get("outdoor_pza"),
         }
 
         # Pressure: a fresh catalog sensor first, otherwise what the controller reports

@@ -38,4 +38,6 @@ async def scheme_state(
     # alarms: what the HealthMonitor raised (delays, hysteresis) — the same list the event log follows
     monitor = getattr(request.app.state, "health_monitor", None)
     state["alarms"] = list(monitor.state.active_alarms) if monitor else []
+    # efficiency advice (not alarms): averaged over steady operation, also by the HealthMonitor
+    state["advice"] = list(getattr(monitor.state, "active_advice", [])) if monitor else []
     return state

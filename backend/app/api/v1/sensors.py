@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
@@ -17,11 +17,14 @@ def get_sensor_service(db: AsyncSession = Depends(get_db)) -> SensorService:
 
 @router.get("/dashboard", response_model=DashboardResponse)
 async def get_dashboard(
+    request: Request,
     user: User = Depends(get_current_user),
     service: SensorService = Depends(get_sensor_service),
 ):
     """Full dashboard data: climate, heating circuits, water supply, 24h stats."""
-    return await service.get_dashboard_data()
+    # the targets the controller itself reports (HealthMonitor, every poll) beat our estimates
+    monitor = getattr(request.app.state, "health_monitor", None)
+    return await service.get_dashboard_data(getattr(monitor.state, "controller_targets", None) if monitor else None)
 
 
 @router.get("", response_model=list[SensorResponse])

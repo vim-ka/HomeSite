@@ -134,7 +134,7 @@ class SensorRepository:
 
         return list(merged.values())
 
-    async def get_heating_status(self) -> list[dict]:
+    async def get_heating_status(self, controller_targets: dict | None = None) -> list[dict]:
         """Get heating circuit status using mount point bindings (sensors resolved dynamically).
 
         Only circuits with show_on_dashboard=True are included.
@@ -210,20 +210,33 @@ class SensorRepository:
                 "auto_mode": auto_mode,
             })
 
-        # Boiler automode override — duplicates firmware updateBoiler() so the
-        # dashboard and heating page agree on what the boiler is actually targeting.
+        # Boiler automode: what the controller reports it targets; without it (offline) an estimate
+        # that follows firmware updateBoiler() — the dashboard and heating page show the same number.
         boiler_auto = await self._get_config_value("heating_boiler_automode") == "1"
         if boiler_auto:
-            boiler_target = await self._compute_boiler_auto_target(outdoor_temp)
+            tank = next((w["tempFact"] for w in await self.get_water_supply_status() if w["is_tank"]), None)
+            reported = (controller_targets or {}).get("boiler")
+            boiler_target = (reported if reported is not None
+                             else await self._compute_boiler_auto_target(outdoor_temp, tank))
             for r in results:
                 if r["config_prefix"] == "heating_boiler":
                     r["TempSet"] = boiler_target
                     break
 
+        # the circuits: what the controller regulates to (its PZA uses the smoothed street temperature,
+        # plus night setback and the room correction) — our curve estimate only while it is offline
+        for prefix, key in (("heating_radiator", "rad"), ("heating_floorheating", "floor")):
+            reported = (controller_targets or {}).get(key)
+            if reported is not None:
+                for r in results:
+                    if r["config_prefix"] == prefix:
+                        r["TempSet"] = round(float(reported), 1)
+
         return results
 
-    async def _compute_boiler_auto_target(self, outdoor_temp: float | None) -> float:
-        """Max supply target across active circuits, capped by heating_boiler_max_temp.
+    async def _compute_boiler_auto_target(self, outdoor_temp: float | None, tank_temp: float | None = None) -> float:
+        """Max supply target across active circuits, the DHW tank only while it loads (+ watersupply_ihb_boost), never below
+        heating_boiler_min_temp, capped below the overtemp trip (max − 7).
 
         Mirrors the firmware updateBoiler() and frontend HeatingPage logic.
         """
@@ -262,23 +275,24 @@ class SensorRepository:
         if floor is not None and floor > target:
             target = floor
 
-        # IHB (DHW) — include when automode OR manual pump is on.
-        ihb_active = (
+        # IHB (DHW) — only while the tank loads: manual pump on, or auto with the tank below its target
+        ihb = _to_float(await self._get_config_value("watersupply_ihb_temp"), 45.0)
+        loading = await self._get_config_value("watersupply_ihb_pump") == "1" or (
             await self._get_config_value("watersupply_ihb_automode") == "1"
-            or await self._get_config_value("watersupply_ihb_pump") == "1"
+            and tank_temp is not None and tank_temp < ihb
         )
-        if ihb_active:
-            ihb = _to_float(await self._get_config_value("watersupply_ihb_temp"), 45.0)
-            if ihb > target:
-                target = ihb
+        boost = _to_float(await self._get_config_value("watersupply_ihb_boost"), 15.0)
+        if loading and ihb + boost > target:
+            target = ihb + boost
 
-        # Fallback when no circuits active.
-        if target <= 0:
+        if target > 0:  # non-condensing boiler minimum
+            target = max(target, _to_float(await self._get_config_value("heating_boiler_min_temp"), 55.0))
+        else:  # fallback when no circuits active
             target = _to_float(await self._get_config_value("heating_boiler_temp"), 50.0)
 
         max_temp = _to_float(await self._get_config_value("heating_boiler_max_temp"), 85.0)
-        if target > max_temp:
-            target = max_temp
+        if target > max_temp - 7:  # firmware cap: max − margin 5 − hysteresis 2
+            target = max_temp - 7
 
         return round(target * 10) / 10
 
@@ -289,11 +303,14 @@ class SensorRepository:
             select(
                 MountPoint.id,
                 MountPoint.name.label("type"),
+                Sensor.name.label("sensor_name"),
                 SensorData.value.label("tempFact"),
             )
             .select_from(MountPoint)
             .join(SystemType, SystemType.id == MountPoint.system_id)
-            .outerjoin(Sensor, Sensor.mount_point_id == MountPoint.id)
+            # the mount point's own temperature sensor — not every sensor on it (a pressure sensor bound to the
+            # same point used to add a second, empty card)
+            .outerjoin(Sensor, Sensor.id == MountPoint.temperature_sensor_id)
             .outerjoin(SensorData, (SensorData.sensor_id == Sensor.id) & (SensorData.datatype_id == 1) & (SensorData.timestamp >= stale_threshold))
             .where(SystemType.id == 2)
         )
@@ -303,22 +320,20 @@ class SensorRepository:
         cold_pump = await self._get_config_value("watersupply_pump")
         hot_pump = await self._get_config_value("watersupply_pump_hot")
 
-        # IHB (hot water tank) mount point comes from its heating circuit, not a fixed id
-        ihb_mp_id = (await self.db.execute(
-            select(HeatingCircuit.supply_mount_point_id)
-            .where(HeatingCircuit.config_prefix == "watersupply_ihb")
-            .limit(1)
-        )).scalar_one_or_none()
+        # The tank is the mount point of the sensor in its upper sleeve (the controller regulates the DHW on it);
+        # the loading pipes (tsihb_s / tsihb_b) are the heating circuit's, not water supply
+        from app.services.scheme_service import TANK_SENSOR
 
         results = []
         for row in rows:
-            is_ihb = ihb_mp_id is not None and row.id == ihb_mp_id
+            is_ihb = row.sensor_name == TANK_SENSOR
             results.append({
                 "type": row.type,
                 "tempSet": ihb_temp if is_ihb else None,
                 "tempFact": row.tempFact,
                 "pressure": None,
                 "Pump": hot_pump if is_ihb else cold_pump,
+                "is_tank": is_ihb,
             })
 
         return results

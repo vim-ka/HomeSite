@@ -77,7 +77,7 @@ async def test_state_values_by_role(db_session):
     v = state["values"]
     assert v["boiler_supply"]["value"] == 75.1 and v["rad_return"]["value"] == 43.0
     assert v["boiler_supply"]["ts"].endswith("Z") and v["boiler_supply"]["stale"] is False
-    assert v["cold_water"]["value"] == 7.1 and v["hot_water"]["value"] == 61.8
+    assert v["cold_water"]["value"] == 7.1 and v["tank"]["value"] == 61.8   # the tank: its own sleeve sensor
     assert v["outdoor"]["value"] == -7.4
     assert v["indoor_avg"]["value"] == 22.7          # street and garage excluded, boiler room too
     assert v["boiler_room"]["value"] == 23.0

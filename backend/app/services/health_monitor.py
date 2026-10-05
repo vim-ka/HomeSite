@@ -16,8 +16,10 @@ from app.models.config import Actuator, ConfigKV
 from app.models.event import EventLog
 from app.models.pending_sensor import PendingSensor
 from app.models.sensor import MountPoint, Sensor, SensorData
+from app.services.advice_rules import AdviceHistory, evaluate_advice
 from app.services.alarm_rules import Alarm, AlarmTracker, Snapshot, evaluate, unknown
-from app.services.scheme_service import SchemeService
+from app.services.gateway_client import GatewayClient
+from app.services.scheme_service import CONTROLLER_DEVICE, SchemeService
 
 logger = get_logger(__name__)
 
@@ -53,6 +55,13 @@ class HealthState:
     # Alarms active right now (most severe first) — the scheme panel and the header read these
     active_alarms: list[dict] = field(default_factory=list)
 
+    # Efficiency advice (supply − return differences, boiler return, tank coil) — not alarms
+    active_advice: list[dict] = field(default_factory=list)
+
+    # The targets the controller reports (boiler auto / radiators / floor, PZA with its smoothed street
+    # temperature, night setback, room correction) — None while it is offline
+    controller_targets: dict | None = None
+
     # Config (exposed to frontend)
     poll_seconds: int = DEFAULT_POLL_INTERVAL
 
@@ -68,6 +77,9 @@ class HealthMonitor:
         self.session_factory = session_factory
         self.gateway_url = gateway_url
         self.state = HealthState()
+        self._targets: dict | None = None
+        self.advice_history = AdviceHistory()
+        self.advice = AlarmTracker()
 
         # Previous state for change detection
         self._prev_active_sensor_ids: set[int] = set()
@@ -206,6 +218,7 @@ class HealthMonitor:
                         pass
 
             # --- Alarms: rules over the scheme state, raised/cleared through the tracker ---
+            self._targets = None
             try:
                 await self._check_alarms(session, now, services, gateway_health, events)
             except Exception as e:
@@ -240,6 +253,8 @@ class HealthMonitor:
                 unsynced_commands=unsynced_commands,
                 poll_seconds=poll_seconds,
                 active_alarms=self.alarms.active_list(),
+                controller_targets=self._targets,
+                active_advice=self.advice.active_list(),
                 updated_at=now,
             )
 
@@ -262,7 +277,10 @@ class HealthMonitor:
 
         scheme = SchemeService(session, fetch)
         state = await scheme.build_state(now)
+        if gateway_health is not None:
+            await self._forward_indoor(state)
         c = state["controller"]
+        self._targets = dict(c["targets"]) if c["online"] else None
         snap = Snapshot(
             now=now,
             services={"gateway": services.get("gateway", False), "mqtt": services.get("mqtt", False)},
@@ -278,6 +296,33 @@ class HealthMonitor:
             events.append(EventLog(level=a.level, source="alarms", message=a.text))
         for a in cleared:
             events.append(EventLog(level="INFO", source="alarms", message=f"Снято: {a.text}"))
+
+        # efficiency advice over the last 30 min of steady operation (a rule that can't judge holds its advice)
+        self.advice_history.add(snap)
+        advice, held = evaluate_advice(self.advice_history, now, set(self.advice.active))
+        raised, cleared = self.advice.update(advice, now, hold_codes=held)
+        for a in raised:
+            events.append(EventLog(level="INFO", source="advice", message=f"Совет: {a.text}"))
+        for a in cleared:
+            events.append(EventLog(level="INFO", source="advice", message=f"Совет снят: {a.text.split(' — ')[0]}"))
+
+    async def _forward_indoor(self, state: dict) -> None:
+        """The house average → the controller, for the room correction of its weather curves.
+
+        Only while the correction is on; a stale average is not sent — the controller then drops
+        the correction by itself after its TTL.
+        """
+        try:
+            factor = float(state["settings"].get("heating_room_factor", "0"))
+        except ValueError:
+            factor = 0.0
+        indoor = state["values"].get("indoor_avg") or {}
+        if factor <= 0 or indoor.get("stale", True) or indoor.get("value") is None:
+            return
+        await self._send_telemetry({"indoor_temp": f"{indoor['value']:.1f}"})
+
+    async def _send_telemetry(self, params: dict[str, str]) -> None:
+        await GatewayClient(base_url=self.gateway_url, timeout=3.0).send_telemetry(CONTROLLER_DEVICE, params)
 
     async def _check_services(
         self, session: AsyncSession, gateway_timeout: float = 3.0

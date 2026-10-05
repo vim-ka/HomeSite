@@ -1,6 +1,7 @@
 import pytest
 
 from app.core.security import get_password_hash
+from app.core.setting_rules import RULES
 from app.models.config import ConfigKV
 from app.models.user import User, UserRole
 
@@ -190,6 +191,21 @@ async def test_update_settings_cross_field_pressure(client, seeded_settings):
         headers={"Authorization": f"Bearer {token}"},
     )
     assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_water_pressure_range_is_display_only(client, seeded_settings, db_session):
+    """Well pressure range: saved for the scheme's manometer, min below max, operators may change it."""
+    token = await _get_token(client)
+    headers = {"Authorization": f"Bearer {token}"}
+    bad = await client.put("/api/v1/settings", headers=headers,
+                           json={"settings": {"water_pressure_min": "3.0", "water_pressure_max": "2.0"}})
+    assert bad.status_code == 422
+    ok = await client.put("/api/v1/settings", headers=headers,
+                          json={"settings": {"water_pressure_min": "1.6", "water_pressure_max": "3.2"}})
+    assert ok.status_code == 200
+    assert ok.json()["delivery"] == "none"   # nothing goes to the controller
+    assert not RULES["water_pressure_min"].admin_only and not RULES["water_pressure_min"].device
 
 
 @pytest.mark.asyncio

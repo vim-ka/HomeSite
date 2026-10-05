@@ -227,6 +227,21 @@ def create_gateway_api(
         )
         return {"status": "ok"}
 
+    # Telemetry the backend forwards to a controller (the house average for the room correction)
+    TELEMETRY_KEYS = {"indoor_temp"}
+
+    @app.post("/telemetry")
+    async def telemetry(
+        payload: CommandRequest,
+        _: None = Depends(verify_secret),
+    ) -> dict:
+        """Publish telemetry right away: not queued, no ack, not retained. Settings never go this way."""
+        if not payload.params or set(payload.params) - TELEMETRY_KEYS:
+            raise HTTPException(status_code=422, detail=f"only {sorted(TELEMETRY_KEYS)} may be sent as telemetry")
+        if handler is None or not await handler.publish_telemetry(payload.device_id, dict(payload.params)):
+            raise HTTPException(status_code=503, detail="MQTT not connected")
+        return {"published": True}
+
     @app.post("/reload-mqtt")
     async def reload_mqtt(
         _: None = Depends(verify_secret),
