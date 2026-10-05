@@ -170,8 +170,8 @@ class Plant:
                 "tsboiler_s": 70.0, "tsboiler_b": 63.5,
                 "tsrad_s": 50.0, "tsrad_b": 40.2,
                 "tsfloor_s": 30.0, "tsfloor_b": 27.1,
-                "tsihb_s": 54.0, "tsihb_b": 24.0,
-                "tswatersupply_c": 14.0, "tswatersupply_h": 49.0,
+                "tsihb_s": 24.0, "tsihb_b": 24.0,
+                "tswatersupply_c": 14.0, "tswatersupply_h": 55.0,
             }
 
     # ------------------------------------------------------------------ weather
@@ -265,16 +265,18 @@ class Plant:
                 self.pipes[s_key] = _relax(self.pipes[s_key], room, dt, PIPE_TAU_STILL)
                 self.pipes[b_key] = _relax(self.pipes[b_key], room, dt, PIPE_TAU_STILL)
 
-        # DHW tank coil. The firmware treats tsihb_s as the tank temperature
-        # (pump, TEH and anti-legionella regulate on it), so it sits in the tank
-        # sleeve; tsihb_b is on the coil return pipe.
+        # DHW tank coil: tsihb_s / tsihb_b are the loading pipes (coil supply / return) — hot while the loading
+        # pump runs, cooling down when it stops. The tank itself is tswatersupply_h (upper sleeve).
         q_ihb = 0.0
         if relays["ihb_pump"]:
             q_ihb = min(COIL_MAX, max(0.0, COIL_K * (self.t_boiler - self.t_tank)))
             self.pipes["tsihb_b"] = _relax(self.pipes["tsihb_b"], self.t_boiler - q_ihb / COIL_FLOW, dt, PIPE_TAU_FLOW)
         else:
             self.pipes["tsihb_b"] = _relax(self.pipes["tsihb_b"], room, dt, PIPE_TAU_STILL)
-        self.pipes["tsihb_s"] = _relax(self.pipes["tsihb_s"], self.t_tank, dt, 90.0)
+        if relays["ihb_pump"]:
+            self.pipes["tsihb_s"] = _relax(self.pipes["tsihb_s"], self.t_boiler, dt, PIPE_TAU_FLOW)
+        else:
+            self.pipes["tsihb_s"] = _relax(self.pipes["tsihb_s"], room, dt, PIPE_TAU_STILL)
         q_boiler_load += q_ihb
 
         # Hot water draws (no cold-water pump → no water at the taps)
@@ -287,10 +289,8 @@ class Plant:
         loss = TANK_LOSS * (self.t_tank - room) / 35
         self.t_tank += (q_ihb + teh - loss - q_draw) / TANK_C * dt
 
-        hot_target = self.t_tank - 1.5 if lpm > 0 else (self.t_tank - 4.0 if relays["water_hot_pump"] else room)
-        self.pipes["tswatersupply_h"] = _relax(
-            self.pipes["tswatersupply_h"], hot_target, dt, PIPE_TAU_FLOW if hot_target != room else PIPE_TAU_STILL
-        )
+        # the tank's upper sleeve: the hottest layer, a little above the tank average
+        self.pipes["tswatersupply_h"] = _relax(self.pipes["tswatersupply_h"], self.t_tank + 1.0, dt, 90.0)
         cold_target = COLD_WATER + 0.5 if lpm > 0 else room
         self.pipes["tswatersupply_c"] = _relax(
             self.pipes["tswatersupply_c"], cold_target, dt, PIPE_TAU_FLOW * 2 if lpm > 0 else 2 * PIPE_TAU_STILL

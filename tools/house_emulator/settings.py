@@ -42,12 +42,12 @@ SETTINGS: dict[str, Spec] = {
     "heating_pressure_max": Spec("float", 1.0, 2.8, "1.8"),
     "heating_radiator_schedule_enabled": Spec("bool", default="1"),
     "heating_radiator_schedule_days": Spec("days", default="1,2,3,4,5"),
-    "heating_radiator_schedule_delta": Spec("float", -20, 10, "-10"),
+    "heating_radiator_schedule_delta": Spec("float", -20, 10, "-4"),
     "heating_radiator_schedule_start": Spec("time", default="23:00"),
     "heating_radiator_schedule_end": Spec("time", default="06:00"),
     "heating_floorheating_schedule_enabled": Spec("bool", default="1"),
     "heating_floorheating_schedule_days": Spec("days", default="1,2,3,4,5"),
-    "heating_floorheating_schedule_delta": Spec("float", -20, 10, "-5"),
+    "heating_floorheating_schedule_delta": Spec("float", -20, 10, "-2"),
     "heating_floorheating_schedule_start": Spec("time", default="23:00"),
     "heating_floorheating_schedule_end": Spec("time", default="06:00"),
     "watersupply_ihb_alm_mode": Spec("bool", default="1"),
@@ -59,6 +59,21 @@ SETTINGS: dict[str, Spec] = {
     "heating_radiator_curve": Spec("int", 1, 5, "3"),
     "heating_floorheating_wbm": Spec("bool", default="1"),
     "heating_floorheating_curve": Spec("int", 1, 5, "3"),
+    # non-condensing boiler: the auto target never drops below this (flue condensation)
+    "heating_boiler_min_temp": Spec("float", 30, 70, "55"),
+    # room correction of the weather curve: supply +factor °C per °C the house is below the room target
+    "heating_room_temp": Spec("float", 15, 28, "21"),
+    "heating_room_factor": Spec("float", 0, 5, "0"),
+    # the weather curves follow a smoothed street temperature: the building's inertia, hours (0 = off)
+    "heating_pza_outdoor_tau_h": Spec("float", 0, 48, "4"),
+    # boiler target while the tank loads = tank target + this (lower with hard water: less scale on the coil)
+    "watersupply_ihb_boost": Spec("float", 0, 20, "15"),
+    # DHW recirculation only in two daily windows (when the schedule is on)
+    "watersupply_recirc_schedule_enabled": Spec("bool", default="0"),
+    "watersupply_recirc_morning_start": Spec("time", default="06:00"),
+    "watersupply_recirc_morning_end": Spec("time", default="09:00"),
+    "watersupply_recirc_evening_start": Spec("time", default="18:00"),
+    "watersupply_recirc_evening_end": Spec("time", default="23:00"),
 }
 
 _TIME = re.compile(r"^\d{1,2}:\d{2}$")

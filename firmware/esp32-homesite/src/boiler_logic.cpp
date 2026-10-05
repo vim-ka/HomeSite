@@ -1,6 +1,10 @@
 #include "boiler_logic.h"
 
 static const float TEMP_INVALID = -127.0;
+// The tank temperature: the sensor in the tank's upper sleeve («Горячее водоснабжение»). tsihb_s / tsihb_b are
+// the loading pipes (coil supply / return) — a loading pipe cools when the pump stops, it must never stand for
+// the tank (that kept a cold tank from loading while the pipe was still hot).
+static const char* TANK_SENSOR = "tswatersupply_h";
 
 // ── Settings table: every key the controller accepts, with hard limits ──
 //
@@ -43,12 +47,12 @@ const SettingSpec SETTINGS[] = {
     {"heating_pressure_max",                  Kind::Float, 1.0,  2.8,  "1.8"},
     {"heating_radiator_schedule_enabled",     Kind::Bool,  0,    0,    "1"},
     {"heating_radiator_schedule_days",        Kind::Days,  0,    0,    "1,2,3,4,5"},
-    {"heating_radiator_schedule_delta",       Kind::Float, -20,  10,   "-10"},
+    {"heating_radiator_schedule_delta",       Kind::Float, -20,  10,   "-4"},
     {"heating_radiator_schedule_start",       Kind::Time,  0,    0,    "23:00"},
     {"heating_radiator_schedule_end",         Kind::Time,  0,    0,    "06:00"},
     {"heating_floorheating_schedule_enabled", Kind::Bool,  0,    0,    "1"},
     {"heating_floorheating_schedule_days",    Kind::Days,  0,    0,    "1,2,3,4,5"},
-    {"heating_floorheating_schedule_delta",   Kind::Float, -20,  10,   "-5"},
+    {"heating_floorheating_schedule_delta",   Kind::Float, -20,  10,   "-2"},
     {"heating_floorheating_schedule_start",   Kind::Time,  0,    0,    "23:00"},
     {"heating_floorheating_schedule_end",     Kind::Time,  0,    0,    "06:00"},
     {"watersupply_ihb_alm_mode",              Kind::Bool,  0,    0,    "1"},
@@ -60,6 +64,16 @@ const SettingSpec SETTINGS[] = {
     {"heating_radiator_curve",                Kind::Int,   1,    5,    "3"},
     {"heating_floorheating_wbm",              Kind::Bool,  0,    0,    "1"},
     {"heating_floorheating_curve",            Kind::Int,   1,    5,    "3"},
+    {"heating_boiler_min_temp",               Kind::Float, 30,   70,   "55"},
+    {"heating_room_temp",                     Kind::Float, 15,   28,   "21"},
+    {"heating_room_factor",                   Kind::Float, 0,    5,    "0"},
+    {"heating_pza_outdoor_tau_h",             Kind::Float, 0,    48,   "4"},
+    {"watersupply_ihb_boost",                 Kind::Float, 0,    20,   "15"},
+    {"watersupply_recirc_schedule_enabled",   Kind::Bool,  0,    0,    "0"},
+    {"watersupply_recirc_morning_start",      Kind::Time,  0,    0,    "06:00"},
+    {"watersupply_recirc_morning_end",        Kind::Time,  0,    0,    "09:00"},
+    {"watersupply_recirc_evening_start",      Kind::Time,  0,    0,    "18:00"},
+    {"watersupply_recirc_evening_end",        Kind::Time,  0,    0,    "23:00"},
 };
 
 const char* AUTOFILL_FAULT_FLAG = "af_fault";
@@ -184,6 +198,16 @@ void BoilerLogic::applySetting(const String& key, const String& value) {
     else if (key == "heating_boiler_power")   _boilerPowerCmd = (value == "1");
     else if (key == "heating_boiler_temp")    _boilerTempSet = value.toFloat();
     else if (key == "heating_boiler_max_temp") _boilerMaxTemp = value.toFloat();
+    else if (key == "heating_boiler_min_temp") _boilerMinTemp = value.toFloat();
+    else if (key == "heating_room_temp")      _roomTempSet = value.toFloat();
+    else if (key == "heating_room_factor")    _roomFactor = value.toFloat();
+    else if (key == "heating_pza_outdoor_tau_h") _pza->setFilterHours(value.toFloat());
+    else if (key == "watersupply_ihb_boost")  _ihbBoost = value.toFloat();
+    else if (key == "watersupply_recirc_schedule_enabled") _recircScheduleEnabled = (value == "1");
+    else if (key == "watersupply_recirc_morning_start") parseTime(value, _recircMorningStartH, _recircMorningStartM);
+    else if (key == "watersupply_recirc_morning_end") parseTime(value, _recircMorningEndH, _recircMorningEndM);
+    else if (key == "watersupply_recirc_evening_start") parseTime(value, _recircEveningStartH, _recircEveningStartM);
+    else if (key == "watersupply_recirc_evening_end") parseTime(value, _recircEveningEndH, _recircEveningEndM);
     else if (key == "heating_radiator_pump")  _radPumpCmd = (value == "1");
     else if (key == "heating_radiator_off_ihb") _radOffIhb = (value == "1");
     else if (key == "heating_radiator_temp")  _radTempSet = value.toFloat();
@@ -264,7 +288,7 @@ void BoilerLogic::update(const TempMap& temps, float heatingPressure, float wate
     _boilerSensorLost = _boilerSensorMissing >= SENSOR_LOSS_CYCLES;
     if (_boilerSensorLost && !wasLost) Serial.println("BOILER: SENSOR LOST");
 
-    if (getTemp(temps, "tsihb_s") == TEMP_INVALID) {
+    if (getTemp(temps, TANK_SENSOR) == TEMP_INVALID) {
         if (_ihbSensorMissing < 255) _ihbSensorMissing++;
     } else {
         _ihbSensorMissing = 0;
@@ -283,7 +307,7 @@ void BoilerLogic::update(const TempMap& temps, float heatingPressure, float wate
     updateAntiLegionella(temps);
 
     // Determine if IHB is actively heating (used by off_ihb and TEH logic)
-    float ihbTemp = getTemp(temps, "tsihb_s");
+    float ihbTemp = getTemp(temps, TANK_SENSOR);
     _ihbHeating = (ihbTemp != TEMP_INVALID) && (ihbTemp < ihbTarget());
 
     updateBoiler(temps);
@@ -293,7 +317,7 @@ void BoilerLogic::update(const TempMap& temps, float heatingPressure, float wate
     updateValves(temps);
 
     updateWell(waterPressure);
-    _relays->set(RELAY_WATER_HOT_PUMP, _waterHotPumpCmd);
+    _relays->set(RELAY_WATER_HOT_PUMP, _waterHotPumpCmd && recircWindow());
 
     // Last word: nothing above may override the safety interlocks
     applyInterlocks(temps);
@@ -423,21 +447,43 @@ void BoilerLogic::updateWell(float waterPressure) {
     _wellDry = _wellWaiting || _wellLocked;
 }
 
-float BoilerLogic::circuitTarget(bool wbm, float pzaTarget, float manual, bool scheduleActive, float delta) {
-    float t = wbm ? pzaTarget : manual;
-    if (t < 0) t = manual;  // PZA fallback (no fresh outdoor data)
+float BoilerLogic::circuitTarget(bool wbm, float pzaTarget, float manual, bool scheduleActive, float delta,
+                                 float roomCorrection) {
+    // the room correction adjusts the weather curve only — a manual setpoint is what the user asked for
+    float t = (wbm && pzaTarget >= 0) ? pzaTarget + roomCorrection : manual;  // PZA fallback: no fresh outdoor
     if (scheduleActive) t += delta;
     return t < MIN_SUPPLY_TARGET ? MIN_SUPPLY_TARGET : t;
 }
 
 float BoilerLogic::radiatorTarget() const {
     return circuitTarget(_pza->isRadiatorWBM(), _pza->getRadiatorTarget(), _radTempSet,
-                         _scheduleRadActive, _radScheduleDelta);
+                         _scheduleRadActive, _radScheduleDelta,
+                         roomCorrection(1.0, ROOM_CORRECTION_MAX, _scheduleRadActive));
 }
 
 float BoilerLogic::floorTarget() const {
     return circuitTarget(_pza->isFloorWBM(), _pza->getFloorTarget(), _floorTempSet,
-                         _scheduleFloorActive, _floorScheduleDelta);
+                         _scheduleFloorActive, _floorScheduleDelta,
+                         roomCorrection(0.5, ROOM_CORRECTION_MAX / 2, _scheduleFloorActive));
+}
+
+// Weather curve + factor × (room target − house average); none without fresh indoor data.
+// During the circuit's night setback the house cools on purpose: the correction may only lower the supply
+// (it must not undo the setback; an overheated house is still corrected).
+float BoilerLogic::roomCorrection(float scale, float limit, bool night) const {
+    if (_roomFactor <= 0 || !_pza->hasIndoorTemp()) return 0;
+    float c = _roomFactor * (_roomTempSet - _pza->indoorTemp()) * scale;
+    c = c > limit ? limit : (c < -limit ? -limit : c);
+    return (night && c > 0) ? 0 : c;
+}
+
+// Recirculation schedule: only in the morning / evening window, every day. Without the schedule — always;
+// without the time (NTP not synced yet) — always too: hot water at the tap beats a few watts.
+bool BoilerLogic::recircWindow() const {
+    if (!_recircScheduleEnabled || !_ntp->isReady()) return true;
+    static const String EVERY_DAY = "1,2,3,4,5,6,7";
+    return _ntp->isInSchedule(EVERY_DAY, _recircMorningStartH, _recircMorningStartM, _recircMorningEndH, _recircMorningEndM)
+        || _ntp->isInSchedule(EVERY_DAY, _recircEveningStartH, _recircEveningStartM, _recircEveningEndH, _recircEveningEndM);
 }
 
 float BoilerLogic::ihbTarget() const {
@@ -482,6 +528,15 @@ void BoilerLogic::applyInterlocks(const TempMap& temps) {
 
 void BoilerLogic::updateBoiler(const TempMap& temps) {
     float boilerTemp = getTemp(temps, "tsboiler_s");
+    unsigned long now = millis();
+
+    // The relay as the last cycle left it (interlocks included): when did it last switch?
+    bool relayOn = _relays->get(RELAY_BOILER_POWER);
+    if (relayOn != _boilerLast) {
+        _boilerLast = relayOn;
+        _boilerSwitched = true;
+        _boilerChangedAt = now;
+    }
 
     // Safety: overtemp protection always active
     if (boilerTemp != TEMP_INVALID && boilerTemp >= _boilerMaxTemp) {
@@ -511,14 +566,19 @@ void BoilerLogic::updateBoiler(const TempMap& temps) {
             if (t > target) target = t;
         }
 
-        // IHB (DHW) circuit — include if automode (pump cycles as needed) or manual pump on
-        if (_ihbAutomode || _ihbPumpCmd) {
-            float t = ihbTarget();
+        // IHB (DHW) — only while the tank loads, and hot enough for the coil to actually reach its target
+        // (a satisfied tank must not hold the boiler at DHW temperature around the clock)
+        if ((_ihbAutomode || _ihbPumpCmd) && (_ihbHeating || _relays->get(RELAY_IHB_PUMP))) {
+            float t = ihbTarget() + _ihbBoost;
             if (t > target) target = t;
         }
 
-        // Fallback if no circuits are active
-        if (target <= 0) target = _boilerTempSet;
+        if (target > 0) {
+            // non-condensing boiler: a low target condenses flue gas in the heat exchanger
+            if (target < _boilerMinTemp) target = _boilerMinTemp;
+        } else {
+            target = _boilerTempSet;  // fallback if no circuits are active
+        }
 
         // Safety cap below the overtemp trip: the cycle ends at target + hysteresis = max - margin
         float cap = _boilerMaxTemp - BOILER_TARGET_MARGIN - BOILER_HYSTERESIS;
@@ -527,15 +587,20 @@ void BoilerLogic::updateBoiler(const TempMap& temps) {
         _boilerAutoTarget = target;
         if (_frostProtect && !_pressureZero) return;  // applyInterlocks() holds it on; no AUTO OFF/ON churn
         bool isOn = _relays->get(RELAY_BOILER_POWER);
+        // anti short-cycling: a minimum run and a minimum pause (overtemp above and frost in the
+        // interlocks still act at once)
+        unsigned long held = now - _boilerChangedAt;
+        bool mayStart = !_boilerSwitched || held >= BOILER_MIN_OFF_MS;
+        bool mayStop = !_boilerSwitched || held >= BOILER_MIN_ON_MS;
 
-        if (!isOn && boilerTemp < target) {
+        if (!isOn && boilerTemp < target && mayStart) {
             _relays->set(RELAY_BOILER_POWER, true);
             Serial.print("BOILER: AUTO ON (");
             Serial.print(boilerTemp, 1);
             Serial.print(" < ");
             Serial.print(target, 1);
             Serial.println(")");
-        } else if (isOn && boilerTemp >= target + BOILER_HYSTERESIS) {
+        } else if (isOn && boilerTemp >= target + BOILER_HYSTERESIS && mayStop) {
             _relays->set(RELAY_BOILER_POWER, false);
             Serial.print("BOILER: AUTO OFF (");
             Serial.print(boilerTemp, 1);
@@ -555,7 +620,7 @@ void BoilerLogic::updatePumps(const TempMap& temps) {
     // IHB pump — automode cycles on/off by temperature, manual follows command
     bool ihbPumpOn;
     if (_ihbAutomode) {
-        float ihbTemp = getTemp(temps, "tsihb_s");
+        float ihbTemp = getTemp(temps, TANK_SENSOR);
         bool wasOn = _relays->get(RELAY_IHB_PUMP);
         if (ihbTemp == TEMP_INVALID) {
             ihbPumpOn = false;  // no sensor data — fail-safe OFF (critical alarm raised in updateAlarms)
@@ -678,7 +743,7 @@ void BoilerLogic::finishValvePulse(ValveState& vs, RelayChannel openRelay,
 // ── TEH (electric heater for DHW) ─────────────────────────────
 
 void BoilerLogic::updateTeh(const TempMap& temps) {
-    float ihbTemp = getTemp(temps, "tsihb_s");
+    float ihbTemp = getTemp(temps, TANK_SENSOR);
 
     // Safety: TEH off if the tank is already hot — or its sensor is lost (never heat blind, in any mode)
     if (ihbTemp == TEMP_INVALID || ihbTemp >= ihbTarget()) {
@@ -758,7 +823,7 @@ void BoilerLogic::updateAntiLegionella(const TempMap& temps) {
 
     // Raise the IHB target to ALM temp until the tank has held it. Pump and boiler follow through
     // the normal logic, so overtemp and manual OFF still apply (interlocks).
-    float ihbTemp = getTemp(temps, "tsihb_s");
+    float ihbTemp = getTemp(temps, TANK_SENSOR);
     if (ihbTemp != TEMP_INVALID && ihbTemp >= _almTemp) {
         if (!_almHoldActive) {
             _almHoldActive = true;
@@ -781,11 +846,25 @@ void BoilerLogic::updateAntiLegionella(const TempMap& temps) {
 
 void BoilerLogic::driveValve(ValveState& vs, RelayChannel openRelay,
                               RelayChannel closeRelay, const char* label,
-                              float target, float actual) {
+                              float target, float actual, bool pumpOn) {
     unsigned long now = millis();
 
     // Phase 1: if currently driving a pulse, wait — tick() ends it on time
     finishValvePulse(vs, openRelay, closeRelay, label);
+
+    // No flow, no regulation: the standing circuit cools down and the valve would wind fully open,
+    // sending boiler water into the circuit when its pump restarts (DHW priority, manual stop).
+    // Hold the position; after a start wait until the sensor sees mixed water.
+    if (!pumpOn) {
+        vs.pumpRunning = false;
+        return;
+    }
+    if (!vs.pumpRunning) {
+        vs.pumpRunning = true;
+        vs.pumpSince = now;
+    }
+    if (now - vs.pumpSince < VALVE_SETTLE_MS) return;
+
     if (vs.driveMs > 0) return;
 
     // Phase 2: evaluate error and start new pulse if needed
@@ -832,10 +911,11 @@ void BoilerLogic::updateValves(const TempMap& temps) {
     // schedule delta. (Before, the delta only lowered the boiler auto target:
     // the valves kept day temperature, and with the boiler in manual mode the
     // night setback did nothing at all.)
+    // Pump states as decided this cycle (updatePumps runs first; the relay batch isn't committed yet)
     driveValve(_radValve, RELAY_RAD_VALVE_OPEN, RELAY_RAD_VALVE_CLOSE,
-               "RAD", radiatorTarget(), getTemp(temps, "tsrad_s"));
+               "RAD", radiatorTarget(), getTemp(temps, "tsrad_s"), _relays->get(RELAY_RADIATOR_PUMP));
     driveValve(_floorValve, RELAY_FLOOR_VALVE_OPEN, RELAY_FLOOR_VALVE_CLOSE,
-               "FLOOR", floorTarget(), getTemp(temps, "tsfloor_s"));
+               "FLOOR", floorTarget(), getTemp(temps, "tsfloor_s"), _relays->get(RELAY_FLOOR_PUMP));
 }
 
 // ── Alarm lamps ───────────────────────────────────────────────

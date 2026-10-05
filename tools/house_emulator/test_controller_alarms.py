@@ -8,7 +8,7 @@ from datetime import datetime
 from house_emulator.controller import Controller
 
 NOW = datetime(2026, 1, 20, 12, 0)
-WARM = {"tsboiler_s": 60.0, "tsihb_s": 50.0, "tsrad_s": 45.0, "tsfloor_s": 30.0}
+WARM = {"tsboiler_s": 60.0, "tswatersupply_h": 50.0, "tsrad_s": 45.0, "tsfloor_s": 30.0}
 
 
 def make(**settings: str) -> Controller:
@@ -49,8 +49,9 @@ def test_auto_target_stays_below_the_overtemp_trip():
              heating_radiator_wbm="0", heating_radiator_temp="90", heating_radiator_pump="1")
     run(c, 30, {**WARM, "tsboiler_s": 70.0})
     assert c.boiler_auto_target <= 85 - 5 - 2
-    # at the capped target + hysteresis the boiler switches off by regulation, never by the interlock
-    run(c, 30, {**WARM, "tsboiler_s": c.boiler_auto_target + 2})
+    # at the capped target + hysteresis the boiler switches off by regulation (after its minimum run time),
+    # never by the interlock
+    run(c, 6 * 60, {**WARM, "tsboiler_s": c.boiler_auto_target + 2})
     assert not c.relays["boiler"] and not c.overtemp
     assert not c.warning   # normal regulation doesn't light the "approaching max" lamp
 
@@ -60,7 +61,7 @@ def test_teh_backs_up_a_boiler_that_does_not_heat_the_tank():
     c = make(watersupply_ihb_teh_automode="1", watersupply_ihb_teh_heating_delay="0",
              watersupply_ihb_automode="1", watersupply_ihb_temp="55",
              heating_boiler_automode="0", heating_boiler_power="1")
-    cold_boiler = {**WARM, "tsboiler_s": 35.0, "tsihb_s": 40.0}   # relay on, but the burner is out
+    cold_boiler = {**WARM, "tsboiler_s": 35.0, "tswatersupply_h": 40.0}   # relay on, but the burner is out
     run(c, 30, cold_boiler)
     assert c.relays["boiler"] and c.relays["ihb_pump"]
     assert c.relays["teh"]
@@ -70,13 +71,13 @@ def test_teh_waits_while_the_boiler_really_heats_the_tank():
     c = make(watersupply_ihb_teh_automode="1", watersupply_ihb_teh_heating_delay="0",
              watersupply_ihb_automode="1", watersupply_ihb_temp="55",
              heating_boiler_automode="0", heating_boiler_power="1")
-    run(c, 30, {**WARM, "tsboiler_s": 70.0, "tsihb_s": 40.0})
+    run(c, 30, {**WARM, "tsboiler_s": 70.0, "tswatersupply_h": 40.0})
     assert not c.relays["teh"]
 
 
 def test_teh_is_off_without_a_tank_sensor_even_in_manual_mode():
     c = make(watersupply_ihb_teh_automode="0", watersupply_ihb_teh_power="1")
-    temps = {k: v for k, v in WARM.items() if k != "tsihb_s"}
+    temps = {k: v for k, v in WARM.items() if k != "tswatersupply_h"}
     run(c, 30, temps)
     assert not c.relays["teh"]
     assert c.heartbeat(1.5, None)["ihb_sensor_lost"] is True
@@ -86,7 +87,7 @@ def test_teh_is_off_without_a_tank_sensor_even_in_manual_mode():
 def test_frost_protection_overrides_manual_off():
     c = make(heating_boiler_automode="0", heating_boiler_power="0",
              heating_radiator_pump="0", heating_floorheating_pump="0")
-    frozen = {"tsboiler_s": 6.0, "tsihb_s": 30.0, "tsrad_s": 6.5, "tsfloor_s": 8.0}
+    frozen = {"tsboiler_s": 6.0, "tswatersupply_h": 30.0, "tsrad_s": 6.5, "tsfloor_s": 8.0}
     run(c, 30, frozen)
     assert c.frost_protect and c.critical
     assert c.relays["boiler"] and c.relays["rad_pump"] and c.relays["floor_pump"]
@@ -100,7 +101,7 @@ def test_frost_protection_overrides_manual_off():
 
 def test_frost_protection_never_beats_overtemp():
     c = make(heating_boiler_max_temp="85")
-    run(c, 30, {"tsboiler_s": 90.0, "tsihb_s": 30.0, "tsrad_s": 5.0, "tsfloor_s": 5.0})
+    run(c, 30, {"tsboiler_s": 90.0, "tswatersupply_h": 30.0, "tsrad_s": 5.0, "tsfloor_s": 5.0})
     assert c.frost_protect and c.overtemp
     assert not c.relays["boiler"]
     assert c.relays["rad_pump"]   # pumps still move the heat away
@@ -191,7 +192,7 @@ def run_at(c: Controller, start: datetime, minutes: float, tank: float) -> datet
     t = start
     for _ in range(int(minutes * 6)):
         c.tick(10)
-        c.update(t, {**WARM, "tsihb_s": tank}, 1.5)
+        c.update(t, {**WARM, "tswatersupply_h": tank}, 1.5)
         t += timedelta(seconds=10)
     return t
 
@@ -245,7 +246,7 @@ def test_floor_pump_stops_when_its_supply_sensor_is_lost_even_in_frost():
     run(c, 20, no_floor)
     assert c.floor_sensor_lost and not c.relays["floor_pump"]
     assert c.heartbeat(1.5, None)["floor_sensor_lost"] is True
-    run(c, 30, {"tsboiler_s": 5.0, "tsihb_s": 30.0, "tsrad_s": 5.0})       # frost, still no floor sensor
+    run(c, 30, {"tsboiler_s": 5.0, "tswatersupply_h": 30.0, "tsrad_s": 5.0})       # frost, still no floor sensor
     assert c.frost_protect and c.relays["rad_pump"] and not c.relays["floor_pump"]
     run(c, 30, {**WARM, "tsfloor_s": 25.0})
     assert not c.floor_sensor_lost and c.relays["floor_pump"]
@@ -254,7 +255,7 @@ def test_floor_pump_stops_when_its_supply_sensor_is_lost_even_in_frost():
 def test_frost_protection_does_not_run_pumps_dry_in_an_empty_system():
     c = make(heating_boiler_automode="0", heating_boiler_power="0",
              heating_radiator_pump="0", heating_floorheating_pump="0")
-    frozen = {"tsboiler_s": 5.0, "tsihb_s": 30.0, "tsrad_s": 5.0, "tsfloor_s": 5.0}
+    frozen = {"tsboiler_s": 5.0, "tswatersupply_h": 30.0, "tsrad_s": 5.0, "tsfloor_s": 5.0}
     run(c, 30, frozen, pressure=0.0)
     assert c.frost_protect and c.critical
     assert not c.relays["rad_pump"] and not c.relays["floor_pump"] and not c.relays["boiler"]
@@ -285,7 +286,7 @@ def test_muted_pressure_alarm_does_not_resound_while_pressure_hovers_at_the_limi
 def test_one_missed_tank_reading_does_not_sound_the_buzzer():
     c = make(watersupply_ihb_automode="1")
     run(c, 30, WARM)
-    run(c, 10, {k: v for k, v in WARM.items() if k != "tsihb_s"})
+    run(c, 10, {k: v for k, v in WARM.items() if k != "tswatersupply_h"})
     assert not c.relays["lamp_critical"]
 
 
@@ -318,3 +319,52 @@ def test_manual_boiler_below_its_setting_but_warm_is_not_no_heat():
     assert not c.boiler_no_heat
     run(c, 40 * 60, {**WARM, "tsboiler_s": 25.0})
     assert c.boiler_no_heat
+
+
+# ---------------------------------------------------------------- mixing valves follow their pump
+PRIORITY = {"heating_radiator_wbm": "0", "heating_radiator_temp": "50", "heating_radiator_pump": "1",
+            "heating_radiator_off_ihb": "1", "watersupply_ihb_automode": "0", "watersupply_ihb_pump": "1",
+            "watersupply_ihb_temp": "55"}
+
+
+def valve_log(c: Controller, seconds: float, temps: dict, step: float = 10.0) -> list[tuple[bool, bool, bool]]:
+    """(pump, open, close) of the radiator circuit after every control cycle."""
+    out = []
+    t = 0.0
+    while t < seconds:
+        c.tick(step)
+        c.update(NOW, temps, 1.5, None)
+        out.append((c.relays["rad_pump"], c.relays["rad_open"], c.relays["rad_close"]))
+        t += step
+    return out
+
+
+def test_mixing_valve_holds_while_dhw_priority_stops_its_pump():
+    """The standing circuit cools down; the valve must not wind open meanwhile (boiler water on restart)."""
+    c = make(**PRIORITY)
+    log = valve_log(c, 20 * 60, {**WARM, "tswatersupply_h": 40.0, "tsrad_s": 25.0})   # tank loading, circuit cold
+    assert all(not pump for pump, _, _ in log)                                  # priority holds the pump off
+    assert not any(o or cl for _, o, cl in log)                                 # and the valve never moves
+
+
+def test_mixing_valve_holds_while_its_pump_is_switched_off():
+    c = make(**{**PRIORITY, "heating_radiator_pump": "0", "watersupply_ihb_pump": "0"})
+    log = valve_log(c, 10 * 60, {**WARM, "tsrad_s": 25.0})
+    assert not any(o or cl for _, o, cl in log)
+
+
+def test_mixing_valve_waits_for_mixed_water_after_its_pump_starts():
+    """After a stop the sensor first sees standing water: regulate only once the pump has run a while."""
+    c = make(**PRIORITY)
+    valve_log(c, 10 * 60, {**WARM, "tswatersupply_h": 40.0, "tsrad_s": 25.0})
+    log = valve_log(c, 5 * 60, {**WARM, "tswatersupply_h": 60.0, "tsrad_s": 25.0})   # tank loaded → pump back on
+    assert log[0][0]
+    first_move = next(i for i, (_, o, cl) in enumerate(log) if o or cl)
+    assert first_move * 10 >= 30          # not before the settle time…
+    assert log[first_move][1]             # …then it regulates as usual (too cold → open)
+
+
+def test_mixing_valve_regulates_while_its_pump_runs():
+    c = make(**{**PRIORITY, "watersupply_ihb_pump": "0"})
+    log = valve_log(c, 3 * 60, {**WARM, "tsrad_s": 25.0})
+    assert any(o for _, o, _ in log) and not any(cl for _, _, cl in log)

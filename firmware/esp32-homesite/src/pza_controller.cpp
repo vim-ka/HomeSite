@@ -45,10 +45,10 @@ float PZAController::interpolate(const PZACurve& curve, float outdoor) {
 
 float PZAController::getRadiatorTarget() {
     if (!_radWBM || !hasOutdoorTemp()) return -1;
-    return interpolate(_radiatorCurves[_radCurve - 1], _outdoorTemp);
+    return interpolate(_radiatorCurves[_radCurve - 1], _outdoorSmooth);
 }
 
 float PZAController::getFloorTarget() {
     if (!_floorWBM || !hasOutdoorTemp()) return -1;
-    return interpolate(_floorCurves[_floorCurve - 1], _outdoorTemp);
+    return interpolate(_floorCurves[_floorCurve - 1], _outdoorSmooth);
 }

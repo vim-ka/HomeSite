@@ -24,9 +24,17 @@ VALVE_DEADBAND = 1.0
 VALVE_MAX_ERROR = 10.0
 VALVE_MIN_PULSE_S = 1.0
 VALVE_MAX_PULSE_S = 15.0
+VALVE_SETTLE_S = 30.0  # after the circuit pump starts, the sensor first sees standing water
 SENSOR_LOSS_CYCLES = 3
 MIN_SUPPLY_TARGET = 20.0
+# The tank temperature: the sensor in the tank's upper sleeve («Горячее водоснабжение»). tsihb_s / tsihb_b are the
+# loading pipes (coil supply / return) — a loading pipe cools when the pump stops, it must never stand for the tank.
+TANK_SENSOR = "tswatersupply_h"
 OUTDOOR_TTL_S = 15 * 60
+INDOOR_TTL_S = 10 * 60             # the backend forwards the house average every ~30 s
+ROOM_CORRECTION_MAX = 10.0         # room correction of the radiator curve, ± °C (the floor: half, ± 5)
+BOILER_MIN_ON_S = 5 * 60           # auto mode: no short burner cycles
+BOILER_MIN_OFF_S = 5 * 60
 
 # Safety rules from the alarm review (2026-09)
 PRESSURE_ZERO_BAR = 0.05           # configured sensor below this: empty system or broken sensor
@@ -97,6 +105,7 @@ class ValveState:
     drive_s: float = 0.0
     last_adjust: float = -1e9
     opening: bool = False
+    pump_since: float | None = None  # when the circuit pump started (None = pump off)
 
 
 @dataclass
@@ -107,6 +116,11 @@ class Controller:
     relays: dict[str, bool] = field(default_factory=lambda: {r: False for r in RELAYS})
     outdoor: float | None = None
     outdoor_at: float = -1e9
+    outdoor_smooth: float | None = None        # what the weather curves see (low-pass of the street reading)
+    indoor: float | None = None
+    indoor_at: float = -1e9
+    boiler_last: bool = False                  # boiler relay as the last cycle left it …
+    boiler_changed_at: float | None = None     # … and since when (None: not switched since boot)
     t: float = 0.0                       # seconds since boot
 
     boiler_auto_target: float = 0.0
@@ -178,11 +192,36 @@ class Controller:
         return "ok"
 
     def set_outdoor(self, temp: float) -> None:
+        """A street reading. The curves follow it through a first-order low-pass with the building's time
+        constant (kotelna.tk: building inertia is hours; TAC default 4 h); a fresh start after a gap."""
+        tau_s = self.f("heating_pza_outdoor_tau_h") * 3600
+        gap = self.t - self.outdoor_at
+        if self.outdoor_smooth is None or tau_s <= 0 or gap >= OUTDOOR_TTL_S:
+            self.outdoor_smooth = temp
+        else:
+            self.outdoor_smooth += gap / (tau_s + gap) * (temp - self.outdoor_smooth)
         self.outdoor = temp
         self.outdoor_at = self.t
 
+    def outdoor_pza(self) -> float | None:
+        return self.outdoor_smooth if self.outdoor_fresh() else None
+
     def outdoor_fresh(self) -> bool:
         return self.outdoor is not None and self.t - self.outdoor_at < OUTDOOR_TTL_S
+
+    def set_indoor(self, temp: float) -> None:
+        """indoor_temp telemetry: the house average the backend forwards."""
+        self.indoor = temp
+        self.indoor_at = self.t
+
+    def room_correction(self, scale: float, limit: float, night: bool = False) -> float:
+        """Weather curve + factor × (room target − house); none without fresh indoor data.
+        During the circuit's night setback the house cools on purpose: the correction may only lower the supply."""
+        factor = self.f("heating_room_factor")
+        if factor <= 0 or self.indoor is None or self.t - self.indoor_at >= INDOOR_TTL_S:
+            return 0.0
+        corr = max(-limit, min(limit, factor * (self.f("heating_room_temp") - self.indoor) * scale))
+        return min(corr, 0.0) if night else corr
 
     def reset_well(self) -> None:
         """well_reset command: clear the dry-run latch; the pump tries again right away."""
@@ -204,32 +243,40 @@ class Controller:
         self.log.append(msg)
         del self.log[:-50]
 
+    def _recirc_window(self, now: datetime) -> bool:
+        """Recirculation schedule: only in the morning / evening window (every day); no schedule — always."""
+        if not self.b("watersupply_recirc_schedule_enabled"):
+            return True
+        every_day = "1,2,3,4,5,6,7"
+        return any(in_schedule(now, every_day, self.s(f"watersupply_recirc_{w}_start"), self.s(f"watersupply_recirc_{w}_end"))
+                   for w in ("morning", "evening"))
+
     # -------------------------------------------------------------- PZA
     def rad_pza_target(self) -> float:
         if not self.b("heating_radiator_wbm") or not self.outdoor_fresh():
             return -1
-        return interpolate(RADIATOR_CURVES[int(self.f("heating_radiator_curve")) - 1], self.outdoor)
+        return interpolate(RADIATOR_CURVES[int(self.f("heating_radiator_curve")) - 1], self.outdoor_smooth)
 
     def floor_pza_target(self) -> float:
         if not self.b("heating_floorheating_wbm") or not self.outdoor_fresh():
             return -1
-        return interpolate(FLOOR_CURVES[int(self.f("heating_floorheating_curve")) - 1], self.outdoor)
+        return interpolate(FLOOR_CURVES[int(self.f("heating_floorheating_curve")) - 1], self.outdoor_smooth)
 
-    def _circuit_target(self, prefix: str, pza: float, schedule: bool) -> float:
+    def _circuit_target(self, prefix: str, pza: float, schedule: bool, room: float = 0.0) -> float:
         manual = self.f(f"{prefix}_temp")
-        t = pza if self.b(f"{prefix}_wbm") else manual
-        if t < 0:
-            t = manual
+        t = pza + room if self.b(f"{prefix}_wbm") and pza >= 0 else manual
         if schedule:
             t += self.f(f"{prefix}_schedule_delta")
         return max(MIN_SUPPLY_TARGET, t)
 
     def radiator_target(self) -> float:
         """PZA or manual + night delta — used by the boiler target AND the valve."""
-        return self._circuit_target("heating_radiator", self.rad_pza_target(), self.schedule_rad)
+        return self._circuit_target("heating_radiator", self.rad_pza_target(), self.schedule_rad,
+                                    self.room_correction(1.0, ROOM_CORRECTION_MAX, self.schedule_rad))
 
     def floor_target(self) -> float:
-        return self._circuit_target("heating_floorheating", self.floor_pza_target(), self.schedule_floor)
+        return self._circuit_target("heating_floorheating", self.floor_pza_target(), self.schedule_floor,
+                                    self.room_correction(0.5, ROOM_CORRECTION_MAX / 2, self.schedule_floor))
 
     def ihb_target(self) -> float:
         ihb, alm = self.f("watersupply_ihb_temp"), self.f("watersupply_alm_temp")
@@ -271,7 +318,7 @@ class Controller:
         if self.boiler_sensor_lost and not was_lost:
             self._log("BOILER: SENSOR LOST")
 
-        if temps.get("tsihb_s") is None:
+        if temps.get(TANK_SENSOR) is None:
             self.ihb_sensor_missing = min(255, self.ihb_sensor_missing + 1)
         else:
             self.ihb_sensor_missing = 0
@@ -285,7 +332,7 @@ class Controller:
         self._update_frost(temps)
 
         self._update_alm(now, temps)
-        ihb = temps.get("tsihb_s")
+        ihb = temps.get(TANK_SENSOR)
         self.ihb_heating = ihb is not None and ihb < self.ihb_target()
 
         self._update_boiler(temps)
@@ -294,7 +341,7 @@ class Controller:
         self._update_teh(temps)
         self._update_valves(temps)
         self._update_well(water_pressure)
-        self.relays["water_hot_pump"] = self.b("watersupply_pump_hot")
+        self.relays["water_hot_pump"] = self.b("watersupply_pump_hot") and self._recirc_window(now)
         self._apply_interlocks(temps)
         self._update_no_heat(temps)
         self._update_alarms(temps, heating_pressure)
@@ -398,7 +445,7 @@ class Controller:
         if self.alm_done:
             self.alm_active = False
             return
-        ihb = temps.get("tsihb_s")
+        ihb = temps.get(TANK_SENSOR)
         if ihb is not None and ihb >= self.f("watersupply_alm_temp"):
             if self.alm_hold_since is None:
                 self.alm_hold_since = self.t
@@ -413,6 +460,9 @@ class Controller:
         self.alm_active = True
 
     def _update_boiler(self, temps: dict[str, float]) -> None:
+        # the relay as the last cycle left it (interlocks included): when did it last switch?
+        if self.relays["boiler"] != self.boiler_last:
+            self.boiler_last, self.boiler_changed_at = self.relays["boiler"], self.t
         bt = temps.get("tsboiler_s")
         max_temp = self.f("heating_boiler_max_temp")
         if bt is not None and bt >= max_temp:
@@ -432,23 +482,28 @@ class Controller:
             target = max(target, self.radiator_target())
         if self.b("heating_floorheating_pump"):
             target = max(target, self.floor_target())
-        if self.b("watersupply_ihb_automode") or self.b("watersupply_ihb_pump"):
-            target = max(target, self.ihb_target())
-        if target <= 0:
+        # the tank only while it loads, and hot enough for the coil to reach its target
+        if (self.b("watersupply_ihb_automode") or self.b("watersupply_ihb_pump")) and (
+                self.ihb_heating or self.relays["ihb_pump"]):
+            target = max(target, self.ihb_target() + self.f("watersupply_ihb_boost"))
+        if target > 0:
+            target = max(target, self.f("heating_boiler_min_temp"))   # non-condensing: no flue condensation
+        else:
             target = self.f("heating_boiler_temp")
         target = min(target, max_temp - BOILER_TARGET_MARGIN - BOILER_HYSTERESIS)
         self.boiler_auto_target = target
         if self.frost_protect and not self.pressure_zero:
             return  # the interlock holds it on (firmware: no AUTO OFF/ON churn)
         on = self.relays["boiler"]
-        if not on and bt < target:
+        held = self.t - self.boiler_changed_at if self.boiler_changed_at is not None else None
+        if not on and bt < target and (held is None or held >= BOILER_MIN_OFF_S):
             self.relays["boiler"] = True
-        elif on and bt >= target + BOILER_HYSTERESIS:
+        elif on and bt >= target + BOILER_HYSTERESIS and (held is None or held >= BOILER_MIN_ON_S):
             self.relays["boiler"] = False
 
     def _update_pumps(self, temps: dict[str, float]) -> None:
         if self.b("watersupply_ihb_automode"):
-            ihb = temps.get("tsihb_s")
+            ihb = temps.get(TANK_SENSOR)
             was = self.relays["ihb_pump"]
             if ihb is None:
                 on = False
@@ -505,7 +560,7 @@ class Controller:
             self._log(f"AUTOFILL: low pressure ({pressure:.2f} bar) — opening valve")
 
     def _update_teh(self, temps: dict[str, float]) -> None:
-        ihb = temps.get("tsihb_s")
+        ihb = temps.get(TANK_SENSOR)
         if ihb is None or ihb >= self.ihb_target():  # no tank sensor: never heat blind, in any mode
             self.relays["teh"] = False
             self.teh_delay_active = False
@@ -529,8 +584,19 @@ class Controller:
             self.teh_delay_active = False
             self.relays["teh"] = False
 
-    def _drive_valve(self, vs: ValveState, open_r: str, close_r: str, target: float, actual: float | None) -> None:
+    def _drive_valve(self, vs: ValveState, open_r: str, close_r: str, target: float, actual: float | None,
+                     pump_on: bool) -> None:
         self._finish_pulse(vs, open_r, close_r)
+        # No flow, no regulation: the standing circuit cools down and the valve would wind fully open,
+        # sending boiler water into the circuit when its pump restarts (DHW priority, manual stop).
+        # Hold the position, and after a start wait until the sensor sees mixed water.
+        if not pump_on:
+            vs.pump_since = None
+            return
+        if vs.pump_since is None:
+            vs.pump_since = self.t
+        if self.t - vs.pump_since < VALVE_SETTLE_S:
+            return
         if vs.drive_s > 0 or self.t - vs.last_adjust < VALVE_ADJUST_INTERVAL_S:
             return
         vs.last_adjust = self.t
@@ -547,8 +613,10 @@ class Controller:
         vs.drive_start, vs.drive_s, vs.opening = self.t, pulse, opening
 
     def _update_valves(self, temps: dict[str, float]) -> None:
-        self._drive_valve(self.rad_valve, "rad_open", "rad_close", self.radiator_target(), temps.get("tsrad_s"))
-        self._drive_valve(self.floor_valve, "floor_open", "floor_close", self.floor_target(), temps.get("tsfloor_s"))
+        self._drive_valve(self.rad_valve, "rad_open", "rad_close", self.radiator_target(), temps.get("tsrad_s"),
+                          self.relays["rad_pump"])
+        self._drive_valve(self.floor_valve, "floor_open", "floor_close", self.floor_target(), temps.get("tsfloor_s"),
+                          self.relays["floor_pump"])
 
     def _apply_interlocks(self, temps: dict[str, float]) -> None:
         bt = temps.get("tsboiler_s")
@@ -642,6 +710,9 @@ class Controller:
         }
         if self.outdoor_fresh():
             hb["outdoor"] = round(self.outdoor, 1)
+            hb["outdoor_pza"] = round(self.outdoor_smooth, 1)
+        if self.indoor is not None and self.t - self.indoor_at < INDOOR_TTL_S:
+            hb["indoor"] = round(self.indoor, 1)
         if prs_heat is not None:
             hb["prs_heat"] = round(prs_heat, 2)
         if prs_water is not None:

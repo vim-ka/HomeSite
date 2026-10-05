@@ -182,5 +182,7 @@ def test_outdoor_temp_forward_does_not_trigger_an_extra_cycle(monkeypatch):
 
     monkeypatch.setattr(emu, "publish", fake_publish)
     asyncio.run(emu.on_boiler_command({"outdoor_temp": "-5.5"}))
+    asyncio.run(emu.on_boiler_command({"indoor_temp": "20.4"}))
     assert topics == []
     assert emu.sim.controller.outdoor == -5.5
+    assert emu.sim.controller.indoor == 20.4
