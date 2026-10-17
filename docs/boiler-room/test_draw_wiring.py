@@ -45,7 +45,11 @@ def test_boiler_sheet_wires_opentherm_to_the_free_pins_and_the_manual_switch():
     _, refs = svg_refs(svg)
     assert {"A1", "A3", "A6", "SA1", "A5", "YA4", "QF2", "G2"} <= refs
     txt = text_of(svg)
-    assert "GPIO36" in txt and "GPIO5" in txt
+    # receive on GPIO13 (freed relay K0): GPIO36/39 get spurious pulses while ADC1 runs (ESP32 errata),
+    # and the OpenTherm library decodes on interrupts
+    assert "GPIO13" in txt and "GPIO5" in txt
+    assert "GPIO13 (вход)" in txt and "приём → GPIO13" in txt
+    assert "GPIO36 (вход)" not in txt and "приём → GPIO36" not in txt   # the note may still explain why not 36
     assert "OT" in txt
 
 
@@ -54,3 +58,9 @@ def test_hardware_interlocks_sit_in_the_power_lines_not_only_in_software():
     assert "KM1 → SK2 → EK1" in txt          # TEH: emergency cut-out with manual reset
     assert "KM2 → SP1 → M4" in txt           # well pump: pressure switch in series
     assert "30 мА" in txt and "QF5" in txt   # separate RCDs for the TEH and the well pump
+
+
+def test_relay_channels_given_to_opentherm_are_marked_free():
+    load = {ch: text for ch, _, text, _ in RELAYS}
+    assert "OpenTherm" in load[0] and "GPIO13" in load[0]
+    assert "OpenTherm" in load[15] and "GPIO5" in load[15]

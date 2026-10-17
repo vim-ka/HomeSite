@@ -54,8 +54,9 @@
 <g data-pos="61" data-ref="A5"><rect x="520" y="668" width="180" height="44" rx="4" fill="#fff" stroke="#000" stroke-width="1.5"/><text x="610.0" y="684" font-size="11" text-anchor="middle" font-weight="bold" fill="#000" stroke="none">A5 «сухой» контакт аварии</text><text x="610.0" y="698" font-size="9" text-anchor="middle" font-weight="normal" fill="#000" stroke="none">замыкает на GND при газе / CO</text></g>
 <text x="720" y="694" font-size="9" text-anchor="start" font-weight="normal" fill="#000" stroke="none">предложение для прошивки: вход аварии газа (GPIO39 — input-only, внешняя подтяжка)</text>
 <text x="30" y="806" font-size="9.5" text-anchor="start" font-weight="normal" fill="#000" stroke="none">GPIO34/35/39 — АЦП1/вход без внутренней подтяжки; АЦП2 при Wi‑Fi не работает — поэтому давление на 34/35.</text>
-<text x="30" y="821" font-size="9.5" text-anchor="start" font-weight="normal" fill="#000" stroke="none">Датчики давления: питание 5 В, выход уже 0–3,3 В — делитель не нужен. Калибровка — PINOUT.md и раздел 8.</text>
-<text x="30" y="836" font-size="9.5" text-anchor="start" font-weight="normal" fill="#000" stroke="none">Сигнальные кабели вести отдельно от 230 В (≥ 10 см или в отдельном лотке); экраны — на GND только со стороны A1.</text>
+<text x="30" y="821" font-size="9.5" text-anchor="start" font-weight="normal" fill="#000" stroke="none">GPIO39 (как и 36) ловит ложные импульсы при работе АЦП1 (errata ESP32) — вход аварии газа только опросом с антидребезгом, без прерываний.</text>
+<text x="30" y="836" font-size="9.5" text-anchor="start" font-weight="normal" fill="#000" stroke="none">Датчики давления: питание 5 В, выход уже 0–3,3 В — делитель не нужен. Калибровка — PINOUT.md и раздел 8.</text>
+<text x="30" y="851" font-size="9.5" text-anchor="start" font-weight="normal" fill="#000" stroke="none">Сигнальные кабели вести отдельно от 230 В (≥ 10 см или в отдельном лотке); экраны — на GND только со стороны A1.</text>
 <rect x="10" y="10" width="1380" height="880" fill="none" stroke="#000" stroke-width="1.5"/>
 <g stroke="#000" stroke-width="1" fill="none"><rect x="1000" y="790" width="390" height="100"/><path d="M1000,820 H1390 M1000,850 H1390 M1300,820 V890 M1180,850 V890"/></g>
 <text x="1195" y="811" font-size="12" text-anchor="middle" font-weight="bold" fill="#000" stroke="none">HomeSite — котельная</text>
