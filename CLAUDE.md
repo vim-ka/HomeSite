@@ -58,6 +58,15 @@ which `/scheme/state` returns as `alarms`. Add a new alarm as a rule with a test
 unacknowledged alarms in a banner on every page (`AlarmBanner`) and counts them on the bell. Acknowledgements
 live in memory (a backend restart shows active alarms as new again).
 
+**Efficiency advice** (not alarms: no banner, no buzzer, level INFO): the HealthMonitor also feeds every scheme state
+into `app/services/advice_rules.py` — supply − return of the boiler / radiators / floor averaged over 30 min of steady
+operation (pump on ≥ 10 min, no night-setback switch for 15 min), the boiler return (< 50 °C on the non-condensing boiler),
+the tank coil at the start of a loading and the expansion vessel (heating pressure hot vs cold over the last 24 h,
+> 0.5 bar); its own AlarmTracker (delays; a rule that can't judge holds its advice).
+`/scheme/state` returns them as `advice` (shown in the scheme panel, logged as «Совет: …»). The norms are the scheme's
+ΔT colours too (`frontend/src/scheme/deltas.ts`) — change both together. Statistics → «Эффективность»: charts
+`ChartDeltas` (per-circuit supply − return from the circuits' mount points) and `ChartBoilerReturn`.
+
 **Scheme page** (`/scheme`): SCADA-style mnemonic of the boiler room. Backend `GET /api/v1/scheme/state`
 (`app/services/scheme_service.py`) aggregates sensors by role (circuit mount points), controller heartbeat
 (relays, flags, targets), gateway sync lists and alarms. Frontend `src/scheme/*`: pure SVG elements,
@@ -109,11 +118,21 @@ Runtime settings stored in `config_kv` table (not in `.env`):
 - System: `access_token_expire_minutes`, `refresh_token_expire_days`, `log_level`, `device_gateway_url`
 - Charts: `chart_history_days`
 - PZA outdoor source: `pza_outdoor_sensor` (sensor name), `pza_outdoor_device` (controller that gets it forwarded as `outdoor_temp`)
+- Room correction of the weather curves (device keys): `heating_room_temp`, `heating_room_factor` (0 = off); while it is on
+  the HealthMonitor forwards the house average every poll as `indoor_temp` telemetry (gateway `POST /telemetry`:
+  published at once, not queued, no ack, not retained; only telemetry keys allowed)
+- Weather curves follow a smoothed street temperature: `heating_pza_outdoor_tau_h` (building inertia, h, default 4,
+  0 = off; first-order low-pass in the firmware, reported as `outdoor_pza`; safety logic keeps the raw reading)
+- DHW loading: `watersupply_ihb_boost` (boiler target while the tank loads = tank target + this; lower with hard water)
+- Boiler: `heating_boiler_min_temp` (non-condensing boiler, auto target floor, admin); DHW recirculation schedule
+  `watersupply_recirc_schedule_enabled` + `watersupply_recirc_{morning,evening}_{start,end}`
+- Well water pressure range for the scheme manometer (display only): `water_pressure_min`, `water_pressure_max`
 - Backups: `backup_enabled`, `backup_interval`, `backup_time` (UTC), `backup_last_run` — set via `/settings/backup-schedule`
 
 Every key writable via `PUT /settings` must be in the allowlist `backend/app/core/setting_rules.py`
 (type, range, admin-only flag). Device ranges there mirror the firmware SETTINGS table in
-`firmware/esp32-homesite/src/boiler_logic.cpp` — change both together.
+`firmware/esp32-homesite/src/boiler_logic.cpp` — change both together (and the emulator's `settings.py`):
+`backend/tests/test_setting_rules_firmware.py` and `tools/house_emulator/test_settings_mirror.py` enforce it.
 
 Infrastructure settings in `.env` only (not runtime-changeable):
 - `DATABASE_URL`, `JWT_SECRET_KEY`, `INTERNAL_API_SECRET`, `CORS_ORIGINS`
@@ -157,7 +176,17 @@ blind autofill, boiler-doesn't-heat detection, well dry-run stop/retry/latch, TE
 sensor, auto boiler target capped at max − 7 so regulation never hits the overtemp trip, lost boiler sensor
 switches the boiler off only in mild weather (else it runs on its own thermostat), lost floor supply sensor stops the
 floor pump (no mechanical limit thermostat on the floor; beats frost protection), frost protection doesn't run pumps
-at 0 bar, buzzer mute forgets a cause absent 5 min. Relays are written once per control cycle
+at 0 bar, buzzer mute forgets a cause absent 5 min, the tank logic (loading pump, TEH, anti-legionella, «tank heating», tank sensor loss) reads the sensor
+in the tank — `tswatersupply_h` («Горячее водоснабжение»), never the loading pipes `tsihb_s` / `tsihb_b` («БКН, подача /
+возврат», the coil's supply / return; on the scheme: roles `tank` vs `coil_supply` / `coil_return`), a mixing valve holds still while its circuit pump is off (DHW
+priority, manual stop) and regulates again 30 s after the pump starts. Efficiency: the DHW tank enters the boiler auto
+target only while it loads (tank target + `watersupply_ihb_boost`), the auto target never drops below `heating_boiler_min_temp`, auto mode
+keeps the burner on ≥ 5 min and off ≥ 5 min (overtemp and frost protection still act at once), the room correction
+shifts the PZA curves (radiators ±10, floor half / ±5; none without fresh `indoor_temp`, 10 min TTL; during a
+circuit's night setback it only lowers — it must not undo the setback), recirculation
+runs only in its windows when scheduled (always while NTP is not synced). The dashboard / heating page show the boiler
+and circuit targets the controller reports (HealthMonitor caches them), estimates only while it is offline.
+Boiler: Beretta City 28 CSI (combi, non-condensing, rated 80/60 — boiler ΔT norm 8–20). Relays are written once per control cycle
 (`RelayController::beginBatch/commit`) so a safety override never opens a contact for a moment.
 Heartbeat loss detected after `heartbeat_timeout_seconds` (default 60s) → ERROR in event log.
 

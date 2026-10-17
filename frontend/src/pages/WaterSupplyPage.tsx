@@ -90,6 +90,7 @@ function TempSlider({
   unit,
   onChange,
   disabled,
+  formatValue,
 }: {
   value: number;
   min: number;
@@ -97,6 +98,7 @@ function TempSlider({
   unit?: string;
   onChange: (v: number) => void;
   disabled?: boolean;
+  formatValue?: (v: number) => string;
 }) {
   return (
     <div className="flex items-center gap-3">
@@ -111,7 +113,7 @@ function TempSlider({
         className="w-32 sm:w-48 accent-primary-600 disabled:opacity-50"
       />
       <span className="min-w-[3.5rem] text-right text-sm font-medium text-gray-800">
-        {value}
+        {formatValue ? formatValue(value) : value}
         {unit ?? "°C"}
       </span>
     </div>
@@ -251,6 +253,41 @@ export default function WaterSupplyPage() {
                   onChange={(v) => set("watersupply_ihb_temp", v)}
                 />
               </SettingRow>
+              <SettingRow label={t("waterSupply.ihbBoost")} hint={t("waterSupply.hints.ihbBoost")}>
+                <TempSlider
+                  value={num("watersupply_ihb_boost", "15")}
+                  min={0}
+                  max={20}
+                  unit="°"
+                  onChange={(v) => set("watersupply_ihb_boost", v)}
+                  formatValue={(v) => `+${v}`}
+                />
+              </SettingRow>
+              {/* recirculation only in two daily windows: the loop loses heat around the clock otherwise */}
+              <SettingRow label={t("waterSupply.recircSchedule")} hint={t("waterSupply.hints.recircSchedule")}>
+                <Toggle
+                  value={bool("watersupply_recirc_schedule_enabled")}
+                  onChange={() => toggle("watersupply_recirc_schedule_enabled")}
+                  disabled={!bool("watersupply_pump_hot")}
+                />
+              </SettingRow>
+              {(["morning", "evening"] as const).map((w) => (
+                <SettingRow key={w} label={t(`waterSupply.recirc_${w}`)}>
+                  <div className="flex items-center gap-1">
+                    <TimeInput
+                      value={s(`watersupply_recirc_${w}_start`, w === "morning" ? "06:00" : "18:00")}
+                      onChange={(v) => set(`watersupply_recirc_${w}_start`, v)}
+                      disabled={!bool("watersupply_recirc_schedule_enabled") || !bool("watersupply_pump_hot")}
+                    />
+                    <span className="text-gray-400">—</span>
+                    <TimeInput
+                      value={s(`watersupply_recirc_${w}_end`, w === "morning" ? "09:00" : "23:00")}
+                      onChange={(v) => set(`watersupply_recirc_${w}_end`, v)}
+                      disabled={!bool("watersupply_recirc_schedule_enabled") || !bool("watersupply_pump_hot")}
+                    />
+                  </div>
+                </SettingRow>
+              ))}
             </div>
             {ihbAuto && (
               <p className="mt-2 text-xs text-amber-600">
@@ -274,6 +311,33 @@ export default function WaterSupplyPage() {
                 <Toggle
                   value={bool("watersupply_pump_hot")}
                   onChange={() => toggle("watersupply_pump_hot")}
+                />
+              </SettingRow>
+              {/* the manometer's green zone on the scheme (display only, not sent to the controller) */}
+              <SettingRow label={t("waterSupply.pressureMin")} hint={t("waterSupply.hints.pressureRange")}>
+                <TempSlider
+                  value={Math.round(num("water_pressure_min", "1.5") * 10)}
+                  min={5}
+                  max={40}
+                  unit=" бар"
+                  onChange={(v) => {
+                    if (v / 10 >= num("water_pressure_max", "3.5")) return;
+                    set("water_pressure_min", (v / 10).toFixed(1));
+                  }}
+                  formatValue={(v) => (v / 10).toFixed(1)}
+                />
+              </SettingRow>
+              <SettingRow label={t("waterSupply.pressureMax")} hint={t("waterSupply.hints.pressureRange")}>
+                <TempSlider
+                  value={Math.round(num("water_pressure_max", "3.5") * 10)}
+                  min={10}
+                  max={60}
+                  unit=" бар"
+                  onChange={(v) => {
+                    if (v / 10 <= num("water_pressure_min", "1.5")) return;
+                    set("water_pressure_max", (v / 10).toFixed(1));
+                  }}
+                  formatValue={(v) => (v / 10).toFixed(1)}
                 />
               </SettingRow>
             </div>

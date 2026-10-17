@@ -4,7 +4,7 @@ import type { RoleKey } from "./types";
 export const ROLE_LABELS: Partial<Record<RoleKey, string>> = {
   boiler_supply: "Подача котла", boiler_return: "Обратка котла", rad_supply: "Подача радиаторов",
   rad_return: "Обратка радиаторов", floor_supply: "Подача пола", floor_return: "Обратка пола",
-  tank: "Бойлер", coil_return: "Обратка змеевика", cold_water: "Холодная вода", hot_water: "Горячая вода",
+  tank: "Бойлер", coil_supply: "Подача в змеевик", coil_return: "Обратка змеевика", cold_water: "Холодная вода",
   heating_pressure: "Давление контура", water_pressure: "Давление ХВС", outdoor: "Улица",
   indoor_avg: "Дом", boiler_room: "Котельная",
 };

@@ -67,3 +67,40 @@ async def test_chart_buckets_align_series(db_session):
         filled = [v for v in ds["data"] if v is not None]
         # every bucket has a value for every series (old downsampling left gaps)
         assert len(filled) >= len(data["labels"]) - 1
+
+
+async def test_difference_charts_per_circuit_and_the_boiler_return(db_session):
+    """ChartDeltas: supply − return of each circuit (the coil: its loading pipes); ChartBoilerReturn."""
+    from app.models.heating import HeatingCircuit
+    from app.services.chart_service import ChartService
+
+    db_session.add_all([SystemType(id=1, name="Отопление"), Place(id=1, name="Котельная"),
+                        SensorType(id=1, name="t"), SensorDataType(id=1, name="Temperature", code="tmp")])
+    await db_session.flush()
+    points = {1: "Котел, подача", 2: "Котел, возврат", 3: "Радиаторы, подача", 4: "Радиаторы, возврат",
+              7: "БКН, подача", 8: "БКН, возврат"}
+    db_session.add_all([MountPoint(id=i, name=n, system_id=1, place_id=1) for i, n in points.items()])
+    await db_session.flush()
+    db_session.add_all([Sensor(id=i, name=f"s{i}", sensor_type_id=1, mount_point_id=i) for i in points])
+    await db_session.flush()
+    for i in points:
+        (await db_session.get(MountPoint, i)).temperature_sensor_id = i
+    db_session.add_all([
+        HeatingCircuit(circuit_name="Котёл", config_prefix="heating_boiler", supply_mount_point_id=1, return_mount_point_id=2),
+        HeatingCircuit(circuit_name="Радиаторы", config_prefix="heating_radiator", supply_mount_point_id=3, return_mount_point_id=4),
+        HeatingCircuit(circuit_name="БКН", config_prefix="watersupply_ihb", supply_mount_point_id=7, return_mount_point_id=8),
+    ])
+    start = datetime(2026, 9, 1, tzinfo=UTC)
+    temps = {1: 70.0, 2: 58.0, 3: 55.0, 4: 43.5, 7: 65.0, 8: 52.0}   # 7/8: the loading pipes (tsihb_s / tsihb_b)
+    for k in range(60):
+        t = start + timedelta(minutes=k)
+        db_session.add_all([SensorDataHistory(sensor_id=i, datatype_id=1, value=v, timestamp=t) for i, v in temps.items()])
+    await db_session.commit()
+
+    service = ChartService(ChartRepository(db_session))
+    deltas = await service.get_chart_data("ChartDeltas", start, start + timedelta(hours=1))
+    series = {d["label"]: {v for v in d["data"] if v is not None} for d in deltas["datasets"]}
+    assert series == {"Котёл": {12.0}, "Радиаторы": {11.5}, "Змеевик бойлера": {13.0}}   # no floor circuit here
+    ret = await service.get_chart_data("ChartBoilerReturn", start, start + timedelta(hours=1))
+    assert [d["label"] for d in ret["datasets"]] == ["Обратка котла"]
+    assert {v for v in ret["datasets"][0]["data"] if v is not None} == {58.0}

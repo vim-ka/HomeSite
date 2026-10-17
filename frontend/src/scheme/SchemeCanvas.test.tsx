@@ -50,13 +50,9 @@ describe("SchemeCanvas", () => {
       expect(Number(badge.getAttribute("x"))).toBeLessThan(L.floorPump[0]);           // to its left on screen
       expect(L.floorPump[0] - Number(badge.getAttribute("x"))).toBeLessThanOrEqual(25);
       expect(Math.abs(Number(badge.getAttribute("y")) - L.floorPump[1])).toBeLessThanOrEqual(6);
-      // the badge (≈ 90 wide, 13 tall, right-anchored) must not run into a value tag or a label
+      // the badge (≈ 90 wide, 13 tall, right-anchored) must not run into a label (tags: layouts.test.ts)
       for (const [k, py] of [["rad", L.radPump[1]], ["floor", L.floorPump[1]]] as const) {
         const bx1 = (k === "rad" ? L.radPump[0] : L.floorPump[0]) - 16, bx0 = bx1 - 90, by1 = py + 4, by0 = by1 - 11;
-        for (const [role, [tx, ty]] of Object.entries(L.tags)) {
-          const hit = tx > bx0 && tx - 90 < bx1 && ty < by1 && ty + 20 > by0;
-          expect(hit, `${k} priority badge vs ${role} tag`).toBe(false);
-        }
         for (const l of L.labels) {
           const hit = l.at[0] > bx0 && l.at[0] - 60 < bx1 && l.at[1] - 10 < by1 && l.at[1] > by0;
           expect(hit, `${k} priority badge vs label ${l.text}`).toBe(false);
@@ -64,6 +60,68 @@ describe("SchemeCanvas", () => {
       }
       unmount();
     }
+  });
+
+  it("boiler supply − return: green in the normal band while burning, amber outside, grey when not burning", () => {
+    const at = (supply: number, ret: number, burning: boolean) => {
+      const state = makeState();
+      state.values.boiler_supply = { ...state.values.boiler_supply, value: supply };
+      state.values.boiler_return = { ...state.values.boiler_return, value: ret };
+      state.controller.relays.boiler = burning;
+      const { container, unmount } = render(<SchemeCanvas state={state} layout="wide" onOpen={() => {}} />);
+      const el = container.querySelector("[data-part='boiler-delta']")!;
+      const out = { text: el.textContent!, ok: el.getAttribute("data-ok"), fill: el.getAttribute("fill") };
+      unmount();
+      return out;
+    };
+    expect(at(70, 58, true)).toMatchObject({ ok: "true", fill: "#22c55e" });
+    expect(at(70, 58, true).text).toContain("ΔT 12.0°");
+    expect(at(70, 67, true)).toMatchObject({ ok: "false", fill: "#f59e0b" });   // the boiler pump overpumps
+    expect(at(70, 67, false).fill).toBe("var(--scheme-muted)");
+  });
+
+  it("each circuit shows its supply − return, coloured by its own norm while its pump runs", () => {
+    const state = makeState();
+    const set = (k: keyof typeof state.values, v: number) => { state.values[k] = { ...state.values[k], value: v }; };
+    set("rad_supply", 55); set("rad_return", 43);        // 12°: radiators fine
+    set("floor_supply", 30); set("floor_return", 28.5);  // 1.5°: the floor pump overpumps
+    state.controller.relays.floor_pump = true;
+    const { container } = render(<SchemeCanvas state={state} layout="wide" onOpen={() => {}} />);
+    const el = (k: string) => container.querySelector(`[data-delta='${k}']`)!;
+    expect(el("rad").textContent).toContain("ΔT 12.0°");
+    expect(el("rad").getAttribute("fill")).toBe("#22c55e");
+    expect(el("floor").getAttribute("fill")).toBe("#f59e0b");
+    expect(el("coil").getAttribute("fill")).toBe("var(--scheme-muted)");   // loading pump off
+  });
+
+  it("the coil is judged on a cold tank only", () => {
+    const at = (tank: number) => {
+      const state = makeState();
+      const set = (k: keyof typeof state.values, v: number) => { state.values[k] = { ...state.values[k], value: v }; };
+      set("coil_supply", 70); set("coil_return", 68); set("tank", tank);   // 2° over the coil
+      state.controller.relays.ihb_pump = true;                              // target ihb 55 in the fixture
+      const { container, unmount } = render(<SchemeCanvas state={state} layout="wide" onOpen={() => {}} />);
+      const fill = container.querySelector("[data-delta='coil']")!.getAttribute("fill");
+      unmount();
+      return fill;
+    };
+    expect(at(35)).toBe("#f59e0b");                 // cold tank, little heat taken: the coil is suspect
+    expect(at(53)).toBe("var(--scheme-muted)");     // nearly loaded: a small difference is expected
+  });
+
+  it("the night badge explains the setback of its own circuit", () => {
+    const state = makeState({ flags: { schedule_floor: true } });
+    Object.assign(state.settings, {
+      heating_floorheating_schedule_start: "23:00", heating_floorheating_schedule_end: "06:00",
+      heating_floorheating_schedule_days: "1,2,3,4,5", heating_floorheating_schedule_delta: "-2",
+      heating_room_factor: "2",
+    });
+    const { container } = render(<SchemeCanvas state={state} layout="wide" onOpen={() => {}} />);
+    expect(container.querySelector("[data-badges='rad']")).toBeNull();
+    const tip = container.querySelector("[data-badges='floor'] title")!.textContent!;
+    expect(tip).toContain("Ночное снижение тёплого пола: 23:00–06:00, пн, вт, ср, чт, пт.");
+    expect(tip).toContain("Подача ниже на 2° дневной, сейчас уставка 29°");
+    expect(tip).toContain("Комнатная поправка ночью только понижает");
   });
 
   it("shows autofill lockout", () => {

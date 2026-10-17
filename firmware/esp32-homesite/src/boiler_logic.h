@@ -66,7 +66,14 @@ private:
     bool _boilerPowerCmd = true;    // manual power command
     float _boilerTempSet = 50.0;
     float _boilerMaxTemp = 85.0;
+    float _boilerMinTemp = 55.0;    // non-condensing boiler: auto target never below (flue condensation)
     static constexpr float BOILER_HYSTERESIS = 2.0;
+    // Auto mode: no short burner cycles
+    static constexpr unsigned long BOILER_MIN_ON_MS = 5UL * 60UL * 1000UL;
+    static constexpr unsigned long BOILER_MIN_OFF_MS = 5UL * 60UL * 1000UL;
+    bool _boilerLast = false;          // boiler relay as the last cycle left it …
+    bool _boilerSwitched = false;      // … switched at least once since boot …
+    unsigned long _boilerChangedAt = 0;  // … and when
     // Auto target stays at max - margin - hysteresis: the cycle ends by regulation, never by the overtemp trip
     static constexpr float BOILER_TARGET_MARGIN = 5.0;
 
@@ -85,6 +92,12 @@ private:
     bool _ihbPumpCmd = true;
     float _ihbTempSet = 45.0;
     static constexpr float IHB_HYSTERESIS = 2.0;
+    float _ihbBoost = 15.0;  // boiler target while the tank loads: tank target + this (lower with hard water)
+
+    // Room correction of the weather curves (factor 0 = off)
+    float _roomTempSet = 21.0;
+    float _roomFactor = 0.0;
+    static constexpr float ROOM_CORRECTION_MAX = 10.0;  // radiators ±10 °C, the floor half of it
 
     // TEH
     bool _tehAutomode = true;
@@ -110,6 +123,10 @@ private:
     // Water pumps
     bool _waterPumpCmd = true;
     bool _waterHotPumpCmd = true;
+    // DHW recirculation schedule: two daily windows
+    bool _recircScheduleEnabled = false;
+    int _recircMorningStartH = 6, _recircMorningStartM = 0, _recircMorningEndH = 9, _recircMorningEndM = 0;
+    int _recircEveningStartH = 18, _recircEveningStartM = 0, _recircEveningEndH = 23, _recircEveningEndM = 0;
 
     // Autofill (motorized ball valve — OPEN/CLOSE relays)
     bool _autofillEnabled = true;
@@ -166,12 +183,15 @@ private:
     static constexpr float VALVE_MAX_ERROR = 10.0;   // °C — full stroke impulse
     static constexpr unsigned long VALVE_MIN_PULSE_MS = 1000;  // min pulse 1s
     static constexpr unsigned long VALVE_MAX_PULSE_MS = 15000; // max pulse 15s
+    static constexpr unsigned long VALVE_SETTLE_MS = 30000;    // after the pump starts the sensor sees standing water
 
     struct ValveState {
         unsigned long driveStart = 0;
         unsigned long driveMs = 0;       // current pulse duration (0 = idle)
         unsigned long lastAdjust = 0;    // last time we evaluated
         bool opening = false;            // direction of current pulse
+        bool pumpRunning = false;        // circuit pump was on at the last evaluation
+        unsigned long pumpSince = 0;     // when it started (valid while pumpRunning)
     };
 
     ValveState _radValve;
@@ -241,13 +261,16 @@ private:
     // Shared by the boiler auto target and the 3-way valves.
     float radiatorTarget() const;
     float floorTarget() const;
-    static float circuitTarget(bool wbm, float pzaTarget, float manual, bool scheduleActive, float delta);
+    static float circuitTarget(bool wbm, float pzaTarget, float manual, bool scheduleActive, float delta,
+                               float roomCorrection);
+    float roomCorrection(float scale, float limit, bool night) const;
+    bool recircWindow() const;
     void closeAutofill(unsigned long now);
     void tripAutofillTimeout(unsigned long now);
     void finishValvePulse(ValveState& vs, RelayChannel openRelay, RelayChannel closeRelay, const char* label);
     void applyInterlocks(const TempMap& temps);
     void driveValve(ValveState& vs, RelayChannel openRelay, RelayChannel closeRelay,
-                    const char* label, float target, float actual);
+                    const char* label, float target, float actual, bool pumpOn);
     void updateBoiler(const TempMap& temps);
     void updatePumps(const TempMap& temps);
     void updateAutofill(float heatingPressure);

@@ -42,6 +42,18 @@ class ChartService:
     def __init__(self, chart_repo: ChartRepository):
         self.chart_repo = chart_repo
 
+    @staticmethod
+    def _period(start: datetime | None, end: datetime | None, default_days: int) -> tuple[datetime, datetime]:
+        if end is None:
+            end = datetime.now(UTC)
+        if start is None:
+            start = end - timedelta(days=default_days)
+        if end < start:
+            start, end = end, start
+        if end - start > timedelta(days=MAX_CHART_DAYS):
+            start = end - timedelta(days=MAX_CHART_DAYS)
+        return start, end
+
     async def get_chart_data(
         self,
         chart_type: str,
@@ -57,19 +69,29 @@ class ChartService:
         if chart_type == "ChartHeatFloor":
             return PZA_FLOOR
 
+        if chart_type in ("ChartDeltas", "ChartBoilerReturn"):
+            start, end = self._period(start, end, default_days)
+            sensors = await self.chart_repo.circuit_sensors()
+            boiler_ret = sensors.get("heating_boiler", (None, None))[1]
+            if chart_type == "ChartBoilerReturn":
+                if boiler_ret is None:
+                    return {"labels": [], "datasets": []}
+                data = await self.chart_repo.get_history(datatype_id=1, start=start, end=end, sensor_ids=[boiler_ret])
+                for d in data["datasets"]:
+                    d["label"] = "Обратка котла"
+                return data
+            # supply − return of every circuit; the tank coil: its loading pipes (tsihb_s − tsihb_b)
+            pairs = [(label, *sensors.get(prefix, (None, None))) for prefix, label in (
+                ("heating_boiler", "Котёл"), ("heating_radiator", "Радиаторы"), ("heating_floorheating", "Тёплый пол"),
+                ("watersupply_ihb", "Змеевик бойлера"))]
+            return await self.chart_repo.get_differences(
+                [(label, a, b) for label, a, b in pairs if a is not None and b is not None], start, end)
+
         config = CHART_CONFIG.get(chart_type)
         if config is None:
             return {"labels": [], "datasets": []}
 
-        if end is None:
-            end = datetime.now(UTC)
-        if start is None:
-            start = end - timedelta(days=default_days)
-        if end < start:
-            start, end = end, start
-        if end - start > timedelta(days=MAX_CHART_DAYS):
-            start = end - timedelta(days=MAX_CHART_DAYS)
-
+        start, end = self._period(start, end, default_days)
         return await self.chart_repo.get_history(
             datatype_id=config["datatype_id"],
             start=start,

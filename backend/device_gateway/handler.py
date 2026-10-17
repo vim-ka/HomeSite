@@ -279,9 +279,20 @@ class MQTTHandler:
         client = self.active_client
         if device_name != sensor or client is None:
             return
-        payload = json.dumps({"outdoor_temp": str(data["tmp"])})
-        # Telemetry, not a setting: no dispatcher, no ack, not retained
-        self._spawn(client.publish(f"{self.topic_prefix}{target}/cmd", payload, qos=0, retain=False))
+        self._spawn(self.publish_telemetry(target, {"outdoor_temp": str(data["tmp"])}))
+
+    async def publish_telemetry(self, device: str, params: dict[str, str]) -> bool:
+        """Telemetry for a device (outdoor / indoor temperature), not a setting: no dispatcher, no ack,
+        not retained — a stale value must never be replayed to a rebooting controller."""
+        client = self.active_client
+        if client is None:
+            return False
+        try:
+            await client.publish(f"{self.topic_prefix}{device}/cmd", json.dumps(params), qos=0, retain=False)
+        except aiomqtt.MqttError as e:  # the broker went away mid-call: a clean "not delivered", like publisher.py
+            logger.warning("telemetry_publish_failed", device=device, error=str(e))
+            return False
+        return True
 
     def check_heartbeats(self, now: datetime, timeout_s: int, quiet: set[str]) -> list[dict]:
         """Drop devices silent for longer than the timeout; events for those not in `quiet`.

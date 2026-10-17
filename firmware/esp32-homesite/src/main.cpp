@@ -102,9 +102,9 @@ void onCommand(const String& key, const String& value) {
 
     // Track for ack
     ackDoc[key] = "ok";
-    // outdoor_temp is telemetry forwarded on every street reading, not a command:
-    // it must not force an extra read/publish/control cycle each time
-    if (key != "outdoor_temp") heartbeatSoon = true;
+    // outdoor_temp / indoor_temp are telemetry forwarded all the time, not commands:
+    // they must not force an extra read/publish/control cycle each time
+    if (key != "outdoor_temp" && key != "indoor_temp") heartbeatSoon = true;
 
     // System commands
     if (key == "reset_config") {
@@ -136,6 +136,13 @@ void onCommand(const String& key, const String& value) {
         if (end && *end == '\0' && t > -60 && t < 60 && !localFresh) {
             pza.setOutdoorTemp(t);
         }
+        return;
+    }
+    if (key == "indoor_temp") {
+        ackDoc.remove(key);  // the house average the backend forwards for the room correction
+        char* end = nullptr;
+        float t = strtof(value.c_str(), &end);
+        if (end && *end == '\0' && t > 0 && t < 40) pza.setIndoorTemp(t);
         return;
     }
     if (key == "interval") {
@@ -379,8 +386,10 @@ void sendHeartbeat() {
     doc["rad_curve"] = pza.radiatorCurve();
     doc["floor_wbm"] = pza.isFloorWBM();
     doc["floor_curve"] = pza.floorCurve();
+    if (pza.hasIndoorTemp()) doc["indoor"] = round(pza.indoorTemp() * 10) / 10.0;
     if (pza.hasOutdoorTemp()) {
         doc["outdoor"] = round(pza.outdoorTemp() * 10) / 10.0;
+        doc["outdoor_pza"] = round(pza.outdoorPza() * 10) / 10.0;  // what the curves follow (smoothed)
         float radTarget = pza.getRadiatorTarget();
         float floorTarget = pza.getFloorTarget();
         if (radTarget >= 0) doc["rad_target"] = round(radTarget * 10) / 10.0;

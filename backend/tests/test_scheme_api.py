@@ -39,10 +39,12 @@ async def test_scheme_alarms_are_the_monitors_active_alarms(client, db_session):
     db_session.add(User(username="v2", password_hash=get_password_hash("viewer123"), email="v2@test.com",
                         role=UserRole.VIEWER.value))
     await db_session.commit()
-    app.state.health_monitor = SimpleNamespace(state=SimpleNamespace(active_alarms=active))
+    advice = [{"code": "delta_low:floor", "level": "INFO", "text": "Тёплый пол: разница подачи и обратки 1.5°"}]
+    app.state.health_monitor = SimpleNamespace(state=SimpleNamespace(active_alarms=active, active_advice=advice))
     try:
         token = (await client.post("/api/v1/auth/login", json={"username": "v2", "password": "viewer123"})).json()["access_token"]
         body = (await client.get("/api/v1/scheme/state", headers={"Authorization": f"Bearer {token}"})).json()
         assert body["alarms"] == active
+        assert body["advice"] == advice          # efficiency advice: the monitor's too, separate from alarms
     finally:
         del app.state.health_monitor

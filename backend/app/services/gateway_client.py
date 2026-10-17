@@ -46,6 +46,20 @@ class GatewayClient:
             logger.error("gateway_dispatch_error", error=str(e))
             return False
 
+    async def send_telemetry(self, device_id: str, params: dict[str, str]) -> bool:
+        """Telemetry for a controller (not a setting): published at once, no queue, no ack."""
+        try:
+            async with httpx.AsyncClient(base_url=self.base_url, timeout=self.timeout) as client:
+                response = await client.post(
+                    "/telemetry",
+                    json={"device_id": device_id, "params": params},
+                    headers={"X-Internal-Secret": settings.internal_api_secret},
+                )
+                return response.status_code == 200
+        except Exception as e:
+            logger.debug("gateway_telemetry_failed", error=str(e))
+            return False
+
     async def dispatch_settings(self, updates: dict[str, Any]) -> DispatchResult:
         """Hand settings to DeviceGateway for routing to relevant devices."""
         try:

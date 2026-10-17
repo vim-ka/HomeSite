@@ -1005,6 +1005,15 @@ function MountPointModal({
     enabled: open,
   });
 
+  const { data: dataTypes } = useQuery<SensorDataTypeInfo[]>({
+    queryKey: ["catalog-data-types"],
+    queryFn: async () => {
+      const { data } = await api.get("/catalog/data-types");
+      return data;
+    },
+    enabled: open,
+  });
+
   useEffect(() => {
     if (open) {
       setForm({
@@ -1045,27 +1054,36 @@ function MountPointModal({
   const inputCls =
     "w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:outline-none";
 
+  // Only sensors that measure this quantity (their type has the data type); the sensor already
+  // bound stays listed even if it doesn't, so opening the card never drops a binding silently.
   const sensorSelect = (
     label: string,
     value: number | null,
     onChange: (v: number | null) => void,
-  ) => (
-    <div>
-      <label className="block text-sm text-gray-600 mb-1">{label}</label>
-      <select
-        value={String(value ?? "")}
-        onChange={(e) => onChange(e.target.value ? Number(e.target.value) : null)}
-        className={inputCls}
-      >
-        <option value="">—</option>
-        {sensorsList?.map((s) => (
-          <option key={s.id} value={String(s.id)}>
-            {s.name} ({s.sensor_type_name})
-          </option>
-        ))}
-      </select>
-    </div>
-  );
+    datatypeCode: string,
+  ) => {
+    const datatypeId = dataTypes?.find((d) => d.code === datatypeCode)?.id;
+    const options = (sensorsList ?? []).filter(
+      (s) => datatypeId === undefined || s.datatype_ids.includes(datatypeId) || s.id === value,
+    );
+    return (
+      <div>
+        <label className="block text-sm text-gray-600 mb-1">{label}</label>
+        <select
+          value={String(value ?? "")}
+          onChange={(e) => onChange(e.target.value ? Number(e.target.value) : null)}
+          className={inputCls}
+        >
+          <option value="">—</option>
+          {options.map((s) => (
+            <option key={s.id} value={String(s.id)}>
+              {s.name} ({s.sensor_type_name})
+            </option>
+          ))}
+        </select>
+      </div>
+    );
+  };
 
   return (
     <Modal open={open} onClose={onClose}>
@@ -1111,13 +1129,13 @@ function MountPointModal({
         <hr className="border-gray-200" />
         <p className="text-xs text-gray-500 font-medium">{t("settings.sensorBindings")}</p>
         {sensorSelect(t("settings.temperatureSensor"), form.temperature_sensor_id, (v) =>
-          setForm({ ...form, temperature_sensor_id: v })
+          setForm({ ...form, temperature_sensor_id: v }), "tmp"
         )}
         {sensorSelect(t("settings.pressureSensor"), form.pressure_sensor_id, (v) =>
-          setForm({ ...form, pressure_sensor_id: v })
+          setForm({ ...form, pressure_sensor_id: v }), "prs"
         )}
         {sensorSelect(t("settings.humiditySensor"), form.humidity_sensor_id, (v) =>
-          setForm({ ...form, humidity_sensor_id: v })
+          setForm({ ...form, humidity_sensor_id: v }), "hmt"
         )}
       </div>
       {error && (

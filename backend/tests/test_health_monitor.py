@@ -161,3 +161,36 @@ async def test_a_broken_alarm_check_is_itself_an_alarm(engine, db_session, monke
     assert [a["code"] for a in m.state.active_alarms] == ["alarm_check_failed"]
     failed = [e for e in await _events(db_session) if "Проверка аварий не работает" in (e.message or "")]
     assert [e.level for e in failed] == ["ERROR"]
+
+
+# ---------------------------------------------------------------- room correction: the house average to the controller
+async def _forwarded(engine, db_session, monkeypatch, factor: str | None, *, fresh: bool = True) -> list[dict]:
+    from app.models.config import ConfigKV
+
+    await seed(db_session, fresh=fresh)
+    if factor is not None:
+        db_session.add(ConfigKV(key="heating_room_factor", value=factor))
+        await db_session.commit()
+    m = _monitor(engine)
+    m._now = lambda: NOW
+    _with_gateway(m, monkeypatch, gateway())
+    sent: list[dict] = []
+
+    async def capture(params):
+        sent.append(params)
+
+    monkeypatch.setattr(m, "_send_telemetry", capture)
+    await m._check()
+    return sent
+
+
+async def test_the_house_average_goes_to_the_controller_while_room_correction_is_on(engine, db_session, monkeypatch):
+    assert await _forwarded(engine, db_session, monkeypatch, "2") == [{"indoor_temp": "22.7"}]
+
+
+async def test_no_forward_with_room_correction_off(engine, db_session, monkeypatch):
+    assert await _forwarded(engine, db_session, monkeypatch, "0") == []
+
+
+async def test_a_stale_house_average_is_not_forwarded(engine, db_session, monkeypatch):
+    assert await _forwarded(engine, db_session, monkeypatch, "2", fresh=False) == []

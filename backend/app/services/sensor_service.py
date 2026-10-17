@@ -24,12 +24,13 @@ class SensorService:
     def __init__(self, sensor_repo: SensorRepository):
         self.sensor_repo = sensor_repo
 
-    async def get_dashboard_data(self) -> DashboardResponse:
+    async def get_dashboard_data(self, controller_targets: dict | None = None) -> DashboardResponse:
         """Build full dashboard — replaces 70+ lines of inline queries in v1 views.py."""
         climate_raw = await self.sensor_repo.get_climate_data()
         climate = [ClimateRoomResponse(**c) for c in climate_raw]
 
-        heating_raw = await self.sensor_repo.get_heating_status()
+        water_raw = await self.sensor_repo.get_water_supply_status()   # once: the heating estimate needs the tank
+        heating_raw = await self.sensor_repo.get_heating_status(controller_targets, water_raw)
         heating = [
             HeatingCircuitStatus(
                 circuit=h["circuit"],
@@ -47,7 +48,6 @@ class SensorService:
             for h in heating_raw
         ]
 
-        water_raw = await self.sensor_repo.get_water_supply_status()
         water_supply = [
             WaterSupplyStatus(
                 type=w["type"],

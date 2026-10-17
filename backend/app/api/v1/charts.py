@@ -27,7 +27,8 @@ async def get_chart_data(
 ):
     """Get chart data. Static for PZA curves, dynamic for sensor history.
 
-    chart_type: ChartTemperature | ChartPressure | ChartHumidity | ChartRadiators | ChartHeatFloor
+    chart_type: ChartTemperature | ChartPressure | ChartHumidity | ChartRadiators | ChartHeatFloor |
+                ChartDeltas (supply − return per circuit) | ChartBoilerReturn
     """
     default_days = 100
     result = await db.execute(

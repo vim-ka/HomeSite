@@ -120,3 +120,50 @@ async def test_health_reports_sync_lists(api_app, dispatcher):
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         data = (await client.get("/health")).json()
     assert data["sync"] == {"boiler": {"pending": ["heating_boiler_temp"], "unsynced": []}}
+
+
+class FakeTelemetryHandler:
+    def __init__(self, connected: bool = True):
+        self.connected = connected
+        self.sent: list[tuple[str, dict]] = []
+
+    async def publish_telemetry(self, device: str, params: dict) -> bool:
+        if not self.connected:
+            return False
+        self.sent.append((device, params))
+        return True
+
+
+async def _post_telemetry(app, params: dict):
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        return await client.post("/telemetry", json={"device_id": "boiler_unit", "params": params},
+                                 headers={"X-Internal-Secret": "test-secret"})
+
+
+@pytest.mark.asyncio
+async def test_telemetry_is_published_at_once_not_queued(dispatcher, gateway_settings, publisher):
+    handler = FakeTelemetryHandler()
+    app = create_gateway_api(dispatcher=dispatcher, mqtt_connected_fn=lambda: True,
+                             settings=gateway_settings, handler=handler)
+    resp = await _post_telemetry(app, {"indoor_temp": "20.4"})
+    assert resp.status_code == 200
+    assert handler.sent == [("boiler_unit", {"indoor_temp": "20.4"})]
+    await dispatcher.flush_all()
+    assert publisher.calls == []          # not a setting: no dispatcher, no ack tracking
+
+
+@pytest.mark.asyncio
+async def test_settings_cannot_sneak_through_telemetry(dispatcher, gateway_settings):
+    handler = FakeTelemetryHandler()
+    app = create_gateway_api(dispatcher=dispatcher, mqtt_connected_fn=lambda: True,
+                             settings=gateway_settings, handler=handler)
+    resp = await _post_telemetry(app, {"indoor_temp": "20.4", "heating_boiler_max_temp": "90"})
+    assert resp.status_code == 422
+    assert handler.sent == []
+
+
+@pytest.mark.asyncio
+async def test_telemetry_without_mqtt_is_503(dispatcher, gateway_settings):
+    app = create_gateway_api(dispatcher=dispatcher, mqtt_connected_fn=lambda: False,
+                             settings=gateway_settings, handler=FakeTelemetryHandler(connected=False))
+    assert (await _post_telemetry(app, {"indoor_temp": "20.4"})).status_code == 503
