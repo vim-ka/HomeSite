@@ -6,7 +6,8 @@ Usage: python3 docs/boiler-room/check_docs.py
 - every position (data-pos) and designation (data-ref) on a drawing is in the specification;
 - every specification position outside «Материалы» is on at least one drawing;
 - the relay table in 07-wiring.md matches the relay table in firmware PINOUT.md (channel → GPIO);
-- key numbers from calc.py appear in the specification.
+- key numbers from calc.py appear in the specification;
+- 03-specification.html matches the Markdown (spec_html.py).
 """
 
 import json
@@ -99,6 +100,12 @@ def check(folder: Path, pinout: Path, calc: dict | None = None) -> list[str]:
         for ch, gpio in parse_relays(wiring.read_text(encoding="utf-8")).items():
             if fw.get(ch) != gpio:
                 errors.append(f"07-wiring.md: канал {ch} → GPIO {gpio}, а в PINOUT → {fw.get(ch, 'нет канала')}")
+
+    html = folder / "03-specification.html"
+    if html.exists():
+        from spec_html import render
+        if html.read_text(encoding="utf-8") != render(spec_text):
+            errors.append("03-specification.html устарел — запустите spec_html.py")
 
     for key, value in (calc or {}).items():
         if str(value) not in spec_text:
