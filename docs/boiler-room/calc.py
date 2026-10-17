@@ -20,7 +20,10 @@ TANK_L, COIL_KW = 200, 30
 # --- Assumptions (ДОПУЩЕНИЕ) ---
 SPECIFIC_LOSS_W_M2 = 100       # дом средней утеплённости, потолки ~2,7 м, −25…−30 °C расчётная
 FLOOR_W_M2 = 60                # тёплый пол при подаче 35–40 °C
-DT = {"boiler": 15, "rad": 15, "floor": 5, "ihb": 15}   # K, расчётные перепады подача − обратка
+DT = {"boiler": 15, "rad": 20, "floor": 5}   # K: котёл, радиаторы 80/60 (как проверка мощности 4.2), пол
+IHB_SHARE = 0.85              # насос загрузки БКН берёт ≤ 85 % расхода котла — гидрострелка не опрокидывается (kotelna.tk 1-1-8-13)
+COIL_DERATE = 0.55            # змеевик при подаче ~65 °C отдаёт ~55 % паспортных 30 кВт (паспорт — при 80/60, 10→45 °C)
+GAS_KWH_PER_M3, AIR_PER_GAS = 9.3, 9.5   # теплота сгорания метана (низшая), стехиометрия воздух/газ
 SPEED_LIMIT = {"boiler": 1.0, "rad": 0.8, "floor": 0.8, "ihb": 1.0}   # м/с: котельная / магистрали
 L_PER_SECTION = 0.35           # алюминий/биметалл, л на секцию
 FLOOR_PIPE_M_PER_M2, FLOOR_PIPE_L_PER_M = 6.7, 0.113    # шаг 150 мм, труба 16×2
@@ -37,7 +40,7 @@ BOILER_INTERNAL_EXP_L = 8      # встроенный бак настенног�
 TANK_COLD_C, TANK_HOT_C, LOAD_EFFICIENCY = 10, 55, 0.9
 
 # Stainless press-fit (V-profile) — outside diameter × wall, mm → bore
-PIPES = [(15, 13.0), (18, 16.0), (22, 19.6), (28, 25.6), (35, 32.0), (42, 39.0)]
+PIPES = [(15, 13.0), (18, 16.0), (22, 19.6), (28, 25.6), (35, 32.0), (42, 39.0), (54, 51.0)]
 TANK_SIZES = [8, 12, 18, 24, 35, 50]
 
 
@@ -71,10 +74,11 @@ def next_size(litres: float) -> int:
 def report() -> dict:
     heat = HOUSE_M2 * SPECIFIC_LOSS_W_M2 / 1000
     floor_kw = FLOOR_M2 * FLOOR_W_M2 / 1000
-    loads = {"boiler": BOILER_KW, "rad": heat - floor_kw, "floor": floor_kw, "ihb": min(BOILER_KW, COIL_KW)}
+    loads = {"boiler": BOILER_KW, "rad": heat - floor_kw, "floor": floor_kw}
     r: dict = {"heat_load_kw": round(heat, 1), "rad_kw": round(loads["rad"], 1), "floor_kw": round(floor_kw, 1)}
-    for k, kw in loads.items():
-        g = flow_m3h(kw, DT[k])
+    flows = {k: flow_m3h(kw, DT[k]) for k, kw in loads.items()}
+    flows["ihb"] = flows["boiler"] * IHB_SHARE
+    for k, g in flows.items():
         od, v = pick_pipe(g, SPEED_LIMIT[k])
         r[f"flow_{k}_m3h"] = round(g, 2)
         r[f"dn_{k}"] = od
@@ -107,9 +111,19 @@ def report() -> dict:
     r["exp_dhw_l"] = next_size(need_d)
     r["exp_dhw_p0_bar"] = WELL_MAX_BAR
 
+    # collector: bore area ≥ sum of its three outlets (boiler-size pipes)
+    outlet = dict(PIPES)[r["dn_boiler"]]
+    r["dn_collector"] = next(od for od, bore in PIPES if bore ** 2 >= 3 * outlet ** 2)
+
     kwh = TANK_L * 4.19 * (TANK_HOT_C - TANK_COLD_C) / 3600
+    coil_kw = min(BOILER_KW, COIL_KW * COIL_DERATE)
     r["tank_load_kwh"] = round(kwh, 1)
-    r["tank_load_min"] = round(kwh / (loads["ihb"] * LOAD_EFFICIENCY) * 60)
+    r["coil_kw_at_65"] = round(coil_kw, 1)
+    r["tank_load_min"] = round(kwh / (coil_kw * LOAD_EFFICIENCY) * 60)
+
+    gas = BOILER_KW / 0.9 / GAS_KWH_PER_M3           # м³/ч при КПД 90 %
+    r["gas_m3h"] = round(gas, 2)
+    r["air_combustion_m3h"] = round(gas * AIR_PER_GAS)
     return r
 
 

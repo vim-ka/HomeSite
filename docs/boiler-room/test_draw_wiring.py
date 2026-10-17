@@ -23,7 +23,8 @@ def test_structure_sheet_shows_every_relay_channel_and_power_device():
     svg = render_structure()
     _, refs = svg_refs(svg)
     assert {"A1", "A2", "G1", "G2", "QF1", "QF2", "QF3", "QF4", "QF5", "QF6", "KM1", "KM2", "EK1",
-            "M1", "M2", "M3", "M4", "M5", "YA1", "YA2", "YA3", "HL1", "HL2", "HA1", "SK1", "XT1", "A4", "A5"} <= refs
+            "M1", "M2", "M3", "M4", "M5", "YA1", "YA2", "YA3", "HL1", "HL2", "HA1", "SK1", "XT1", "A4", "A5",
+            "SK2", "SP1"} <= refs
     txt = text_of(svg)
     for ch in range(16):
         assert re.search(rf"\bK{ch}\b", txt), f"K{ch}"
@@ -46,3 +47,10 @@ def test_boiler_sheet_wires_opentherm_to_the_free_pins_and_the_manual_switch():
     txt = text_of(svg)
     assert "GPIO36" in txt and "GPIO5" in txt
     assert "OT" in txt
+
+
+def test_hardware_interlocks_sit_in_the_power_lines_not_only_in_software():
+    txt = text_of(render_structure())
+    assert "KM1 → SK2 → EK1" in txt          # TEH: emergency cut-out with manual reset
+    assert "KM2 → SP1 → M4" in txt           # well pump: pressure switch in series
+    assert "30 мА" in txt and "QF5" in txt   # separate RCDs for the TEH and the well pump
