@@ -17,6 +17,10 @@ FONT = "Arial, Helvetica, sans-serif"
 # Fittings left out of the colour overview (they only clutter it)
 SMALL = {"20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "32", "34"}
 
+# x of the fittings on the boiler pipes (boiler on the right: larger x = boiler side). The safety group and the
+# expansion tank must stay connected to the boiler when its shut-off valves are closed.
+BOILER_SIDE = {"supply_valve": 960, "safety_group": 1040, "return_valve": 1100, "tank_tee": 1170}
+
 COLOURS = {"Т1": "#ef4444", "Т2": "#3b82f6", "Т3": "#ec4899", "Т4": "#f97316", "В1": "#0ea5e9", "Г1": "#ca8a04"}
 
 
@@ -197,9 +201,10 @@ def draw(s: Sheet) -> None:
             + s.text(205, 594, "EK1", 9, "start", "bold"))
     s.item(3, "EK1", body, leader=(140, 300, -20, -30), title="Бойлер косвенного нагрева с ТЭНом EK1")
     # 4 heating expansion tank on the return, behind a lockable valve
-    s.pipe("Т2", [(1090, 460), (1090, 540)])
-    s.item(26, "", s.valve(1090, 505, 90), leader=(1098, 505, 25, 0), title="Кран с защитой от закрытия (под бак)")
-    s.item(4, "", s.membrane_tank(1090, 540), leader=(1103, 570, 30, 20), title="Бак расширительный отопления")
+    tx = BOILER_SIDE["tank_tee"]
+    s.pipe("Т2", [(tx, 460), (tx, 540)])
+    s.item(26, "", s.valve(tx, 505, 90), leader=(tx - 8, 505, -25, 0), title="Кран с защитой от закрытия (под бак)")
+    s.item(4, "", s.membrane_tank(tx, 540), leader=(tx - 13, 570, -30, 20), title="Бак расширительный отопления")
     # 5 DHW expansion tank
     s.item(5, "", s.membrane_tank(290, 668, 22, 38), leader=(301, 690, 28, 10), title="Бак расширительный ГВС")
     # pumps
@@ -209,7 +214,7 @@ def draw(s: Sheet) -> None:
            leader=(806, 559, 45, 12), title="Насос тёплого пола")
     s.item(8, "M3", s.pump(410, 380, 180) + s.text(410, 362, "M3", 10, weight="bold"),
            leader=(410, 391, 10, 30), title="Насос загрузки БКН")
-    s.item(10, "M5", s.pump(95, 330, -90) + s.text(113, 334, "M5", 10, "start", "bold"),
+    s.item(10, "M5", s.pump(95, 330, 90) + s.text(113, 334, "M5", 10, "start", "bold"),
            leader=(84, 330, -25, -20), title="Насос рециркуляции ГВС")
     # 9 well with its pump, 14 pressure tank
     body = (f'<path d="M45,800 V880 M85,800 V880" stroke="{fg}" stroke-width="1.5"/>'
@@ -246,10 +251,12 @@ def draw(s: Sheet) -> None:
 
     # ===== fittings =====
     # 20 safety group on the boiler supply: stem with relief valve, air vent and gauge
-    body = (f'<path d="M1040,380 V300 M1040,330 H1062" stroke="{fg}" stroke-width="1.5"/>'
-            + s.relief(1040, 350) + s.air_vent(1040, 300) + s.bubble(1073, 330, "PI"))
+    gx = BOILER_SIDE["safety_group"]
+    body = (f'<path d="M{gx},380 V300 M{gx},330 H{gx + 22}" stroke="{fg}" stroke-width="1.5"/>'
+            + s.relief(gx, 350) + s.air_vent(gx, 300) + s.bubble(gx + 33, 330, "PI"))
     s.item(20, "", body, leader=(1030, 300, -25, -25), title="Группа безопасности: клапан 3 бар, воздухоотводчик, манометр")
-    s.item(22, "", s.valve(1110, 380) + s.valve(1170, 460), leader=(1110, 385, 10, 30), title="Краны отсечки котла")
+    s.item(22, "", s.valve(BOILER_SIDE["supply_valve"], 380) + s.valve(BOILER_SIDE["return_valve"], 460),
+           leader=(BOILER_SIDE["supply_valve"], 385, 12, 30), title="Краны отсечки котла (группа безопасности и бак — со стороны котла)")
     s.item(23, "", s.strainer(1040, 460), leader=(1040, 467, 15, 25), title="Фильтр магнитный/сетчатый на обратке котла")
     # 24 circuit shut-offs (radiators, floor, cold to the tank)
     s.item(24, "", s.valve(800, 220, 90) + s.valve(760, 220, 90) + s.valve(800, 640, 90) + s.valve(760, 640, 90)

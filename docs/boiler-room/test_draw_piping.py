@@ -40,3 +40,21 @@ def test_colour_overview_keeps_the_main_equipment_and_drops_small_fittings():
 def test_colour_overview_uses_site_colours():
     svg = render("color")
     assert "#ef4444" in svg and "#3b82f6" in svg      # supply red, return blue
+
+
+def _group(svg: str, pos: str):
+    import xml.etree.ElementTree as ET
+    return next(el for el in ET.fromstring(svg).iter() if el.get("data-pos") == pos)
+
+
+def test_boiler_cannot_be_isolated_from_its_safety_group_and_expansion_tank():
+    # boiler on the right: "boiler side" of a shut-off = larger x
+    from draw_piping import BOILER_SIDE
+    assert BOILER_SIDE["safety_group"] > BOILER_SIDE["supply_valve"]
+    assert BOILER_SIDE["tank_tee"] > BOILER_SIDE["return_valve"]
+
+
+def test_recirculation_pump_points_down_the_loop_towards_the_tank():
+    import re
+    m5 = _group(render("gost"), "10")
+    assert re.search(r"translate\(95 330\) rotate\(90\)", ET.tostring(m5, encoding="unicode"))
