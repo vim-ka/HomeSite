@@ -1,6 +1,7 @@
-"""Wiring drawings: structure (sheet 3), sensors (sheet 4), boiler and OpenTherm (sheet 5).
+"""Wiring drawings: structure (sheet 3), sensors (sheet 4), boiler and OpenTherm (sheet 5), RF gateway (sheet 6).
 
-Usage: python3 docs/boiler-room/draw_wiring.py   → writes 07a-structure.svg, 07b-sensors.svg, 07c-boiler-opentherm.svg
+Usage: python3 docs/boiler-room/draw_wiring.py   → writes 07a-structure.svg, 07b-sensors.svg, 07c-boiler-opentherm.svg,
+       07d-rf-gateway.svg
 
 Relay channels and GPIO follow firmware/esp32-homesite/PINOUT.md (test_draw_wiring checks it).
 """
@@ -274,10 +275,57 @@ def render_boiler() -> str:
         "Котёл, A1, A3, насосы — от ИБП G2: при отключении сети котёл с открытой камерой продолжает работать."])
 
 
+# ------------------------------------------------------------------------------------------------
+# CC1101 pin → ESP32 GPIO, as firmware/esp32-rf-gateway/PINOUT.md (test_draw_wiring checks it)
+RF_PINS = {"SCK": 18, "MISO": 19, "MOSI": 23, "CSN": 5, "GDO0": 4, "GDO2": 2}
+
+
+def render_rf_gateway() -> str:
+    s = Sheet("gost")
+    rows = [("3V3", "VCC", 260, "питание только 3,3 В"), ("GND", "GND", 300, "")] + [
+        (f"GPIO{RF_PINS[k]}", k if k != "MISO" else "MISO (GDO1)", y, what)
+        for k, y, what in (("SCK", 340, "SPI clock"), ("MISO", 380, "SPI MISO"), ("MOSI", 420, "SPI MOSI"),
+                           ("CSN", 460, "chip select"), ("GDO0", 500, "данные: демодулированный поток (прерывания)"),
+                           ("GDO2", 540, "не используется (RSSI) — можно не подключать"))]
+    esp = box(s, 53, "A4", 60, 220, 240, 400, "A4.1 ESP32 DevKit", "прошивка esp32-rf-gateway")
+    cc = box(s, 53, "A4", 760, 220, 220, 400, "A4.2 CC1101", "433,92 МГц, OOK")
+    for gpio, pin, y, what in rows:
+        esp += s.text(292, y + 4, gpio, 10, "end", "bold") + f'<circle cx="300" cy="{y}" r="2.5" fill="{s.fg}"/>'
+        cc += s.text(768, y + 4, pin, 10, "start", "bold") + f'<circle cx="760" cy="{y}" r="2.5" fill="{s.fg}"/>'
+    esp += s.text(180, 585, "GPIO0 — кнопка BOOT (5 с — сброс настроек)", 8.5) + s.text(180, 600, "GPIO2 — светодиод платы", 8.5)
+    cc += s.text(970, 284, "ANT", 10, "end", "bold") + f'<circle cx="980" cy="280" r="2.5" fill="{s.fg}"/>'
+    # power, antenna
+    body = esp + cc + box(s, 53, "A4", 60, 110, 240, 50, "Блок питания USB 5 В, ≥ 1 А", "в разъём USB платы ESP32")
+    s.item(53, "A4", body, title="RF-шлюз: ESP32 + CC1101")
+    wire(s, [(180, 160), (180, 220)], "USB 5 В", (186, 196))
+    for gpio, pin, y, what in rows:
+        wire(s, [(300, y), (760, y)], what, (330, y - 5), dash=(pin == "GDO2"))
+    # decoupling right at the module: 100 nF + 10 µF between VCC and GND
+    for x, label in ((660, "100 нФ"), (710, "10 мкФ")):
+        wire(s, [(x, 260), (x, 278)])
+        wire(s, [(x, 282), (x, 300)])
+        s.add(capacitor(s, x, 280) + s.text(x, 316, label, 9))
+    s.add(s.text(685, 332, "у самого VCC модуля", 8.5))
+    wire(s, [(980, 280), (1080, 280), (1080, 120)], width=1.6)
+    s.add(f'<path d="M1066,120 L1080,100 L1094,120" fill="none" stroke="{s.fg}" stroke-width="1.6"/>')
+    s.add(s.text(1100, 150, "антенна ¼λ — штырь 17,3 см", 10, "start", "bold") + s.text(1100, 166, "(или спираль на 433 МГц),", 9, "start")
+          + s.text(1100, 180, "вертикально, вне металлического щита", 9, "start"))
+    s.add(s.text(1100, 380, "MQTT: home/devices/<имя шлюза>/…", 10, "start", "bold")
+          + s.text(1100, 396, "sensors — показания привязанных датчиков", 9, "start")
+          + s.text(1100, 410, "(tmp, hmt, bat); rf_debug — сырые пакеты", 9, "start")
+          + s.text(1100, 424, "для отладки; cmd / ack — настройки с сервера", 9, "start"))
+    return finish(s, "RF-шлюз беспроводных датчиков", "6", [
+        "CC1101 питается только от 3,3 В платы ESP32 (5 В его сожгут); провода SPI — короткие, ≤ 10 см; общий GND.",
+        "Шлюз — отдельное устройство (поз. 53), ставится там, где лучше приём от датчиков дома и улицы, не в металлическом щите котельной.",
+        "Датчики привязываются с сервера: scan_sensors показывает всё, что слышно (модель, id, канал, RSSI), имя задаётся в админке.",
+        "Wi‑Fi и брокер (192.168.55.10:1883) — через Wi‑Fi-портал шлюза, как у контроллера."])
+
+
 def main() -> None:
     (HERE / "07a-structure.svg").write_text(render_structure(), encoding="utf-8")
     (HERE / "07b-sensors.svg").write_text(render_sensors(), encoding="utf-8")
     (HERE / "07c-boiler-opentherm.svg").write_text(render_boiler(), encoding="utf-8")
+    (HERE / "07d-rf-gateway.svg").write_text(render_rf_gateway(), encoding="utf-8")
 
 
 if __name__ == "__main__":

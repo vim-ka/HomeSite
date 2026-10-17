@@ -14,7 +14,7 @@ HomeSite по OpenTherm, Wi‑Fi производителя — только п�
 | 4 | [Расчёты](04-calculations.md) | нагрузка, расходы, диаметры, насосы, расширительные баки, загрузка бойлера |
 | 5 | [Котёл: требования и выбор](05-boiler-selection.md) | критерии, кандидаты, OpenTherm и Wi‑Fi |
 | 6 | [Дымоход, вентиляция, газ](06-chimney-ventilation-gas.md) | чек-листы для проверки на месте, сигнализатор + отсечной клапан |
-| 7 | [Схемы подключений](07-wiring.md) | листы 3–5: структура, датчики, котёл и OpenTherm; таблица реле |
+| 7 | [Схемы подключений](07-wiring.md) | листы 3–6: структура, датчики, котёл и OpenTherm, RF-шлюз; таблица реле |
 | 8 | [Замена и пусконаладка](08-replacement-commissioning.md) | порядок работ, пуск, настройка контроллера, эксплуатация |
 
 ## Как читать
@@ -38,7 +38,7 @@ HomeSite по OpenTherm, Wi‑Fi производителя — только п�
 ```bash
 python3 docs/boiler-room/calc.py           # пересчитать (после правки допущений)
 python3 docs/boiler-room/draw_piping.py    # перерисовать листы 1–2
-python3 docs/boiler-room/draw_wiring.py    # перерисовать листы 3–5
+python3 docs/boiler-room/draw_wiring.py    # перерисовать листы 3–6
 python3 docs/boiler-room/check_docs.py     # сверка: позиции схем ↔ спецификация, реле ↔ PINOUT.md, числа расчёта
 python3 -m pytest docs/boiler-room -q      # тесты инструментов
 ```

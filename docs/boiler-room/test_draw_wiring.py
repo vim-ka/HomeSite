@@ -64,3 +64,28 @@ def test_relay_channels_given_to_opentherm_are_marked_free():
     load = {ch: text for ch, _, text, _ in RELAYS}
     assert "OpenTherm" in load[0] and "GPIO13" in load[0]
     assert "OpenTherm" in load[15] and "GPIO5" in load[15]
+
+
+RF_PINOUT = Path(__file__).resolve().parents[2] / "firmware" / "esp32-rf-gateway" / "PINOUT.md"
+
+
+def test_rf_gateway_pins_match_its_firmware_pinout():
+    from draw_wiring import RF_PINS
+    fw = {}
+    for line in RF_PINOUT.read_text(encoding="utf-8").splitlines():
+        cells = [c.strip() for c in line.strip().strip("|").split("|")]
+        if len(cells) >= 2 and cells[1].isdigit() and cells[0].isupper():
+            fw[cells[0]] = int(cells[1])
+    assert {k: v for k, v in RF_PINS.items()} == {k: fw[k] for k in RF_PINS}
+    assert {"SCK", "MISO", "MOSI", "CSN", "GDO0"} <= RF_PINS.keys()
+
+
+def test_rf_gateway_sheet_shows_wiring_power_and_antenna():
+    from draw_wiring import render_rf_gateway
+    svg = render_rf_gateway()
+    _, refs = svg_refs(svg)
+    assert "A4" in refs
+    txt = text_of(svg)
+    for needle in ("CC1101", "GPIO18", "GPIO19", "GPIO23", "GPIO5", "GPIO4", "3,3 В", "100 нФ", "10 мкФ",
+                   "17,3 см", "433,92 МГц"):
+        assert needle in txt, needle
