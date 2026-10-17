@@ -27,8 +27,8 @@ function valveDirection(open: boolean, close: boolean): "open" | "close" | null 
 
 
 /**
- * Supply − return of the boiler, inside its case between the name plate and the flame window.
- * Meaningful only while the burner runs (grey otherwise).
+ * Supply − return of the boiler: between its pipes on the separator side (like the tank coil's), or inside the case
+ * between the name plate and the flame window when the layout has no room. Meaningful only while the burner runs.
  */
 function boilerDelta(L: (typeof LAYOUTS)[LayoutName], supply: number | null, ret: number | null, burning: boolean) {
   if (supply == null || ret == null) return null;
@@ -40,9 +40,10 @@ function boilerDelta(L: (typeof LAYOUTS)[LayoutName], supply: number | null, ret
     : ok ? "норма"
     : d < lo ? "мала: насос котла гонит больше, чем забирают контуры — горячая вода уходит через гидрострелку сразу в обратку, снизьте скорость насоса котла"
     : "велика: контурам не хватает расхода — проверьте скорость насоса котла и фильтр";
+  const [x, y] = L.deltas.boiler ?? [L.boiler[0] + 60 * bs, L.boiler[1] + 56 * bs];
   return (
-    <text data-part="boiler-delta" data-ok={String(ok)} x={L.boiler[0] + 60 * bs} y={L.boiler[1] + 56 * bs}
-          fontSize={bs < 1 ? 9 : 11} fontWeight={700} textAnchor="middle"
+    <text data-part="boiler-delta" data-ok={String(ok)} x={x} y={y}
+          fontSize={L.deltas.boiler || bs >= 1 ? 11 : 9} fontWeight={700} textAnchor="middle"
           fill={!burning ? "var(--scheme-muted)" : ok ? "#22c55e" : "#f59e0b"}>
       <title>{`Подача − обратка котла ${d.toFixed(1)}°: ${hint} (норма ${lo}…${hi}°)`}</title>
       {`ΔT ${d.toFixed(1)}°`}
@@ -211,7 +212,7 @@ export function SchemeCanvas({ state, layout, onOpen, onToggle, busyKeys = [] }:
       {L.mirrored
         ? <g transform={`translate(${x + 24} ${y}) scale(-1 1)`}><Tap x={0} y={0} water={water} /></g>
         : <Tap x={x} y={y} water={water} />}
-      <text x={x + 12} y={y - 6} fontSize={11} fontWeight={700} textAnchor="middle" fill="var(--scheme-text)">{caption}</text>
+      <text x={x + 12} y={y - 16} fontSize={11} fontWeight={700} textAnchor="middle" fill="var(--scheme-text)">{caption}</text>
     </g>
   );
 

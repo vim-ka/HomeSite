@@ -65,7 +65,7 @@ describe("radiator flow direction", () => {
 describe("value tags", () => {
   // where each sensor is mounted (Настройки → точки монтажа): the loading supply (tsihb_s, «БКН, подача») on the
   // loading pipe; the tank (tswatersupply_h, regulated on) in its upper sleeve, shown with a callout;
-  // heating pressure (prs_heating) on the boiler return; the well water sensors (tswatersupply_c, prs_water)
+  // heating pressure (prs_heating) on the make-up pipe into the separator; the well water sensors (tswatersupply_c, prs_water)
   // on the main right after the well pump
   const source = (L: LayoutDef, role: RoleKey, [x, y]: [number, number]): boolean => {
     const pin: [number, number] = [x, y];
@@ -75,7 +75,7 @@ describe("value tags", () => {
       const [x0, y0] = L.tank, [x1, y1] = [x0 + 80 * s, y0 + 190 * s];
       return !!L.tags.tank!.dial && x > x0 + 10 * s && x < x1 - 10 * s && y > y0 + 20 * s && y < (y0 + y1) / 2;
     }
-    if (role === "heating_pressure") return onPipe(L, pin, (p) => p.role === "boiler_return");
+    if (role === "heating_pressure") return onPipe(L, pin, (p) => p.id === "cold_to_fill");
     if (role === "cold_water" || role === "water_pressure") {
       // the stretch of the well pipe from the pump on (water flows in point order), clear of the pump's disc
       const well = L.pipes.find((p) => p.id === "cold_from_well")!;
@@ -214,13 +214,16 @@ describe("DHW tank", () => {
 });
 
 describe("pumps and valves mounted on the collector", () => {
-  it.each(["wide", "tall"] as const)("%s: mixing units and the tank loading pump sit right at the collector", (name) => {
+  it.each(["wide", "tall"] as const)("%s: mixing units sit a short visible stub off the collector, the loading pump right at it", (name) => {
     const L = BASE_LAYOUTS[name];
     const [sx, sy] = L.separator;
     const supplyTop = sy + 15, returnBottom = sy + 125;
     const collectorEnd = sx + 36 + (L.collectorWidth ?? 200);
-    expect(supplyTop - L.radValve[1]).toBeLessThanOrEqual(14);
-    expect(L.floorValve[1] - returnBottom).toBeLessThanOrEqual(14);
+    // the hot feed between the collector and the valve body (10 high) shows as a short stub
+    for (const stub of [supplyTop - L.radValve[1], L.floorValve[1] - returnBottom]) {
+      expect(stub).toBeGreaterThanOrEqual(15);
+      expect(stub).toBeLessThanOrEqual(24);
+    }
     expect(L.radValve[1] - L.radPump[1]).toBeLessThanOrEqual(35);
     expect(L.floorPump[1] - L.floorValve[1]).toBeLessThanOrEqual(35);
     expect(L.ihbPump[0] - collectorEnd).toBeLessThanOrEqual(16);
@@ -270,11 +273,25 @@ describe("well", () => {
 });
 
 describe("circuit differences", () => {
+  it("wide: the boiler ΔT sits between the boiler pipes, in line with their thermometers by the separator", () => {
+    const L = BASE_LAYOUTS.wide;
+    const [x, y] = L.deltas.boiler!;
+    const supply = L.pipes.find((p) => p.role === "boiler_supply" && p.points.length === 2)!.points[0]![1];
+    const ret = L.pipes.find((p) => p.role === "boiler_return" && p.points.length === 2)!.points[0]![1];
+    expect(y).toBeGreaterThan(supply);
+    expect(y).toBeLessThan(ret);
+    expect(x).toBe(L.tags.boiler_supply!.pin[0]);              // the same vertical as both thermometers
+    expect(x).toBe(L.tags.boiler_return!.pin[0]);
+    expect(y).toBe((supply + ret) / 2 + 4);                    // text centred between the pipes
+  });
+
   it.each(["wide", "tall"] as const)("%s: the ΔT labels sit clear of everything", (name) => {
     const L = LAYOUTS[name];
     const others = [...elementBoxes(L), ...pipeBoxes(L), ...(Object.keys(L.tags) as RoleKey[]).flatMap((r) => instrumentBoxes(L, r))];
-    for (const k of ["rad", "floor", "coil"] as const) {
-      const b = deltaBox(L.deltas[k], `${k} delta`);
+    for (const k of ["rad", "floor", "coil", "boiler"] as const) {
+      const at = L.deltas[k];
+      if (!at) continue;                                   // tall: no room — the boiler's stays inside its case
+      const b = deltaBox(at, `${k} delta`);
       expect(b.x0 >= 0 && b.x1 <= L.width && b.y0 >= 0 && b.y1 <= L.height, `${k} inside`).toBe(true);
       for (const o of others) if (o.what !== `${k} delta`) expect(overlaps(b, o, 2), `${k} ΔT runs into ${o.what}`).toBe(false);
     }

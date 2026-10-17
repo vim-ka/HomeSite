@@ -18,7 +18,7 @@ export function MixingValve({ x, y, direction, out = "up", bypass = "right" }: {
       <path d={`M-5 ${13 * o} L0 ${18 * o} L5 ${13 * o}`} fill="none" stroke={fill} strokeWidth={2}
             strokeLinecap="round" strokeLinejoin="round" />
       {active && (
-        <text x={-12 * b} y={4} fontSize={9} textAnchor={b > 0 ? "end" : "start"} fill="#f59e0b" className="scheme-blink">
+        <text x={-12 * b} y={o < 0 ? -10 : 17} fontSize={9} textAnchor={b > 0 ? "end" : "start"} fill="#f59e0b" className="scheme-blink">
           {direction === "open" ? "откр" : "закр"}
         </text>
       )}

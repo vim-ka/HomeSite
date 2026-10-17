@@ -126,20 +126,21 @@ export function elementBoxes(L: LayoutDef): Box[] {
     box(L.well[0] - 6, L.well[1] + 2, L.well[0] + 56, L.well[1] + 80, "well"),
   ];
   for (const [name, at] of [["tap", L.tap], ["cold tap", L.coldTap]] as const) {
-    if (at) out.push(box(at[0] - 2, at[1] - 18, at[0] + 26, at[1] + 24, name));
+    if (at) out.push(box(at[0] - 2, at[1] - 28, at[0] + 26, at[1] + 24, name));
   }
   for (const [name, at] of Object.entries({ radPump: L.radPump, floorPump: L.floorPump, ihbPump: L.ihbPump,
                                              recircPump: L.recircPump, coldPump: L.coldPump })) {
     out.push(around(at, 11, name));
   }
-  // 3-way valves: body + outlet chevron; "откр"/"закр" on the side away from the bypass
+  // 3-way valves: body + outlet chevron; "откр"/"закр" away from the bypass, on the outlet side (ΔT sits beside the body)
   for (const c of ["rad", "floor"] as const) {
     const [vx, vy] = c === "rad" ? L.radValve : L.floorValve;
     const mixed = L.pipes.find((p) => p.id === `${c}_mixed`)!.points.at(-1)!;
     const bypass = L.pipes.find((p) => p.id === `${c}_bypass`)!.points[0]!;
     const o = mixed[1] < vy ? -1 : 1, b = bypass[0] < vx ? -1 : 1;
     out.push(box(vx - 10, vy - 10 * o, vx + 10, vy + 19 * o, `${c} valve`));
-    out.push(box(vx - 12 * b, vy - 6, vx - 36 * b, vy + 5, `${c} valve caption`));
+    const [cy0, cy1] = o < 0 ? [vy - 18, vy - 8] : [vy + 9, vy + 19];
+    out.push(box(Math.min(vx - 12 * b, vx - 36 * b), cy0, Math.max(vx - 12 * b, vx - 36 * b), cy1, `${c} valve caption`));
     // "Приоритет ГВС" beside the circuit pump
     const [px, py] = c === "rad" ? L.radPump : L.floorPump;
     out.push(textBox("Приоритет ГВС", [L.mirrored ? px - 16 : px + 16, py + 4], end, `${c} priority badge`, 11));
@@ -153,6 +154,7 @@ export function elementBoxes(L: LayoutDef): Box[] {
   out.push(textBox("🌙 Ночь", L.badges.floor, end, "floor night badge", 11));
   out.push(textBox("Анти-легионелла", L.badges.tank, end, "tank badge", 11));
   for (const k of ["rad", "floor", "coil"] as const) out.push(deltaBox(L.deltas[k], `${k} delta`));
+  if (L.deltas.boiler) out.push(deltaBox(L.deltas.boiler, "boiler delta"));
   // manual-mode signs (same spots as in SchemeCanvas)
   out.push(around([L.ihbPump[0], L.ihbPump[1] - 20], 8, "ihb hint"));
   out.push(around([L.tank[0] + 70 * ts, L.tank[1] + 140 * ts], 8, "teh hint"));
