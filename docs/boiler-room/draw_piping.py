@@ -16,7 +16,7 @@ PW, PH = 1600, 1150         # piping sheets
 FONT = "Arial, Helvetica, sans-serif"
 
 # Fittings left out of the colour overview; filters, reducer, safety units and the DHW mixer stay on it
-SMALL = {"22", "24", "25", "26", "27", "28", "29", "30", "32", "34", "37", "38", "39", "40", "41", "42", "43", "44",
+SMALL = {"22", "24", "25", "26", "27", "28", "29", "30", "31", "32", "34", "37", "38", "39", "40", "41", "42", "43", "44",
          "45", "46", "47", "48"}
 
 # Separator: boiler supply enters above the collector outlet (air to the vent), boiler return leaves below the
@@ -32,6 +32,11 @@ BOILER_SIDE = {"supply_valve": 1075, "safety_group": 1205, "return_valve": 1075,
 # Make-up in flow order (positions): shut-off, strainer, reducer 1.5 bar, check / disconnector, flow limiter, YA3;
 # a bypass with its own valve goes round the last two (kotelna.tk 1-1-6-1, «Автоматизация подпитки»)
 MAKE_UP_ORDER = ["29", "29", "36", "29", "37", "13"]
+# Cold water to the DHW tank in flow order (positions): shut-off, safety unit (check + 6 bar), Flowjet, expansion vessel,
+# boiler drain, the tank. The vessel sits after the check valve and is flow-through (DIN 4807-5 / Reflex Refix DD):
+# the whole cold feed passes through it, so no dead leg of stale water; Flowjet isolates it with a bypass.
+DHW_COLD_ORDER = ["24", "21", "31", "5", "43", "3"]
+DHW_TANK = (300, 828, 866)                  # x, top, bottom of the DHW expansion vessel
 
 COLOURS = {"Т1": "#ef4444", "Т2": "#3b82f6", "Т3": "#ec4899", "Т4": "#f97316", "В1": "#0ea5e9", "Г1": "#ca8a04"}
 
@@ -227,8 +232,9 @@ def draw(s: Sheet) -> None:
     s.pipe("В1", [(30, CW), (MU, CW)], codes=[(640, CW)])
     s.pipe("В1", [(30, CW), (30, 140)], codes=[(30, 700)])
     s.pipe("В1", [(30, 280), (161, 280)])                       # cold to the mixer
-    s.pipe("В1", [(230, CW), (230, 760)])                       # cold to the tank
-    s.pipe("В1", [(230, 860), (300, 860), (300, 872)])          # to the DHW expansion tank
+    vx, vt, vb = DHW_TANK                                       # cold to the tank through the DHW expansion vessel
+    s.pipe("В1", [(230, CW), (230, 880), (vx, 880), (vx, vb)])
+    s.pipe("В1", [(vx, vt), (vx, 812), (230, 812), (230, 760)])
     s.pipe("В1", [(MU, CW), (MU, yBR)], codes=[(MU, 690)])      # make-up into the boiler return
     s.pipe("В1", [(MU, 850), (1330, 850), (1330, 700), (MU, 700)])   # bypass around limiter + YA3
     # gas
@@ -262,7 +268,10 @@ def draw(s: Sheet) -> None:
     s.item(26, "", s.valve(tx, 645, 90), leader=(tx + 8, 645, 22, 8), title="Кран с защитой от закрытия (под бак)")
     s.item(4, "", s.membrane_tank(tx, 670), leader=(tx, 714, 10, 30), title="Бак расширительный отопления")
     # 5 DHW expansion tank
-    s.item(5, "", s.membrane_tank(300, 872, 22, 38), leader=(311, 894, 28, 10), title="Бак расширительный ГВС")
+    s.item(5, "", s.membrane_tank(vx, vt, 22, vb - vt), leader=(vx + 11, 847, 28, 10),
+           title="Бак расширительный ГВС, проточный (вся холодная вода к бойлеру идёт через него)")
+    s.item(31, "", s.valve(265, 880) + f'<path d="M230,880 V812" fill="none" stroke="{fg}" stroke-width="0.8" stroke-dasharray="3 2"/>',
+           leader=(271, 884, 70, 18), title="Арматура Flowjet: отсечка бака с блокировкой, слив, встроенный обвод (пунктир)")
     # pumps
     s.item(6, "M1", s.pump(800, 350, -90) + s.text(822, 354, "M1", 10, "start", "bold"),
            leader=(806, 359, 60, 12), title="Насос радиаторов")

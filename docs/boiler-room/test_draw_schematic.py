@@ -4,7 +4,7 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 from check_docs import parse_relays, svg_refs
-from draw_schematic import DEVKIT_LEFT, DEVKIT_RIGHT, OUTPUTS, PIN_NETS, render_logic, render_power
+from draw_schematic import DEVKIT_LEFT, DEVKIT_RIGHT, OUTPUTS, PIN_NETS, RELAY_BOARDS, render_logic, render_power
 
 PINOUT = Path(__file__).resolve().parents[2] / "firmware" / "esp32-homesite" / "PINOUT.md"
 
@@ -39,13 +39,15 @@ def test_sensor_nets_match_the_pinout():
 def test_logic_sheet_has_every_part_with_values():
     svg = render_logic()
     _, refs = svg_refs(svg)
-    assert {"A1", "A2", "A3", "G1", "JP1", "R1", "R2", "R3", "R4", "R5", "C1", "C2", "C3", "C4", "C5", "VD1", "VD2",
+    assert {"A1", "A2.1", "A2.2", "A3", "G1", "JP1", "R1", "R2", "R3", "R4", "R5", "C1", "C2", "C3", "C4", "C5", "VD1", "VD2",
             "X1", "X2", "X3", "X4", "X5", "X6", "X7"} <= refs
     txt = text_of(svg)
     for needle in ("4,7 кОм", "10 кОм", "100 нФ", "100 мкФ", "+3V3", "+5V", "JD-VCC", "set_flash_voltage"):
         assert needle in txt, needle
+    for i in range(1, 9):
+        assert f"IN{i}" in txt
     for ch in range(15):
-        assert f"IN{ch}" in txt
+        assert f"K{ch}" in txt
 
 
 def test_every_relay_output_has_its_panel_indicator_in_parallel():
@@ -62,3 +64,19 @@ def test_every_relay_output_has_its_panel_indicator_in_parallel():
     # Warn and Alarm share the panel's ALARM position: yellow on K13, red on K14
     by_ch = {ch: (label, colour) for ch, _, _, _, label, colour in OUTPUTS}
     assert by_ch[13] == ("ALARM", "жёлтый") and by_ch[14] == ("ALARM", "красный")
+
+
+def test_two_identical_8_channel_boards_cover_every_channel_once():
+    assert sorted(ch for chans in RELAY_BOARDS.values() for ch in chans) == list(range(16))
+    assert all(len(chans) == 8 for chans in RELAY_BOARDS.values())
+
+
+def test_a_three_point_actuator_sits_on_one_board():
+    # open and close of one actuator on different boards: one board dead → the valve can only move one way
+    board = {ch: b for b, chans in RELAY_BOARDS.items() for ch in chans}
+    by_load: dict[str, set[str]] = {}
+    for ch, _, refs, *_ in OUTPUTS:
+        for r in refs.split():
+            if r.startswith("YA"):
+                by_load.setdefault(r, set()).add(board[ch])
+    assert set(by_load) == {"YA1", "YA2", "YA3"} and all(len(b) == 1 for b in by_load.values())

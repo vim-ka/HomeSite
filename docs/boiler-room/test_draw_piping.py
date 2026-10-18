@@ -77,3 +77,13 @@ def test_recirculation_pump_points_down_the_loop_towards_the_tank():
     import re
     m5 = _group(render("gost"), "10")
     assert re.search(r"translate\(95 330\) rotate\(90\)", ET.tostring(m5, encoding="unicode"))
+
+
+def test_dhw_expansion_tank_is_flow_through_on_the_cold_inlet_after_the_check_valve():
+    from draw_piping import DHW_COLD_ORDER, DHW_TANK
+    # in flow order: shut-off, safety unit (check + 6 bar valve), Flowjet, the vessel itself, boiler drain, tank
+    assert DHW_COLD_ORDER == ["24", "21", "31", "5", "43", "3"]
+    # flow-through: the cold line enters the vessel at the bottom and leaves at the top — no dead leg
+    x, top, bottom = DHW_TANK
+    d = " ".join(p.get("d") for p in ET.fromstring(render("gost")).iter("{http://www.w3.org/2000/svg}path") if p.get("d"))
+    assert f"{x},{bottom}" in d and f"{x},{top}" in d

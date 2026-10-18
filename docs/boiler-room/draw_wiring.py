@@ -9,6 +9,7 @@ Relay channels and GPIO follow firmware/esp32-homesite/PINOUT.md (test_draw_wiri
 from pathlib import Path
 
 from draw_piping import FONT, H, W, Sheet, title_block
+from draw_schematic import RELAY_BOARDS
 
 HERE = Path(__file__).resolve().parent
 
@@ -104,20 +105,29 @@ def render_structure() -> str:
     # QF4 feeds relay commons
     wire(s, [(520, 500), (740, 500), (740, 160), (760, 160)])
     s.add(s.text(528, 493, "общий L → COM реле K0…K15", 9, "start"))
-    # relay module
+    # relay modules: two identical 8-channel boards, rows in board order
     top, step = 140, 38
-    body = box(s, 51, "A2", 760, 110, 210, top + 16 * step - 100, "A2 модуль реле 16 кан.", "LOW = вкл., 10 А / 250 В")
-    for ch, gpio, _, _ in RELAYS:
-        y = top + 20 + ch * step
-        body += (s.text(772, y + 4, f"K{ch}", 10, "start", "bold") + s.text(812, y + 4, f"GPIO{gpio}", 9, "start")
-                 + f'<path d="M880,{y} l12,-6 M892,{y} H970" stroke="{s.fg}" stroke-width="1.2"/>'
-                 + f'<circle cx="880" cy="{y}" r="2" fill="{s.fg}"/>')
-    s.item(51, "A2", body)
+    by_ch = {ch: (gpio, load, refs) for ch, gpio, load, refs in RELAYS}
+    order = RELAY_BOARDS["A2.1"] + RELAY_BOARDS["A2.2"]
+    for b, board in enumerate(("A2.1", "A2.2")):
+        y_top = top + b * 8 * step
+        body = box(s, 51, board, 760, y_top - 2, 210, 8 * step - 4, "", "")
+        cy = y_top + 4 * step
+        body += (f'<text x="750" y="{cy}" font-size="10" font-weight="bold" text-anchor="middle" fill="{s.fg}" '
+                 f'transform="rotate(-90 750 {cy})">{board} — реле 8 кан., 5 В</text>')
+        for r in range(8):
+            ch = order[b * 8 + r]
+            y = top + 20 + (b * 8 + r) * step
+            body += (s.text(772, y + 4, f"K{ch}", 10, "start", "bold") + s.text(812, y + 4, f"GPIO{by_ch[ch][0]}", 9, "start")
+                     + f'<path d="M880,{y} l12,-6 M892,{y} H970" stroke="{s.fg}" stroke-width="1.2"/>'
+                     + f'<circle cx="880" cy="{y}" r="2" fill="{s.fg}"/>')
+        s.item(51, board, body)
     # terminal strip and loads
     s.item(63, "XT1", f'<rect x="990" y="150" width="22" height="{16 * step + 10}" fill="{s.bg}" stroke="{s.fg}" stroke-width="1.2"/>'
            + s.text(1001, 143, "XT1", 10, weight="bold"))
-    for ch, _, load, refs in RELAYS:
-        y = top + 20 + ch * step
+    for r, ch in enumerate(order):
+        _, load, refs = by_ch[ch]
+        y = top + 20 + r * step
         wire(s, [(970, y), (1030, y)])
         body = s.text(1036, y + 4, load, 10, "start")
         if refs:
@@ -148,7 +158,7 @@ def render_structure() -> str:
     s.add(s.text(150, 742, "KM2 → SP1 → M4: насос скважины (реле давления ГА — последовательно)", 9, "start"))
     s.add(s.text(150, 756, "катушки KM1, KM2 — от реле K6, K4 (справа)", 9, "start"))
     return finish(s, "Схема электрическая структурная", "3", [
-        "N и PE каждой нагрузки — на шины XT1; реле A2 коммутируют только фазу. ТЭН и насос скважины — через контакторы",
+        "N и PE каждой нагрузки — на шины XT1; реле A2.1, A2.2 коммутируют только фазу. ТЭН и насос скважины — через контакторы",
         "(пусковой ток мотора и ток ТЭНа не для реле 10 А), без ИБП, каждая со своим УЗО 30 мА. Котёл, насосы, приводы, автоматика — через ИБП G2.",
         "Приводы YA1–YA3 трёхточечные: два реле на привод, одновременно не включаются (прошивка). SK1 размыкает питание M2 при > 50 °C.",
         "Каналы K0 и K15 освобождены: их GPIO13 и GPIO5 — приём и передача OpenTherm (лист 5)."])

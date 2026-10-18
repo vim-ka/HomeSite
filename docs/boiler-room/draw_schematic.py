@@ -50,6 +50,10 @@ OUTPUTS = [
     (14, "HA1 зуммер — авария", "HA1", "HL2", "ALARM", "красный"),
     (15, "не используется: GPIO5 → OpenTherm (OT_TX)", "", "", "", ""),
 ]
+# Two identical 8-channel boards (5 V coils): a failed board stops only its half. A2.1 — boiler, pumps, contactors;
+# A2.2 — the three-point actuators (open and close of one valve on the same board) and the alarm lamps
+RELAY_BOARDS = {"A2.1": [0, 1, 2, 3, 4, 5, 6, 15], "A2.2": [7, 8, 9, 10, 11, 12, 13, 14]}
+BOARD_OF = {ch: board for board, chans in RELAY_BOARDS.items() for ch in chans}
 COLOUR = {"красный": "#ef4444", "синий": "#3b82f6", "тёмно-синий": "#1e3a8a", "фиолетовый": "#7c3aed",
           "оранжевый": "#f59e0b", "жёлтый": "#facc15", "бирюзовый": "#14b8a6", "зелёный": "#22c55e"}
 
@@ -147,11 +151,12 @@ def frame(s: Sch, name: str, sheet_no: str, notes: list[str]) -> str:
 
 
 # ------------------------------------------------------------------------------------------------
-def devkit(s: Sch, x0=720, y0=190, pitch=30) -> None:
+def devkit(s: Sch, x0=720, y0=190, pitch=30, nets=PIN_NETS, notes=NC_NOTES,
+           title="A1  ESP32-DevKitC (ESP32-WROOM-32)", sub="прошивка esp32-homesite", ref="A1", pos=50) -> None:
     w = 260
     body = (f'<rect x="{x0}" y="{y0 - 30}" width="{w}" height="{pitch * 19 + 30}" fill="#ffffe0" stroke="{SYM}" stroke-width="2"/>'
-            + Sch.t(x0 + w / 2, y0 - 38, "A1  ESP32-DevKitC (ESP32-WROOM-32)", 12, "middle", SYM, "bold")
-            + Sch.t(x0 + w / 2, y0 + pitch * 19 + 16, "прошивка esp32-homesite", 9, "middle"))
+            + Sch.t(x0 + w / 2, y0 - 38, title, 12, "middle", SYM, "bold")
+            + Sch.t(x0 + w / 2, y0 + pitch * 19 + 16, sub, 9, "middle"))
     for side, pins in (("L", DEVKIT_LEFT), ("R", DEVKIT_RIGHT)):
         for i, name in enumerate(pins):
             y = y0 + i * pitch
@@ -162,12 +167,12 @@ def devkit(s: Sch, x0=720, y0=190, pitch=30) -> None:
             body += (f'<path d="M{px},{y} H{ex}" stroke="{SYM}" stroke-width="1.6"/>'
                      + Sch.t((px + ex) / 2, y - 4, f"{'J2' if side == 'L' else 'J3'}-{i + 1}", 8, "middle", SYM)
                      + Sch.t(nx, y + 4, name, 10, anchor, TXT))
-    s.part("A1", body, 50)
+    s.part(ref, body, pos)
     for side, pins in (("L", DEVKIT_LEFT), ("R", DEVKIT_RIGHT)):
         for i, name in enumerate(pins):
             y = y0 + i * pitch
             ex = x0 - 30 if side == "L" else x0 + w + 30
-            net = PIN_NETS.get(name)
+            net = nets.get(name)
             if net == "+3V3" or net == "+5V":
                 s.wire((ex, y), (ex - 20 if side == "L" else ex + 20, y))
                 s.vcc(ex - 20 if side == "L" else ex + 20, y, net)
@@ -179,8 +184,8 @@ def devkit(s: Sch, x0=720, y0=190, pitch=30) -> None:
                 s.label(ex - 14 if side == "L" else ex + 14, y, net, right=(side == "R"))
             else:
                 s.nc(ex, y)
-                if name in NC_NOTES:
-                    s.add(Sch.t(ex - 10 if side == "L" else ex + 10, y + 4, NC_NOTES[name], 8.5,
+                if name in notes:
+                    s.add(Sch.t(ex - 10 if side == "L" else ex + 10, y + 4, notes[name], 8.5,
                                 "end" if side == "L" else "start", "#555"))
 
 
@@ -249,27 +254,30 @@ def render_logic() -> str:
     s.add(Sch.t(240, 1000, "+3V3 — стабилизатор платы A1 (≤ 300 мА на внешнее)", 9.5))
 
     # --- right: relay module inputs, JP1, OpenTherm adapter ---
-    x0, y0, pitch = 1330, 190, 26
-    pins = ["VCC", "JD-VCC"] + [f"IN{i}" for i in range(16)] + ["GND"]
-    body = (f'<rect x="{x0}" y="{y0 - 20}" width="190" height="{pitch * len(pins) + 14}" fill="#ffffe0" stroke="{SYM}" stroke-width="2"/>'
-            + Sch.t(x0 + 95, y0 - 28, "A2  модуль реле 16 кан. (вход)", 11, "middle", SYM, "bold")
-            + Sch.t(x0 + 95, y0 + pitch * len(pins) + 10, "выходы K0…K15 → лист 8", 9, "middle"))
-    for i, name in enumerate(pins):
-        y = y0 + i * pitch
-        body += f'<path d="M{x0},{y} H{x0 - 25}" stroke="{SYM}" stroke-width="1.6"/>' + Sch.t(x0 + 6, y + 4, name, 10)
-    s.part("A2", body, 51)
-    for i, name in enumerate(pins):
-        y, ex = y0 + i * pitch, x0 - 25
-        if name == "VCC":
-            s.wire((ex, y), (ex - 30, y)); s.vcc(ex - 30, y, "+3V3")
-        elif name == "JD-VCC":
-            s.wire((ex, y), (ex - 70, y)); s.vcc(ex - 70, y, "+5V")
-        elif name == "GND":
-            s.wire((ex, y), (ex - 20, y)); s.gnd(ex - 20, y)
-        elif name == "IN15":
-            s.nc(ex, y); s.add(Sch.t(ex - 10, y + 4, "свободен (GPIO5 → OT_TX)", 8.5, "end", "#555"))
-        else:
-            s.wire((ex, y), (ex - 12, y)); s.label(ex - 12, y, f"K{name[2:]}", right=False)
+    x0, pitch = 1330, 22
+    for board, y0 in (("A2.1", 190), ("A2.2", 470)):
+        chans = RELAY_BOARDS[board]
+        pins = ["VCC", "JD-VCC"] + [f"IN{i + 1}" for i in range(8)] + ["GND"]
+        body = (f'<rect x="{x0}" y="{y0 - 16}" width="190" height="{pitch * len(pins) + 10}" fill="#ffffe0" stroke="{SYM}" stroke-width="2"/>'
+                + Sch.t(x0 + 95, y0 - 24, f"{board}  модуль реле 8 кан. (вход)", 11, "middle", SYM, "bold"))
+        for i, name in enumerate(pins):
+            y = y0 + i * pitch
+            body += f'<path d="M{x0},{y} H{x0 - 25}" stroke="{SYM}" stroke-width="1.6"/>' + Sch.t(x0 + 6, y + 4, name, 10)
+        s.part(board, body, 51)
+        for i, name in enumerate(pins):
+            y, ex = y0 + i * pitch, x0 - 25
+            if name == "VCC":
+                s.wire((ex, y), (ex - 30, y)); s.vcc(ex - 30, y, "+3V3")
+            elif name == "JD-VCC":
+                s.wire((ex, y), (ex - 70, y)); s.vcc(ex - 70, y, "+5V")
+            elif name == "GND":
+                s.wire((ex, y), (ex - 20, y)); s.gnd(ex - 20, y)
+            elif chans[int(name[2:]) - 1] == 15:
+                s.nc(ex, y); s.add(Sch.t(ex - 10, y + 4, "K15 свободен (GPIO5 → OT_TX)", 8.5, "end", "#555"))
+            else:
+                ch = chans[int(name[2:]) - 1]
+                s.wire((ex, y), (ex - 12, y)); s.label(ex - 12, y, f"K{ch}", right=False)
+    s.add(Sch.t(x0 + 95, 730, "выходы K0…K15 → лист 8", 9, "middle"))
     s.add(Sch.t(1100, 186, "перемычку VCC–JD-VCC снять:", 9, fill="#555") + Sch.t(1100, 200, "вход 3,3 В, катушки 5 В", 9, fill="#555"))
     # JP1: GPIO13 to relay K0 (now) or OpenTherm receive (after the boiler swap)
     jx, jy = 1150, 760
@@ -292,10 +300,10 @@ def render_logic() -> str:
     s.wire((1330, 920), (1300, 920)); s.label(1300, 920, "OT_RX", right=False)
     s.wire((1330, 940), (1300, 940)); s.label(1300, 940, "OT_TX", right=False)
     return frame(s, "Контроллер: схема принципиальная (логика)", "7", [
-        "Цепи с одинаковыми метками соединены. Позиции R, C, VD, X, JP — поз. 69 спецификации; A1, A2, A3, G1 — поз. 50–54.",
+        "Цепи с одинаковыми метками соединены. Позиции R, C, VD, X, JP — поз. 69 спецификации; A1, A2.1, A2.2, A3, G1 — поз. 50–54.",
         "GPIO12 (K1) — загрузочный вывод: если модуль реле тянет его вверх при включении, ESP32 не загрузится (flash 1,8 В) — один раз",
         "записать eFuse: espefuse.py --port COMx set_flash_voltage 3.3V. GPIO36/39 — без прерываний (errata АЦП1); GPIO13 — через JP1.",
-        "Модуль реле: перемычку VCC–JD-VCC снять, VCC = +3V3 (уровни ESP32), JD-VCC = +5V (катушки); GND общий."])
+        "A2.1, A2.2 — одинаковые: перемычку VCC–JD-VCC снять, VCC = +3V3, JD-VCC = +5V; GND общий. Платы на ULN2803 (HIGH = вкл.) — только 5V/GND, в портале снять «инверсию реле»."])
 
 
 # ------------------------------------------------------------------------------------------------
@@ -311,7 +319,7 @@ def lamp(s: Sch, x, y, ref, label, colour) -> str:
 def render_power() -> str:
     s = Sch()
     lx, nx, top, step = 110, 1560, 190, 52
-    s.add(Sch.t(40, 70, "Выходы реле A2 → нагрузки; индикатор панели — параллельно нагрузке (230 В)", 12, weight="bold"))
+    s.add(Sch.t(40, 70, "Выходы реле A2.1, A2.2 → нагрузки; индикатор панели — параллельно нагрузке (230 В)", 12, weight="bold"))
     s.add(Sch.t(lx - 20, 110, "L′ от QF4 (C10) через ИБП G2", 10, fill=LBL, weight="bold") + Sch.t(nx + 10, 110, "N", 10, fill=LBL, weight="bold"))
     s.part("QF4", Sch.t(lx - 20, 125, "QF4", 9, fill=SYM), 60)
     s.wire((lx, 115), (lx, top + 15 * step + 10))
@@ -331,8 +339,9 @@ def render_power() -> str:
         # relay contact COM → NO
         s.dot(lx, y)
         s.wire((lx, y), (170, y))
-        s.part("A2", f'<circle cx="170" cy="{y}" r="2.5" fill="{SYM}"/><path d="M170,{y} L205,{y - 12}" stroke="{SYM}" stroke-width="1.8"/>'
-                     f'<circle cx="210" cy="{y}" r="2.5" fill="{SYM}"/>' + Sch.t(160, y - 10, f"K{ch}", 10, "end", SYM, "bold"), 51)
+        s.part(BOARD_OF[ch], f'<circle cx="170" cy="{y}" r="2.5" fill="{SYM}"/><path d="M170,{y} L205,{y - 12}" stroke="{SYM}" stroke-width="1.8"/>'
+                     f'<circle cx="210" cy="{y}" r="2.5" fill="{SYM}"/>' + Sch.t(160, y - 10, f"K{ch}", 10, "end", SYM, "bold")
+                     + Sch.t(160, y + 12, BOARD_OF[ch], 8, "end", SYM), 51)
         if ch in (0, 15):
             s.wire((210, y), (260, y))
             s.add(Sch.t(268, y + 4, load, 10))

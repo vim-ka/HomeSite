@@ -22,7 +22,7 @@ def test_relay_table_matches_firmware_pinout():
 def test_structure_sheet_shows_every_relay_channel_and_power_device():
     svg = render_structure()
     _, refs = svg_refs(svg)
-    assert {"A1", "A2", "G1", "G2", "QF1", "QF2", "QF3", "QF4", "QF5", "QF6", "KM1", "KM2", "EK1",
+    assert {"A1", "A2.1", "A2.2", "G1", "G2", "QF1", "QF2", "QF3", "QF4", "QF5", "QF6", "KM1", "KM2", "EK1",
             "M1", "M2", "M3", "M4", "M5", "YA1", "YA2", "YA3", "HL1", "HL2", "HA1", "SK1", "XT1", "A4", "A5",
             "SK2", "SP1"} <= refs
     txt = text_of(svg)
