@@ -1,0 +1,233 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1700 1200" width="1700" height="1200" font-family="Arial, Helvetica, sans-serif">
+<rect width="1700" height="1200" fill="#fff"/>
+<text x="40" y="70" font-size="12" text-anchor="start" fill="#000000" font-weight="bold">Выходы реле A2 → нагрузки; индикатор панели — параллельно нагрузке (230 В)</text>
+<text x="90" y="110" font-size="10" text-anchor="start" fill="#000084" font-weight="bold">L′ от QF4 (C10) через ИБП G2</text><text x="1570" y="110" font-size="10" text-anchor="start" fill="#000084" font-weight="bold">N</text>
+<g data-ref="QF4" data-pos="60"><text x="90" y="125" font-size="9" text-anchor="start" fill="#840000" font-weight="normal">QF4</text></g>
+<path d="M110,115 L110,980" fill="none" stroke="#008400" stroke-width="1.6"/>
+<path d="M1560,85 L1560,980" fill="none" stroke="#008400" stroke-width="1.6"/>
+<path d="M50,145 L330,145" fill="none" stroke="#008400" stroke-width="1.6"/>
+<text x="15" y="141" font-size="10" text-anchor="start" fill="#000084" font-weight="bold">L</text>
+<g data-ref="QF2" data-pos="60"><rect x="60" y="138" width="40" height="14" fill="#fffff0" stroke="#840000"/><text x="80" y="135" font-size="9" text-anchor="middle" fill="#840000" font-weight="normal">QF2 C6</text></g>
+<g data-ref="A6" data-pos="1"><rect x="360" y="134" width="300" height="22" fill="#fffff0" stroke="#840000" stroke-width="1.4"/><text x="370" y="149" font-size="10" text-anchor="start" fill="#000000" font-weight="normal">A6 котёл — питание 230 В (через ИБП)</text></g>
+<path d="M330,145 L360,145" fill="none" stroke="#008400" stroke-width="1.6"/>
+<path d="M660,145 L1560,145" fill="none" stroke="#008400" stroke-width="1.6"/>
+<circle cx="1560" cy="145" r="3" fill="#008400"/>
+<circle cx="330" cy="145" r="3" fill="#008400"/>
+<path d="M330,145 L330,165 L990,165" fill="none" stroke="#008400" stroke-width="1.6"/>
+<path d="M1009,165 L1560,165" fill="none" stroke="#008400" stroke-width="1.6"/>
+<circle cx="1560" cy="165" r="3" fill="#008400"/>
+<g data-ref="HL3" data-pos="68"><circle cx="1000" cy="165" r="9" fill="#22c55e" stroke="#840000" stroke-width="1.5"/><path d="M994,159 L1006,171 M994,171 L1006,159" stroke="#840000" stroke-width="1.2"/><rect x="1012" y="157" width="114" height="16" fill="#fff"/><text x="1016" y="169" font-size="9.5" text-anchor="start" fill="#840000" font-weight="bold">HL3  PB · зелёный</text></g>
+<circle cx="110" cy="210" r="3" fill="#008400"/>
+<path d="M110,210 L170,210" fill="none" stroke="#008400" stroke-width="1.6"/>
+<g data-ref="A2" data-pos="51"><circle cx="170" cy="210" r="2.5" fill="#840000"/><path d="M170,210 L205,198" stroke="#840000" stroke-width="1.8"/><circle cx="210" cy="210" r="2.5" fill="#840000"/><text x="160" y="200" font-size="10" text-anchor="end" fill="#840000" font-weight="bold">K0</text></g>
+<path d="M210,210 L260,210" fill="none" stroke="#008400" stroke-width="1.6"/>
+<text x="268" y="214" font-size="10" text-anchor="start" fill="#000000" font-weight="normal">ТА котла — сухой контакт (Beretta); после OpenTherm свободен</text>
+<circle cx="110" cy="262" r="3" fill="#008400"/>
+<path d="M110,262 L170,262" fill="none" stroke="#008400" stroke-width="1.6"/>
+<g data-ref="A2" data-pos="51"><circle cx="170" cy="262" r="2.5" fill="#840000"/><path d="M170,262 L205,250" stroke="#840000" stroke-width="1.8"/><circle cx="210" cy="262" r="2.5" fill="#840000"/><text x="160" y="252" font-size="10" text-anchor="end" fill="#840000" font-weight="bold">K1</text></g>
+<path d="M210,262 L300,262" fill="none" stroke="#008400" stroke-width="1.6"/>
+<g data-ref="XT1" data-pos="63"><circle cx="300" cy="262" r="4" fill="#fff" stroke="#840000" stroke-width="1.2"/><text x="300" y="254" font-size="8" text-anchor="middle" fill="#840000" font-weight="normal">XT1:1</text></g>
+<path d="M304,262 L360,262" fill="none" stroke="#008400" stroke-width="1.6"/>
+<g data-ref="M1"><rect x="360" y="251" width="540" height="22" fill="#fffff0" stroke="#840000" stroke-width="1.4"/><text x="370" y="266" font-size="10" text-anchor="start" fill="#000000" font-weight="normal">M1 насос радиаторов</text></g>
+<path d="M900,262 L1560,262" fill="none" stroke="#008400" stroke-width="1.6"/>
+<circle cx="1560" cy="262" r="3" fill="#008400"/>
+<circle cx="330" cy="262" r="3" fill="#008400"/>
+<path d="M330,262 L330,282 L990,282" fill="none" stroke="#008400" stroke-width="1.6"/>
+<path d="M1009,282 L1560,282" fill="none" stroke="#008400" stroke-width="1.6"/>
+<circle cx="1560" cy="282" r="3" fill="#008400"/>
+<g data-ref="HL4" data-pos="68"><circle cx="1000" cy="282" r="9" fill="#7c3aed" stroke="#840000" stroke-width="1.5"/><path d="M994,276 L1006,288 M994,288 L1006,276" stroke="#840000" stroke-width="1.2"/><rect x="1012" y="274" width="135" height="16" fill="#fff"/><text x="1016" y="286" font-size="9.5" text-anchor="start" fill="#840000" font-weight="bold">HL4  P1 · фиолетовый</text></g>
+<circle cx="110" cy="314" r="3" fill="#008400"/>
+<path d="M110,314 L170,314" fill="none" stroke="#008400" stroke-width="1.6"/>
+<g data-ref="A2" data-pos="51"><circle cx="170" cy="314" r="2.5" fill="#840000"/><path d="M170,314 L205,302" stroke="#840000" stroke-width="1.8"/><circle cx="210" cy="314" r="2.5" fill="#840000"/><text x="160" y="304" font-size="10" text-anchor="end" fill="#840000" font-weight="bold">K2</text></g>
+<path d="M210,314 L300,314" fill="none" stroke="#008400" stroke-width="1.6"/>
+<g data-ref="XT1" data-pos="63"><circle cx="300" cy="314" r="4" fill="#fff" stroke="#840000" stroke-width="1.2"/><text x="300" y="306" font-size="8" text-anchor="middle" fill="#840000" font-weight="normal">XT1:2</text></g>
+<path d="M304,314 L360,314" fill="none" stroke="#008400" stroke-width="1.6"/>
+<g data-ref="SK1 M2"><rect x="360" y="303" width="540" height="22" fill="#fffff0" stroke="#840000" stroke-width="1.4"/><text x="370" y="318" font-size="10" text-anchor="start" fill="#000000" font-weight="normal">SK1 (NC 50 °C) → M2 насос тёплого пола</text></g>
+<path d="M900,314 L1560,314" fill="none" stroke="#008400" stroke-width="1.6"/>
+<circle cx="1560" cy="314" r="3" fill="#008400"/>
+<circle cx="330" cy="314" r="3" fill="#008400"/>
+<path d="M330,314 L330,334 L990,334" fill="none" stroke="#008400" stroke-width="1.6"/>
+<path d="M1009,334 L1560,334" fill="none" stroke="#008400" stroke-width="1.6"/>
+<circle cx="1560" cy="334" r="3" fill="#008400"/>
+<g data-ref="HL5" data-pos="68"><circle cx="1000" cy="334" r="9" fill="#f59e0b" stroke="#840000" stroke-width="1.5"/><path d="M994,328 L1006,340 M994,340 L1006,328" stroke="#840000" stroke-width="1.2"/><rect x="1012" y="326" width="128" height="16" fill="#fff"/><text x="1016" y="338" font-size="9.5" text-anchor="start" fill="#840000" font-weight="bold">HL5  P2 · оранжевый</text></g>
+<circle cx="110" cy="366" r="3" fill="#008400"/>
+<path d="M110,366 L170,366" fill="none" stroke="#008400" stroke-width="1.6"/>
+<g data-ref="A2" data-pos="51"><circle cx="170" cy="366" r="2.5" fill="#840000"/><path d="M170,366 L205,354" stroke="#840000" stroke-width="1.8"/><circle cx="210" cy="366" r="2.5" fill="#840000"/><text x="160" y="356" font-size="10" text-anchor="end" fill="#840000" font-weight="bold">K3</text></g>
+<path d="M210,366 L300,366" fill="none" stroke="#008400" stroke-width="1.6"/>
+<g data-ref="XT1" data-pos="63"><circle cx="300" cy="366" r="4" fill="#fff" stroke="#840000" stroke-width="1.2"/><text x="300" y="358" font-size="8" text-anchor="middle" fill="#840000" font-weight="normal">XT1:3</text></g>
+<path d="M304,366 L360,366" fill="none" stroke="#008400" stroke-width="1.6"/>
+<g data-ref="M3"><rect x="360" y="355" width="540" height="22" fill="#fffff0" stroke="#840000" stroke-width="1.4"/><text x="370" y="370" font-size="10" text-anchor="start" fill="#000000" font-weight="normal">M3 насос загрузки БКН</text></g>
+<path d="M900,366 L1560,366" fill="none" stroke="#008400" stroke-width="1.6"/>
+<circle cx="1560" cy="366" r="3" fill="#008400"/>
+<circle cx="330" cy="366" r="3" fill="#008400"/>
+<path d="M330,366 L330,386 L990,386" fill="none" stroke="#008400" stroke-width="1.6"/>
+<path d="M1009,386 L1560,386" fill="none" stroke="#008400" stroke-width="1.6"/>
+<circle cx="1560" cy="386" r="3" fill="#008400"/>
+<g data-ref="HL6" data-pos="68"><circle cx="1000" cy="386" r="9" fill="#facc15" stroke="#840000" stroke-width="1.5"/><path d="M994,380 L1006,392 M994,392 L1006,380" stroke="#840000" stroke-width="1.2"/><rect x="1012" y="378" width="107" height="16" fill="#fff"/><text x="1016" y="390" font-size="9.5" text-anchor="start" fill="#840000" font-weight="bold">HL6  P3 · жёлтый</text></g>
+<circle cx="110" cy="418" r="3" fill="#008400"/>
+<path d="M110,418 L170,418" fill="none" stroke="#008400" stroke-width="1.6"/>
+<g data-ref="A2" data-pos="51"><circle cx="170" cy="418" r="2.5" fill="#840000"/><path d="M170,418 L205,406" stroke="#840000" stroke-width="1.8"/><circle cx="210" cy="418" r="2.5" fill="#840000"/><text x="160" y="408" font-size="10" text-anchor="end" fill="#840000" font-weight="bold">K4</text></g>
+<path d="M210,418 L300,418" fill="none" stroke="#008400" stroke-width="1.6"/>
+<g data-ref="XT1" data-pos="63"><circle cx="300" cy="418" r="4" fill="#fff" stroke="#840000" stroke-width="1.2"/><text x="300" y="410" font-size="8" text-anchor="middle" fill="#840000" font-weight="normal">XT1:4</text></g>
+<path d="M304,418 L360,418" fill="none" stroke="#008400" stroke-width="1.6"/>
+<g data-ref="KM2 SP1 M4"><rect x="360" y="407" width="540" height="22" fill="#fffff0" stroke="#840000" stroke-width="1.4"/><text x="370" y="422" font-size="10" text-anchor="start" fill="#000000" font-weight="normal">катушка KM2 → (KM2 + SP1) → M4 насос скважины, QF6</text></g>
+<path d="M900,418 L1560,418" fill="none" stroke="#008400" stroke-width="1.6"/>
+<circle cx="1560" cy="418" r="3" fill="#008400"/>
+<circle cx="330" cy="418" r="3" fill="#008400"/>
+<path d="M330,418 L330,438 L990,438" fill="none" stroke="#008400" stroke-width="1.6"/>
+<path d="M1009,438 L1560,438" fill="none" stroke="#008400" stroke-width="1.6"/>
+<circle cx="1560" cy="438" r="3" fill="#008400"/>
+<g data-ref="HL7" data-pos="68"><circle cx="1000" cy="438" r="9" fill="#3b82f6" stroke="#840000" stroke-width="1.5"/><path d="M994,432 L1006,444 M994,444 L1006,432" stroke="#840000" stroke-width="1.2"/><rect x="1012" y="430" width="100" height="16" fill="#fff"/><text x="1016" y="442" font-size="9.5" text-anchor="start" fill="#840000" font-weight="bold">HL7  WP · синий</text></g>
+<circle cx="110" cy="470" r="3" fill="#008400"/>
+<path d="M110,470 L170,470" fill="none" stroke="#008400" stroke-width="1.6"/>
+<g data-ref="A2" data-pos="51"><circle cx="170" cy="470" r="2.5" fill="#840000"/><path d="M170,470 L205,458" stroke="#840000" stroke-width="1.8"/><circle cx="210" cy="470" r="2.5" fill="#840000"/><text x="160" y="460" font-size="10" text-anchor="end" fill="#840000" font-weight="bold">K5</text></g>
+<path d="M210,470 L300,470" fill="none" stroke="#008400" stroke-width="1.6"/>
+<g data-ref="XT1" data-pos="63"><circle cx="300" cy="470" r="4" fill="#fff" stroke="#840000" stroke-width="1.2"/><text x="300" y="462" font-size="8" text-anchor="middle" fill="#840000" font-weight="normal">XT1:5</text></g>
+<path d="M304,470 L360,470" fill="none" stroke="#008400" stroke-width="1.6"/>
+<g data-ref="M5"><rect x="360" y="459" width="540" height="22" fill="#fffff0" stroke="#840000" stroke-width="1.4"/><text x="370" y="474" font-size="10" text-anchor="start" fill="#000000" font-weight="normal">M5 насос рециркуляции ГВС</text></g>
+<path d="M900,470 L1560,470" fill="none" stroke="#008400" stroke-width="1.6"/>
+<circle cx="1560" cy="470" r="3" fill="#008400"/>
+<circle cx="330" cy="470" r="3" fill="#008400"/>
+<path d="M330,470 L330,490 L990,490" fill="none" stroke="#008400" stroke-width="1.6"/>
+<path d="M1009,490 L1560,490" fill="none" stroke="#008400" stroke-width="1.6"/>
+<circle cx="1560" cy="490" r="3" fill="#008400"/>
+<g data-ref="HL8" data-pos="68"><circle cx="1000" cy="490" r="9" fill="#1e3a8a" stroke="#840000" stroke-width="1.5"/><path d="M994,484 L1006,496 M994,496 L1006,484" stroke="#840000" stroke-width="1.2"/><rect x="1012" y="482" width="142" height="16" fill="#fff"/><text x="1016" y="494" font-size="9.5" text-anchor="start" fill="#840000" font-weight="bold">HL8  RP · тёмно-синий</text></g>
+<circle cx="110" cy="522" r="3" fill="#008400"/>
+<path d="M110,522 L170,522" fill="none" stroke="#008400" stroke-width="1.6"/>
+<g data-ref="A2" data-pos="51"><circle cx="170" cy="522" r="2.5" fill="#840000"/><path d="M170,522 L205,510" stroke="#840000" stroke-width="1.8"/><circle cx="210" cy="522" r="2.5" fill="#840000"/><text x="160" y="512" font-size="10" text-anchor="end" fill="#840000" font-weight="bold">K6</text></g>
+<path d="M210,522 L300,522" fill="none" stroke="#008400" stroke-width="1.6"/>
+<g data-ref="XT1" data-pos="63"><circle cx="300" cy="522" r="4" fill="#fff" stroke="#840000" stroke-width="1.2"/><text x="300" y="514" font-size="8" text-anchor="middle" fill="#840000" font-weight="normal">XT1:6</text></g>
+<path d="M304,522 L360,522" fill="none" stroke="#008400" stroke-width="1.6"/>
+<g data-ref="KM1 SK2 EK1"><rect x="360" y="511" width="540" height="22" fill="#fffff0" stroke="#840000" stroke-width="1.4"/><text x="370" y="526" font-size="10" text-anchor="start" fill="#000000" font-weight="normal">катушка KM1 → (KM1 + SK2) → EK1 ТЭН, QF5</text></g>
+<path d="M900,522 L1560,522" fill="none" stroke="#008400" stroke-width="1.6"/>
+<circle cx="1560" cy="522" r="3" fill="#008400"/>
+<circle cx="330" cy="522" r="3" fill="#008400"/>
+<path d="M330,522 L330,542 L990,542" fill="none" stroke="#008400" stroke-width="1.6"/>
+<path d="M1009,542 L1560,542" fill="none" stroke="#008400" stroke-width="1.6"/>
+<circle cx="1560" cy="542" r="3" fill="#008400"/>
+<g data-ref="HL9" data-pos="68"><circle cx="1000" cy="542" r="9" fill="#14b8a6" stroke="#840000" stroke-width="1.5"/><path d="M994,536 L1006,548 M994,548 L1006,536" stroke="#840000" stroke-width="1.2"/><rect x="1012" y="534" width="135" height="16" fill="#fff"/><text x="1016" y="546" font-size="9.5" text-anchor="start" fill="#840000" font-weight="bold">HL9  TEN · бирюзовый</text></g>
+<circle cx="110" cy="574" r="3" fill="#008400"/>
+<path d="M110,574 L170,574" fill="none" stroke="#008400" stroke-width="1.6"/>
+<g data-ref="A2" data-pos="51"><circle cx="170" cy="574" r="2.5" fill="#840000"/><path d="M170,574 L205,562" stroke="#840000" stroke-width="1.8"/><circle cx="210" cy="574" r="2.5" fill="#840000"/><text x="160" y="564" font-size="10" text-anchor="end" fill="#840000" font-weight="bold">K7</text></g>
+<path d="M210,574 L300,574" fill="none" stroke="#008400" stroke-width="1.6"/>
+<g data-ref="XT1" data-pos="63"><circle cx="300" cy="574" r="4" fill="#fff" stroke="#840000" stroke-width="1.2"/><text x="300" y="566" font-size="8" text-anchor="middle" fill="#840000" font-weight="normal">XT1:7</text></g>
+<path d="M304,574 L360,574" fill="none" stroke="#008400" stroke-width="1.6"/>
+<g data-ref="YA3"><rect x="360" y="563" width="540" height="22" fill="#fffff0" stroke="#840000" stroke-width="1.4"/><text x="370" y="578" font-size="10" text-anchor="start" fill="#000000" font-weight="normal">YA3 кран подпитки — открыть</text></g>
+<path d="M900,574 L1560,574" fill="none" stroke="#008400" stroke-width="1.6"/>
+<circle cx="1560" cy="574" r="3" fill="#008400"/>
+<circle cx="330" cy="574" r="3" fill="#008400"/>
+<path d="M330,574 L330,594 L990,594" fill="none" stroke="#008400" stroke-width="1.6"/>
+<path d="M1009,594 L1560,594" fill="none" stroke="#008400" stroke-width="1.6"/>
+<circle cx="1560" cy="594" r="3" fill="#008400"/>
+<g data-ref="HL10" data-pos="68"><circle cx="1000" cy="594" r="9" fill="#ef4444" stroke="#840000" stroke-width="1.5"/><path d="M994,588 L1006,600 M994,600 L1006,588" stroke="#840000" stroke-width="1.2"/><rect x="1012" y="586" width="121" height="16" fill="#fff"/><text x="1016" y="598" font-size="9.5" text-anchor="start" fill="#840000" font-weight="bold">HL10  АП · красный</text></g>
+<circle cx="110" cy="626" r="3" fill="#008400"/>
+<path d="M110,626 L170,626" fill="none" stroke="#008400" stroke-width="1.6"/>
+<g data-ref="A2" data-pos="51"><circle cx="170" cy="626" r="2.5" fill="#840000"/><path d="M170,626 L205,614" stroke="#840000" stroke-width="1.8"/><circle cx="210" cy="626" r="2.5" fill="#840000"/><text x="160" y="616" font-size="10" text-anchor="end" fill="#840000" font-weight="bold">K8</text></g>
+<path d="M210,626 L300,626" fill="none" stroke="#008400" stroke-width="1.6"/>
+<g data-ref="XT1" data-pos="63"><circle cx="300" cy="626" r="4" fill="#fff" stroke="#840000" stroke-width="1.2"/><text x="300" y="618" font-size="8" text-anchor="middle" fill="#840000" font-weight="normal">XT1:8</text></g>
+<path d="M304,626 L360,626" fill="none" stroke="#008400" stroke-width="1.6"/>
+<g data-ref="YA3"><rect x="360" y="615" width="540" height="22" fill="#fffff0" stroke="#840000" stroke-width="1.4"/><text x="370" y="630" font-size="10" text-anchor="start" fill="#000000" font-weight="normal">YA3 кран подпитки — закрыть</text></g>
+<path d="M900,626 L1560,626" fill="none" stroke="#008400" stroke-width="1.6"/>
+<circle cx="1560" cy="626" r="3" fill="#008400"/>
+<circle cx="330" cy="626" r="3" fill="#008400"/>
+<path d="M330,626 L330,646 L990,646" fill="none" stroke="#008400" stroke-width="1.6"/>
+<path d="M1009,646 L1560,646" fill="none" stroke="#008400" stroke-width="1.6"/>
+<circle cx="1560" cy="646" r="3" fill="#008400"/>
+<g data-ref="HL11" data-pos="68"><circle cx="1000" cy="646" r="9" fill="#3b82f6" stroke="#840000" stroke-width="1.5"/><path d="M994,640 L1006,652 M994,652 L1006,640" stroke="#840000" stroke-width="1.2"/><rect x="1012" y="638" width="107" height="16" fill="#fff"/><text x="1016" y="650" font-size="9.5" text-anchor="start" fill="#840000" font-weight="bold">HL11  АП · синий</text></g>
+<circle cx="110" cy="678" r="3" fill="#008400"/>
+<path d="M110,678 L170,678" fill="none" stroke="#008400" stroke-width="1.6"/>
+<g data-ref="A2" data-pos="51"><circle cx="170" cy="678" r="2.5" fill="#840000"/><path d="M170,678 L205,666" stroke="#840000" stroke-width="1.8"/><circle cx="210" cy="678" r="2.5" fill="#840000"/><text x="160" y="668" font-size="10" text-anchor="end" fill="#840000" font-weight="bold">K9</text></g>
+<path d="M210,678 L300,678" fill="none" stroke="#008400" stroke-width="1.6"/>
+<g data-ref="XT1" data-pos="63"><circle cx="300" cy="678" r="4" fill="#fff" stroke="#840000" stroke-width="1.2"/><text x="300" y="670" font-size="8" text-anchor="middle" fill="#840000" font-weight="normal">XT1:9</text></g>
+<path d="M304,678 L360,678" fill="none" stroke="#008400" stroke-width="1.6"/>
+<g data-ref="YA1"><rect x="360" y="667" width="540" height="22" fill="#fffff0" stroke="#840000" stroke-width="1.4"/><text x="370" y="682" font-size="10" text-anchor="start" fill="#000000" font-weight="normal">YA1 смесительный узел радиаторов — открыть</text></g>
+<path d="M900,678 L1560,678" fill="none" stroke="#008400" stroke-width="1.6"/>
+<circle cx="1560" cy="678" r="3" fill="#008400"/>
+<circle cx="330" cy="678" r="3" fill="#008400"/>
+<path d="M330,678 L330,698 L990,698" fill="none" stroke="#008400" stroke-width="1.6"/>
+<path d="M1009,698 L1560,698" fill="none" stroke="#008400" stroke-width="1.6"/>
+<circle cx="1560" cy="698" r="3" fill="#008400"/>
+<g data-ref="HL12" data-pos="68"><circle cx="1000" cy="698" r="9" fill="#ef4444" stroke="#840000" stroke-width="1.5"/><path d="M994,692 L1006,704 M994,704 L1006,692" stroke="#840000" stroke-width="1.2"/><rect x="1012" y="690" width="128" height="16" fill="#fff"/><text x="1016" y="702" font-size="9.5" text-anchor="start" fill="#840000" font-weight="bold">HL12  СУ1 · красный</text></g>
+<circle cx="110" cy="730" r="3" fill="#008400"/>
+<path d="M110,730 L170,730" fill="none" stroke="#008400" stroke-width="1.6"/>
+<g data-ref="A2" data-pos="51"><circle cx="170" cy="730" r="2.5" fill="#840000"/><path d="M170,730 L205,718" stroke="#840000" stroke-width="1.8"/><circle cx="210" cy="730" r="2.5" fill="#840000"/><text x="160" y="720" font-size="10" text-anchor="end" fill="#840000" font-weight="bold">K10</text></g>
+<path d="M210,730 L300,730" fill="none" stroke="#008400" stroke-width="1.6"/>
+<g data-ref="XT1" data-pos="63"><circle cx="300" cy="730" r="4" fill="#fff" stroke="#840000" stroke-width="1.2"/><text x="300" y="722" font-size="8" text-anchor="middle" fill="#840000" font-weight="normal">XT1:10</text></g>
+<path d="M304,730 L360,730" fill="none" stroke="#008400" stroke-width="1.6"/>
+<g data-ref="YA1"><rect x="360" y="719" width="540" height="22" fill="#fffff0" stroke="#840000" stroke-width="1.4"/><text x="370" y="734" font-size="10" text-anchor="start" fill="#000000" font-weight="normal">YA1 смесительный узел радиаторов — закрыть</text></g>
+<path d="M900,730 L1560,730" fill="none" stroke="#008400" stroke-width="1.6"/>
+<circle cx="1560" cy="730" r="3" fill="#008400"/>
+<circle cx="330" cy="730" r="3" fill="#008400"/>
+<path d="M330,730 L330,750 L990,750" fill="none" stroke="#008400" stroke-width="1.6"/>
+<path d="M1009,750 L1560,750" fill="none" stroke="#008400" stroke-width="1.6"/>
+<circle cx="1560" cy="750" r="3" fill="#008400"/>
+<g data-ref="HL13" data-pos="68"><circle cx="1000" cy="750" r="9" fill="#3b82f6" stroke="#840000" stroke-width="1.5"/><path d="M994,744 L1006,756 M994,756 L1006,744" stroke="#840000" stroke-width="1.2"/><rect x="1012" y="742" width="114" height="16" fill="#fff"/><text x="1016" y="754" font-size="9.5" text-anchor="start" fill="#840000" font-weight="bold">HL13  СУ1 · синий</text></g>
+<circle cx="110" cy="782" r="3" fill="#008400"/>
+<path d="M110,782 L170,782" fill="none" stroke="#008400" stroke-width="1.6"/>
+<g data-ref="A2" data-pos="51"><circle cx="170" cy="782" r="2.5" fill="#840000"/><path d="M170,782 L205,770" stroke="#840000" stroke-width="1.8"/><circle cx="210" cy="782" r="2.5" fill="#840000"/><text x="160" y="772" font-size="10" text-anchor="end" fill="#840000" font-weight="bold">K11</text></g>
+<path d="M210,782 L300,782" fill="none" stroke="#008400" stroke-width="1.6"/>
+<g data-ref="XT1" data-pos="63"><circle cx="300" cy="782" r="4" fill="#fff" stroke="#840000" stroke-width="1.2"/><text x="300" y="774" font-size="8" text-anchor="middle" fill="#840000" font-weight="normal">XT1:11</text></g>
+<path d="M304,782 L360,782" fill="none" stroke="#008400" stroke-width="1.6"/>
+<g data-ref="YA2"><rect x="360" y="771" width="540" height="22" fill="#fffff0" stroke="#840000" stroke-width="1.4"/><text x="370" y="786" font-size="10" text-anchor="start" fill="#000000" font-weight="normal">YA2 смесительный узел тёплого пола — открыть</text></g>
+<path d="M900,782 L1560,782" fill="none" stroke="#008400" stroke-width="1.6"/>
+<circle cx="1560" cy="782" r="3" fill="#008400"/>
+<circle cx="330" cy="782" r="3" fill="#008400"/>
+<path d="M330,782 L330,802 L990,802" fill="none" stroke="#008400" stroke-width="1.6"/>
+<path d="M1009,802 L1560,802" fill="none" stroke="#008400" stroke-width="1.6"/>
+<circle cx="1560" cy="802" r="3" fill="#008400"/>
+<g data-ref="HL14" data-pos="68"><circle cx="1000" cy="802" r="9" fill="#ef4444" stroke="#840000" stroke-width="1.5"/><path d="M994,796 L1006,808 M994,808 L1006,796" stroke="#840000" stroke-width="1.2"/><rect x="1012" y="794" width="128" height="16" fill="#fff"/><text x="1016" y="806" font-size="9.5" text-anchor="start" fill="#840000" font-weight="bold">HL14  СУ2 · красный</text></g>
+<circle cx="110" cy="834" r="3" fill="#008400"/>
+<path d="M110,834 L170,834" fill="none" stroke="#008400" stroke-width="1.6"/>
+<g data-ref="A2" data-pos="51"><circle cx="170" cy="834" r="2.5" fill="#840000"/><path d="M170,834 L205,822" stroke="#840000" stroke-width="1.8"/><circle cx="210" cy="834" r="2.5" fill="#840000"/><text x="160" y="824" font-size="10" text-anchor="end" fill="#840000" font-weight="bold">K12</text></g>
+<path d="M210,834 L300,834" fill="none" stroke="#008400" stroke-width="1.6"/>
+<g data-ref="XT1" data-pos="63"><circle cx="300" cy="834" r="4" fill="#fff" stroke="#840000" stroke-width="1.2"/><text x="300" y="826" font-size="8" text-anchor="middle" fill="#840000" font-weight="normal">XT1:12</text></g>
+<path d="M304,834 L360,834" fill="none" stroke="#008400" stroke-width="1.6"/>
+<g data-ref="YA2"><rect x="360" y="823" width="540" height="22" fill="#fffff0" stroke="#840000" stroke-width="1.4"/><text x="370" y="838" font-size="10" text-anchor="start" fill="#000000" font-weight="normal">YA2 смесительный узел тёплого пола — закрыть</text></g>
+<path d="M900,834 L1560,834" fill="none" stroke="#008400" stroke-width="1.6"/>
+<circle cx="1560" cy="834" r="3" fill="#008400"/>
+<circle cx="330" cy="834" r="3" fill="#008400"/>
+<path d="M330,834 L330,854 L990,854" fill="none" stroke="#008400" stroke-width="1.6"/>
+<path d="M1009,854 L1560,854" fill="none" stroke="#008400" stroke-width="1.6"/>
+<circle cx="1560" cy="854" r="3" fill="#008400"/>
+<g data-ref="HL15" data-pos="68"><circle cx="1000" cy="854" r="9" fill="#3b82f6" stroke="#840000" stroke-width="1.5"/><path d="M994,848 L1006,860 M994,860 L1006,848" stroke="#840000" stroke-width="1.2"/><rect x="1012" y="846" width="114" height="16" fill="#fff"/><text x="1016" y="858" font-size="9.5" text-anchor="start" fill="#840000" font-weight="bold">HL15  СУ2 · синий</text></g>
+<circle cx="110" cy="886" r="3" fill="#008400"/>
+<path d="M110,886 L170,886" fill="none" stroke="#008400" stroke-width="1.6"/>
+<g data-ref="A2" data-pos="51"><circle cx="170" cy="886" r="2.5" fill="#840000"/><path d="M170,886 L205,874" stroke="#840000" stroke-width="1.8"/><circle cx="210" cy="886" r="2.5" fill="#840000"/><text x="160" y="876" font-size="10" text-anchor="end" fill="#840000" font-weight="bold">K13</text></g>
+<path d="M210,886 L300,886" fill="none" stroke="#008400" stroke-width="1.6"/>
+<g data-ref="XT1" data-pos="63"><circle cx="300" cy="886" r="4" fill="#fff" stroke="#840000" stroke-width="1.2"/><text x="300" y="878" font-size="8" text-anchor="middle" fill="#840000" font-weight="normal">XT1:13</text></g>
+<path d="M304,886 L990,886" fill="none" stroke="#008400" stroke-width="1.6"/>
+<path d="M1009,886 L1560,886" fill="none" stroke="#008400" stroke-width="1.6"/>
+<circle cx="1560" cy="886" r="3" fill="#008400"/>
+<g data-ref="HL1" data-pos="59"><circle cx="1000" cy="886" r="9" fill="#facc15" stroke="#840000" stroke-width="1.5"/><path d="M994,880 L1006,892 M994,892 L1006,880" stroke="#840000" stroke-width="1.2"/><rect x="1012" y="878" width="128" height="16" fill="#fff"/><text x="1016" y="890" font-size="9.5" text-anchor="start" fill="#840000" font-weight="bold">HL1  ALARM · жёлтый</text></g>
+<rect x="1245" y="878" width="240" height="16" fill="#fff"/><text x="1250" y="890" font-size="9.5" text-anchor="start" fill="#000000" font-weight="normal">— предупреждение (сама лампа HL1)</text>
+<circle cx="110" cy="938" r="3" fill="#008400"/>
+<path d="M110,938 L170,938" fill="none" stroke="#008400" stroke-width="1.6"/>
+<g data-ref="A2" data-pos="51"><circle cx="170" cy="938" r="2.5" fill="#840000"/><path d="M170,938 L205,926" stroke="#840000" stroke-width="1.8"/><circle cx="210" cy="938" r="2.5" fill="#840000"/><text x="160" y="928" font-size="10" text-anchor="end" fill="#840000" font-weight="bold">K14</text></g>
+<path d="M210,938 L300,938" fill="none" stroke="#008400" stroke-width="1.6"/>
+<g data-ref="XT1" data-pos="63"><circle cx="300" cy="938" r="4" fill="#fff" stroke="#840000" stroke-width="1.2"/><text x="300" y="930" font-size="8" text-anchor="middle" fill="#840000" font-weight="normal">XT1:14</text></g>
+<path d="M304,938 L360,938" fill="none" stroke="#008400" stroke-width="1.6"/>
+<g data-ref="HA1"><rect x="360" y="927" width="540" height="22" fill="#fffff0" stroke="#840000" stroke-width="1.4"/><text x="370" y="942" font-size="10" text-anchor="start" fill="#000000" font-weight="normal">HA1 зуммер — авария</text></g>
+<path d="M900,938 L1560,938" fill="none" stroke="#008400" stroke-width="1.6"/>
+<circle cx="1560" cy="938" r="3" fill="#008400"/>
+<circle cx="330" cy="938" r="3" fill="#008400"/>
+<path d="M330,938 L330,958 L990,958" fill="none" stroke="#008400" stroke-width="1.6"/>
+<path d="M1009,958 L1560,958" fill="none" stroke="#008400" stroke-width="1.6"/>
+<circle cx="1560" cy="958" r="3" fill="#008400"/>
+<g data-ref="HL2" data-pos="59"><circle cx="1000" cy="958" r="9" fill="#ef4444" stroke="#840000" stroke-width="1.5"/><path d="M994,952 L1006,964 M994,964 L1006,952" stroke="#840000" stroke-width="1.2"/><rect x="1012" y="950" width="135" height="16" fill="#fff"/><text x="1016" y="962" font-size="9.5" text-anchor="start" fill="#840000" font-weight="bold">HL2  ALARM · красный</text></g>
+<circle cx="110" cy="990" r="3" fill="#008400"/>
+<path d="M110,990 L170,990" fill="none" stroke="#008400" stroke-width="1.6"/>
+<g data-ref="A2" data-pos="51"><circle cx="170" cy="990" r="2.5" fill="#840000"/><path d="M170,990 L205,978" stroke="#840000" stroke-width="1.8"/><circle cx="210" cy="990" r="2.5" fill="#840000"/><text x="160" y="980" font-size="10" text-anchor="end" fill="#840000" font-weight="bold">K15</text></g>
+<path d="M210,990 L260,990" fill="none" stroke="#008400" stroke-width="1.6"/>
+<text x="268" y="994" font-size="10" text-anchor="start" fill="#000000" font-weight="normal">не используется: GPIO5 → OpenTherm (OT_TX)</text>
+<text x="30" y="1105" font-size="9.5" text-anchor="start" font-weight="normal" fill="#000" stroke="none">Индикаторы панели — светодиодные 230 В (поз. 68), включены параллельно нагрузке после контакта реле: горят, когда реле подало фазу.</text>
+<text x="30" y="1120" font-size="9.5" text-anchor="start" font-weight="normal" fill="#000" stroke="none">Для ТЭНа и скважины индикатор параллелен катушке контактора (показывает команду); SK2 и SP1 стоят в силовой цепи контакторов (лист 3).</text>
+<text x="30" y="1135" font-size="9.5" text-anchor="start" font-weight="normal" fill="#000" stroke="none">SK1 размыкает питание M2 и его индикатора при перегреве пола. ALARM на панели — HL1 (жёлтый, предупреждение) и HL2 (красный, авария).</text>
+<text x="30" y="1150" font-size="9.5" text-anchor="start" font-weight="normal" fill="#000" stroke="none">K0 — сухой контакт на клеммы ТА котла (не 230 В), поэтому PB показывает питание котла (после QF2). SA1 «Р» подаёт L′ на M1 и M2 в обход K1, K2.</text>
+<rect x="10" y="10" width="1680" height="1180" fill="none" stroke="#000" stroke-width="1.5"/>
+<g stroke="#000" stroke-width="1" fill="none"><rect x="1300" y="1090" width="390" height="100"/><path d="M1300,1120 H1690 M1300,1150 H1690 M1600,1120 V1190 M1480,1150 V1190"/></g>
+<text x="1495" y="1111" font-size="12" text-anchor="middle" font-weight="bold" fill="#000" stroke="none">HomeSite — котельная</text>
+<text x="1450" y="1140" font-size="11" text-anchor="middle" font-weight="bold" fill="#000" stroke="none">Выходы реле и индикаторы панели (230 В)</text>
+<text x="1645" y="1140" font-size="10" text-anchor="middle" font-weight="normal" fill="#000" stroke="none">Лист 8</text>
+<text x="1390" y="1175" font-size="10" text-anchor="middle" font-weight="normal" fill="#000" stroke="none">Ред. 2 · 2026-10-17</text>
+<text x="1540" y="1175" font-size="9" text-anchor="middle" font-weight="normal" fill="#000" stroke="none">docs/boiler-room</text>
+</svg>

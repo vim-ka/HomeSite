@@ -6,6 +6,8 @@
 | 4 | [`07b-sensors.svg`](07b-sensors.svg) | датчики: шина DS18B20, DHT22, датчики давления, вход аварии газа |
 | 5 | [`07c-boiler-opentherm.svg`](07c-boiler-opentherm.svg) | котёл: питание, OpenTherm, переключатель «Авто / Ручной», сигнализатор газа → отсечной клапан |
 | 6 | [`07d-rf-gateway.svg`](07d-rf-gateway.svg) | RF-шлюз беспроводных датчиков (поз. 53): ESP32 + CC1101 433 МГц, питание, развязка, антенна |
+| 7 | [`07e-controller-logic.svg`](07e-controller-logic.svg) | **принципиальная** схема контроллера: ESP32-DevKitC по выводам J2/J3, обвязка (R, C, VD, X, JP1), вход модуля реле, адаптер OpenTherm |
+| 8 | [`07f-controller-power.svg`](07f-controller-power.svg) | выходы 16 реле → нагрузки, индикаторы панели 230 В параллельно нагрузкам (HL1–HL15) |
 
 Пины и каналы — по `firmware/esp32-homesite/PINOUT.md` (её и держать за источник истины; `check_docs.py`
 сверяет таблицу ниже с ней). Обозначения — как в спецификации (раздел 3).
