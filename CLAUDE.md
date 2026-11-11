@@ -203,6 +203,21 @@ CI/CD planned via GitHub Actions self-hosted runner.
 - [ ] **CI/CD**: GitHub Actions self-hosted runner on the VM
 - [x] **ESP32 firmware**: Add `/ack` response and `/heartbeat` publishing to firmware
 - [x] **Range monitoring**: Pressure outside min/max → ERROR, boiler overheating → ERROR
+- [ ] **СМС-уведомления** (решение владельца 11.11.2026; заменяет «Notifications: Push/Telegram»):
+  Android-телефон дома с MacroDroid по Wi-Fi забирает СМС из очереди бэкенда и шлёт со своей SIM.
+  Контракт API — как у сайта клуба LiteEnglishSite (`/api/sms/ping|next|done`, ключ в заголовке
+  `Authorization: Bearer` / `X-SMS-Key`, `poll_after`, бронь 10 мин, повторы, журнал; спека там:
+  `docs/superpowers/specs/2026-11-11-sms-notifications-design.md`). Код пишется заново (FastAPI), второй
+  макрос в том же MacroDroid. Отличия от клуба: критические тревоги идут **сразу, без тихих часов**;
+  склейка и «снята» против дребезга тревог; самоподписанный сертификат Nginx — проверить, примет ли
+  MacroDroid, иначе HTTP только для LAN или Let's Encrypt. Источники СМС:
+  - тревоги `AlarmTracker` (поднята / снята), потеря связи с контроллером;
+  - **пропал интернет** (владелец): HealthMonitor периодически проверяет несколько внешних адресов,
+    все недоступны N минут → СМС «нет интернета», при возврате — «интернет есть, не было X мин».
+    Телефон достаёт бэкенд по Wi-Fi и шлёт через сотовую сеть, так что это работает и без интернета;
+  - **пропало электричество** (владелец): ИБП есть — мониторить его (NUT / USB или ПО ИБП на хосте
+    Hyper-V; как ИБП подключён — выяснить) → СМС «работаем от батареи, заряд N%», «электричество
+    вернулось», «заряд ниже X%, скоро отключение». Роутер и ВМ должны быть на ИБП, иначе СМС не уйдёт.
 
 ### Medium Priority
 - [ ] **Data migration**: Transfer data from SQLite → PostgreSQL (not just schema + seed)
@@ -212,7 +227,7 @@ CI/CD planned via GitHub Actions self-hosted runner.
 
 ### Low Priority
 - [x] **Mobile app**: Паритет с десктопом — WS `/ws/sensors`, Events-фильтр по level, линейные графики Stats (react-native-svg), админ-раздел из 13 экранов в `mobile/app/admin/`, EN локализация + language picker
-- [ ] **Notifications**: Push/Telegram on critical alerts
+- [ ] **Notifications**: см. «СМС-уведомления» в High Priority
 - [ ] **Real-time charts**: WebSocket for live chart updates (currently polling)
 - [x] **Action audit**: EventLog джойнится с User — username отображается во всех мутирующих эндпоинтах
 - [x] **Section tooltips**: TipLabel с иконкой "?" добавлен на Heating и Water Supply
