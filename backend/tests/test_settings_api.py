@@ -272,6 +272,21 @@ async def test_get_settings_hides_mqtt_password(client, seeded_settings):
     assert "mqtt_host" in keys
 
 
+SMS_HIDDEN = ("sms_key_live_hash", "sms_key_test_hash", "sms_key_live_issued_at", "sms_key_test_issued_at",
+              "sms_last_poll_at")
+
+
+@pytest.mark.asyncio
+async def test_get_settings_hides_sms_keys_and_phone_state(client, seeded_settings, db_session):
+    db_session.add_all([ConfigKV(key=k, value="x") for k in SMS_HIDDEN])
+    await db_session.commit()
+    token = await _get_token(client, "viewer", "viewer123")
+    response = await client.get("/api/v1/settings", headers={"Authorization": f"Bearer {token}"})
+    keys = {s["key"] for s in response.json()}
+    assert not keys & set(SMS_HIDDEN)
+    assert "mqtt_host" in keys
+
+
 @pytest.mark.asyncio
 async def test_toggle_only_bool_settings(client, seeded_settings):
     token = await _get_token(client)

@@ -133,8 +133,12 @@ RULES: dict[str, SettingRule] = {
     "internet_router_host": _sys("host"),       # host[:port] (no port → 80); empty = the VM's gateway
 }
 
-# Never returned by GET /settings (admin reads MQTT credentials via /settings/mqtt)
-SECRET_KEYS = frozenset({"mqtt_pass"})
+# Never returned by GET /settings or /scheme/state (admin reads MQTT credentials via /settings/mqtt;
+# the SMS key hashes and the phone's last poll are shown on the SMS page through /sms/*)
+SECRET_KEYS = frozenset({
+    "mqtt_pass",
+    "sms_key_live_hash", "sms_key_test_hash", "sms_key_live_issued_at", "sms_key_test_issued_at", "sms_last_poll_at",
+})
 
 _TIME_RE = re.compile(r"^([01]?\d|2[0-3]):[0-5]\d$")
 _DAYS_RE = re.compile(r"^([1-7](,[1-7])*)?$")
