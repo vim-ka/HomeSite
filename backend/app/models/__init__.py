@@ -17,6 +17,7 @@ from app.models.sensor import (
     SystemType,
     sensor_type_datatype_link,
 )
+from app.models.sms import SmsItem, SmsMessage, SmsSubscription
 from app.models.user import User, UserRole
 
 __all__ = [
@@ -37,6 +38,9 @@ __all__ = [
     "SensorDataType",
     "SensorOffset",
     "SensorType",
+    "SmsItem",
+    "SmsMessage",
+    "SmsSubscription",
     "SystemType",
     "User",
     "UserRole",
