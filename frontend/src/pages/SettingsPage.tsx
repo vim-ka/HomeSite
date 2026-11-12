@@ -12,6 +12,7 @@ import TipLabel from "@/components/TipLabel";
 import { useToast } from "@/components/Toast";
 import RfDebugPanel from "@/components/RfDebugPanel";
 import UserSmsModal from "@/components/UserSmsModal";
+import SmsTab from "@/components/SmsTab";
 import Modal from "@/components/Modal";
 
 // ---- Types ----
@@ -1819,7 +1820,11 @@ export default function SettingsPage() {
   const location = useLocation();
   const hash = location.hash.replace("#", "");
 
-  const [activeTab, setActiveTab] = useState<"equipment" | "system" | "infra" | "devices">("equipment");
+  const [activeTab, setActiveTab] = useState<"equipment" | "system" | "infra" | "devices" | "sms">("equipment");
+  // on a phone the tab bar scrolls sideways: keep the chosen tab in sight
+  useEffect(() => {
+    document.querySelector(`[data-tab="${activeTab}"]`)?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+  }, [activeTab]);
 
   useEffect(() => {
     if (!hash) return;
@@ -1829,6 +1834,7 @@ export default function SettingsPage() {
     else if (hash === "system" || hash === "users") setActiveTab("system");
     else if (infraHashes.includes(hash)) setActiveTab("infra");
     else if (hash === "devices") setActiveTab("devices");
+    else if (hash === "sms") setActiveTab("sms");
   }, [hash]);
 
   // ---- Devices (ESP32) ----
@@ -1935,17 +1941,19 @@ export default function SettingsPage() {
       )}
 
       {isAdmin && (
-        <div className="flex border-b border-gray-200">
+        <div className="flex overflow-x-auto border-b border-gray-200">
           {([
             { id: "equipment", label: t("settings.tabEquipment"), icon: Cpu },
             { id: "devices", label: t("settings.tabDevices"), icon: CircuitBoard },
             { id: "system", label: t("settings.tabSystem"), icon: SlidersHorizontal },
             { id: "infra", label: t("settings.tabInfra"), icon: Database },
+            { id: "sms", label: t("settings.tabSms"), icon: MessageSquare },
           ] as const).map(({ id, label, icon: Icon }) => (
             <button
               key={id}
+              data-tab={id}
               onClick={() => setActiveTab(id)}
-              className={`flex items-center gap-1.5 px-5 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${
+              className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap px-5 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${
                 activeTab === id
                   ? "border-primary-600 text-primary-700"
                   : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
@@ -1957,6 +1965,8 @@ export default function SettingsPage() {
           ))}
         </div>
       )}
+
+      {isAdmin && activeTab === "sms" && <SmsTab />}
 
       {/* ======== TAB: EQUIPMENT ======== */}
       {/* Pending Sensors — standalone, only shown when there are new devices */}

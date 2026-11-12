@@ -70,12 +70,13 @@ the tank coil at the start of a loading and the expansion vessel (heating pressu
 **SMS notifications**: the HealthMonitor hands every poll's alarms to `SmsNotifier.apply` (`app/services/sms_notifier.py`),
 which for each (problem, recipient) asks `sms_policy.decide` and writes `SmsItem` rows (the queue, `sms_queue.py`).
 The home Android phone (MacroDroid, over Wi-Fi) calls `GET /api/v1/sms/next`: the queue forms an immutable `SmsMessage`
-(`sms_text.merge`, ≤ 134 chars) and the phone confirms with `POST /api/v1/sms/done`; every live-key call (`ping` included) counts as a phone poll.
+(`sms_text.merge`, ≤ 134 chars) and the phone confirms with `POST /api/v1/sms/done`; every call with the phone key (`ping` included) counts as a phone poll.
 First SMS about a problem goes at once, then only the settled last state (`sms_merge_seconds`, `sms_settle_minutes`);
 ERROR any time, WARNING outside quiet hours (`sms_quiet_start/end`). `SMS_LOCK` serialises notifier and queue (one
 process, one event loop). After a restart a 15 min grace (`STARTUP_GRACE_S`) forbids lowering a level while the
-AlarmTracker is still empty. Recipients = phone + SMS categories in the user card (admin only). Journal / keys / test
-SMS: page `/sms` (`app/api/v1/sms.py`, `SmsPage.tsx`); the phone's own Swagger: `/api/v1/sms/docs` (works on prod).
+AlarmTracker is still empty. Recipients = phone + SMS categories in the user card (admin only). Journal / phone key / test
+SMS: Settings → «СМС» tab (`app/api/v1/sms.py`, `components/SmsTab.tsx`; one phone key per installation — the
+dev stand and prod have their own); the phone's own Swagger: `/api/v1/sms/docs` (works on prod).
 Internet loss is probed by `internet_probe.py` (several hosts, router for the LAN check). New alarms in `alarm_rules.py`:
 `internet_down` (ERROR), `lan_down`, `sms_phone_silent`, `sms_failed` (banner only, no SMS).
 
@@ -221,7 +222,7 @@ CI/CD planned via GitHub Actions self-hosted runner.
 - [ ] **СМС-уведомления** (решение владельца 11.11.2026; заменяет «Notifications: Push/Telegram»; спека
   `docs/superpowers/specs/2026-11-12-sms-notifications-design.md`): Android-телефон дома с MacroDroid по Wi-Fi
   забирает СМС из очереди бэкенда и шлёт со своей SIM.
-  - Сделано: очередь, API `/api/v1/sms/ping|next|done`, журнал `/sms`, склейка, тревоги `AlarmTracker`
+  - Сделано: очередь, API `/api/v1/sms/ping|next|done`, журнал (Настройки → «СМС»), склейка, тревоги `AlarmTracker`
     (поднята / снята, критические без тихих часов), потеря связи с контроллером, **пропал интернет**
     (`internet_down`: проверка нескольких адресов, СМС при пропаже и при возврате).
   - Осталось: **пропало электричество** — ИБП APC (подключён по сети): мониторить его → СМС «работаем от батареи,

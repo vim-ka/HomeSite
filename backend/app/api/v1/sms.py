@@ -1,8 +1,8 @@
 """Phone API: the Android phone (MacroDroid) polls ping/next/done with the SMS key and sends what it gets.
 
-The key goes in `Authorization: Bearer <key>` or `X-SMS-Key` — never in the URL. The live key sees live
-messages, the test key only test ones. These three endpoints have their own Swagger page (`/sms/docs`), which
-works on production too, where the app-wide `/docs` is off."""
+The key goes in `Authorization: Bearer <key>` or `X-SMS-Key` — never in the URL. One key per installation
+(the dev stand and production are separate installations with their own keys). These three endpoints have their
+own Swagger page (`/sms/docs`), which works on production too, where the app-wide `/docs` is off."""
 
 from datetime import UTC, datetime
 
@@ -26,8 +26,8 @@ from app.services import sms_queue
 router = APIRouter()
 admin = require_role([UserRole.ADMIN])
 
-_bearer = HTTPBearer(auto_error=False, description="Ключ СМС-API (боевой или тестовый)")
-_x_key = APIKeyHeader(name="X-SMS-Key", auto_error=False, description="Ключ СМС-API (боевой или тестовый)")
+_bearer = HTTPBearer(auto_error=False, description="Ключ телефона")
+_x_key = APIKeyHeader(name="X-SMS-Key", auto_error=False, description="Ключ телефона")
 
 PHONE_PATHS = ("/ping", "/next", "/done")
 SWAGGER_UI = "https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.17.14"
@@ -63,22 +63,20 @@ async def phone_mode(
     x_key: str | None = Depends(_x_key),
     db: AsyncSession = Depends(get_db),
 ) -> str:
-    """The key's mode ("live" / "test"); 401 otherwise. A live request counts as the phone's poll."""
+    """Checks the phone key (401 otherwise); every accepted request counts as the phone's poll."""
     key = (bearer.credentials if bearer else None) or x_key or ""
-    mode = await sms_queue.key_mode(db, key)
-    if mode is None:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Неверный ключ СМС",
+    if await sms_queue.key_mode(db, key) != "live":
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Неверный ключ телефона",
                             headers={"WWW-Authenticate": "Bearer"})
-    if mode == "live":
-        await sms_queue.touch_poll(db, datetime.now(UTC))
-    return mode
+    await sms_queue.touch_poll(db, datetime.now(UTC))
+    return "live"
 
 
 @router.get("/ping", response_model=PingOut, summary="Проверка ключа и очереди")
 @limiter.limit("60/minute")
 async def ping(request: Request, mode: str = Depends(phone_mode), db: AsyncSession = Depends(get_db)):
     now = datetime.now(UTC)
-    return PingOut(mode=mode, queue=await sms_queue.queue_size(db, mode == "test"),
+    return PingOut(mode=mode, queue=await sms_queue.queue_size(db, False),
                    quiet=await sms_queue.quiet_now(db, now), poll_after=await sms_queue.poll_seconds(db))
 
 
@@ -87,7 +85,7 @@ async def ping(request: Request, mode: str = Depends(phone_mode), db: AsyncSessi
 @limiter.limit("60/minute")
 async def next_sms(request: Request, mode: str = Depends(phone_mode), db: AsyncSession = Depends(get_db)):
     poll = await sms_queue.poll_seconds(db)
-    msg = await sms_queue.next_message(db, mode == "test", datetime.now(UTC))
+    msg = await sms_queue.next_message(db, False, datetime.now(UTC))
     if msg is None:
         return Response(status_code=status.HTTP_204_NO_CONTENT, headers={"X-Poll-After": str(poll)})
     return NextOut(id=msg.id, to=msg.phone, text=msg.text, poll_after=poll)
@@ -98,7 +96,7 @@ async def next_sms(request: Request, mode: str = Depends(phone_mode), db: AsyncS
 @limiter.limit("60/minute")
 async def done(request: Request, payload: DoneIn, mode: str = Depends(phone_mode),
                db: AsyncSession = Depends(get_db)):
-    found = await sms_queue.mark_done(db, payload.id, mode == "test", payload.ok, payload.error, datetime.now(UTC))
+    found = await sms_queue.mark_done(db, payload.id, False, payload.ok, payload.error, datetime.now(UTC))
     if not found:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Нет такой СМС для этого ключа")
     return DoneOut(ok=True, poll_after=await sms_queue.poll_seconds(db))
@@ -112,7 +110,7 @@ async def phone_openapi(request: Request) -> JSONResponse:
     return JSONResponse(get_openapi(
         title="HomeSite — API телефона СМС", version="1",
         description="Телефон-отправитель опрашивает `next`, шлёт СМС и отчитывается `done`. "
-                    "Ключ — кнопка «Authorize» (`Bearer` или `X-SMS-Key`); для проверок — тестовый ключ.",
+                    "Ключ телефона — кнопка «Authorize» (`Bearer` или `X-SMS-Key`).",
         routes=routes))
 
 
@@ -124,13 +122,12 @@ async def phone_docs(request: Request) -> HTMLResponse:
                                swagger_css_url=f"{SWAGGER_UI}/swagger-ui.css")
 
 
-# ── admin: journal, status, retry, keys, test SMS ──────────────────────────
+# ── admin: journal, status, retry, phone key, test SMS ──────────────────────────
 
 PAGE_SIZE = 50
 ITEM_STATUS = {"pending": "ждёт", "superseded": "заменена", "not_needed": "не нужна"}
-MESSAGE_STATUS = {"leased": "выдана", "sent": "ушла", "failed": "не ушла", "ready": "ждёт повтора"}
+MESSAGE_STATUS = {"leased": "передана телефону", "sent": "ушла", "failed": "не ушла", "ready": "ждёт повтора"}
 TEST_TEXT = "Тестовая СМС HomeSite"
-KEY_MODES = {"live": "боевой", "test": "тестовый"}
 
 
 def _iso(ts: datetime | None) -> str | None:
@@ -140,13 +137,13 @@ def _iso(ts: datetime | None) -> str | None:
 
 @router.get("/log", summary="Журнал СМС (admin)")
 async def sms_log(state: str | None = None, code: str | None = None, user_id: int | None = None,
-                  test: bool = False, page: int = 1, _: User = Depends(admin),
+                  page: int = 1, _: User = Depends(admin),
                   db: AsyncSession = Depends(get_db)) -> dict:
     page = max(1, page)
     query = (select(SmsItem, User.username, SmsMessage)
              .outerjoin(User, User.id == SmsItem.user_id)
              .outerjoin(SmsMessage, SmsMessage.id == SmsItem.message_id)
-             .where(SmsItem.is_test.is_(test)))
+             .where(SmsItem.is_test.is_(False)))
     if state in ITEM_STATUS or state == "formed":
         query = query.where(SmsItem.state == state)
     elif state in MESSAGE_STATUS:
@@ -174,11 +171,11 @@ async def sms_log(state: str | None = None, code: str | None = None, user_id: in
     return {"items": items, "total": total, "page": page}
 
 
-@router.get("/status", summary="Состояние телефона и ключей (admin)")
+@router.get("/status", summary="Состояние телефона и его ключа (admin)")
 async def sms_status(_: User = Depends(admin), db: AsyncSession = Depends(get_db)) -> dict:
     out = await sms_queue.phone_status(db, datetime.now(UTC), await sms_queue.poll_seconds(db))
-    for mode in KEY_MODES:
-        out[f"has_{mode}_key"] = bool(await sms_queue._get(db, f"sms_key_{mode}_hash"))
+    out["has_key"] = bool(await sms_queue._get(db, "sms_key_live_hash"))
+    out["key_issued_at"] = await sms_queue._get(db, "sms_key_live_issued_at")
     return out
 
 
@@ -199,35 +196,24 @@ async def retry_message(msg_id: int, user: User = Depends(admin), db: AsyncSessi
     return {"status": "ok"}
 
 
-@router.post("/keys/{mode}", summary="Выпустить ключ (admin); показывается один раз")
-async def issue_key(mode: str, user: User = Depends(admin), db: AsyncSession = Depends(get_db)) -> dict:
-    if mode not in KEY_MODES:
-        raise HTTPException(status_code=404, detail="Неизвестный тип ключа")
+@router.post("/key", summary="Выдать ключ телефону (admin); старый перестаёт работать, новый показывается один раз")
+async def issue_key(user: User = Depends(admin), db: AsyncSession = Depends(get_db)) -> dict:
     async with sms_queue.SMS_LOCK:
-        key = await sms_queue.issue_key(db, mode)
-        db.add(EventLog(level="INFO", source="sms", message=f"Выпущен {KEY_MODES[mode]} ключ СМС", user_id=user.id))
+        key = await sms_queue.issue_key(db, "live")
+        db.add(EventLog(level="INFO", source="sms", message="Выдан новый ключ телефона СМС", user_id=user.id))
         await db.commit()
     return {"key": key}
 
 
-async def _enqueue_test(user: User, db: AsyncSession, is_test: bool) -> dict:
+@router.post("/test-me", summary="Тестовая СМС на свой номер (admin)")
+async def test_me(user: User = Depends(admin), db: AsyncSession = Depends(get_db)) -> dict:
     if not user.phone:
         raise HTTPException(status_code=400, detail="У вас не указан телефон")
     now = datetime.now(UTC)
     async with sms_queue.SMS_LOCK:
         db.add(SmsItem(problem="test", code="test", level="INFO", raised=True, kind="test", user_id=user.id,
-                       phone=user.phone, text=TEST_TEXT, is_test=is_test, state="pending",
+                       phone=user.phone, text=TEST_TEXT, is_test=False, state="pending",
                        created_at=now, ready_at=now))
         db.add(EventLog(level="INFO", source="sms", message="Тестовая СМС поставлена в очередь", user_id=user.id))
         await db.commit()
     return {"status": "ok"}
-
-
-@router.post("/test-me", summary="Тестовая СМС себе, боевой очередью (admin)")
-async def test_me(user: User = Depends(admin), db: AsyncSession = Depends(get_db)) -> dict:
-    return await _enqueue_test(user, db, False)
-
-
-@router.post("/test-queue", summary="Тестовая СМС в тестовую очередь (admin)")
-async def test_queue(user: User = Depends(admin), db: AsyncSession = Depends(get_db)) -> dict:
-    return await _enqueue_test(user, db, True)

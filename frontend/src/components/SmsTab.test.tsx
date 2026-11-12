@@ -5,13 +5,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import "@/i18n";
 import api from "@/api/client";
 import { ToastProvider } from "@/components/Toast";
-import SmsPage from "./SmsPage";
+import SmsTab from "./SmsTab";
 
-const mocked = vi.hoisted(() => ({ role: "admin" }));
+const mocked = vi.hoisted(() => ({ phone: "+79161234567" as string | null }));
 vi.mock("@/api/client", () => ({ default: { get: vi.fn(), post: vi.fn(), put: vi.fn() } }));
-vi.mock("@/stores/authStore", () => ({
-  useAuthStore: (sel: (s: { user: { role: string } }) => unknown) => sel({ user: { role: mocked.role } }),
-}));
 
 const LOG = {
   total: 2, page: 1,
@@ -24,26 +21,27 @@ const LOG = {
       message: { id: 78, items: 2, attempts: 1, error: null, sent_at: "2026-11-12T10:01:00" } },
   ],
 };
-const STATUS = { last_poll_at: "2026-11-12T10:00:00", silent: true, pending: 1, failed: 1, has_live_key: true, has_test_key: false };
+const STATUS = { last_poll_at: "2026-11-12T10:00:00", silent: true, pending: 1, failed: 1, has_key: true, key_issued_at: "2026-11-12T09:00:00" };
 
 function setup() {
   vi.mocked(api.get).mockImplementation(async (url: string) => {
     if (url === "/sms/log") return { data: LOG };
     if (url === "/sms/status") return { data: STATUS };
     if (url === "/settings") return { data: [] };
+    if (url === "/auth/me") return { data: { phone: mocked.phone } };
     throw new Error("unexpected " + url);
   });
   vi.mocked(api.post).mockResolvedValue({ data: { key: "k-123" } });
   return render(
     <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-      <ToastProvider><MemoryRouter><SmsPage /></MemoryRouter></ToastProvider>
+      <ToastProvider><MemoryRouter><SmsTab /></MemoryRouter></ToastProvider>
     </QueryClientProvider>,
   );
 }
 
-beforeEach(() => { vi.mocked(api.get).mockReset(); vi.mocked(api.post).mockReset(); mocked.role = "admin"; });
+beforeEach(() => { vi.mocked(api.get).mockReset(); vi.mocked(api.post).mockReset(); mocked.phone = "+79161234567"; });
 
-describe("SmsPage", () => {
+describe("SmsTab", () => {
   it("renders the journal and the phone-silent warning", async () => {
     setup();
     expect(await screen.findByText("Давление низкое")).toBeInTheDocument();
@@ -69,15 +67,22 @@ describe("SmsPage", () => {
     vi.spyOn(window, "confirm").mockReturnValue(true);
     setup();
     await screen.findByText("Давление низкое");
-    fireEvent.click(screen.getAllByRole("button", { name: /Перевыпустить|Создать/ })[0]!);
-    await waitFor(() => expect(api.post).toHaveBeenCalledWith("/sms/keys/live"));
+    fireEvent.click(await screen.findByRole("button", { name: "Заменить ключ" }));
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith("/sms/key"));
     expect(await screen.findByText("k-123")).toBeInTheDocument();
   });
 
-  it("shows no access to a non-admin", () => {
-    mocked.role = "viewer";
+  it("sends a test SMS to the admin's own number and says which", async () => {
     setup();
-    expect(screen.getByText("Нет доступа")).toBeInTheDocument();
-    expect(api.get).not.toHaveBeenCalled();
+    expect(await screen.findByText("придёт на +79161234567")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Отправить тестовую СМС на мой номер" }));
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith("/sms/test-me"));
+  });
+
+  it("disables the test SMS without the admin's phone", async () => {
+    mocked.phone = null;
+    setup();
+    expect(await screen.findByText(/У вас не указан телефон/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Отправить тестовую СМС на мой номер" })).toBeDisabled();
   });
 });

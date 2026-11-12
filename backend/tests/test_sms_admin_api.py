@@ -53,7 +53,7 @@ async def test_log_paginates_and_filters(client, db_session):
     for n in range(55):
         await _item(db_session, uid, n)
     await _item(db_session, uid, 60, code="well", state="superseded")
-    await _item(db_session, uid, 61, is_test=True, kind="test", code="test")
+    await _item(db_session, uid, 61, is_test=True, kind="test", code="test")   # legacy test-queue row: hidden
     await _item(db_session, None, 62, state="not_needed")
 
     body = (await client.get("/api/v1/sms/log", headers=headers)).json()
@@ -73,8 +73,6 @@ async def test_log_paginates_and_filters(client, db_session):
     assert by_state["total"] == 1
     by_user = (await client.get(f"/api/v1/sms/log?user_id={uid}", headers=headers)).json()
     assert by_user["total"] == 56
-    tests = (await client.get("/api/v1/sms/log?test=true", headers=headers)).json()
-    assert [i["kind"] for i in tests["items"]] == ["test"]
 
 
 @pytest.mark.asyncio
@@ -88,7 +86,7 @@ async def test_log_shows_merged_count(client, db_session):
     assert [i["status"] for i in body["items"]] == ["не ушла", "не ушла"]
     m = body["items"][0]["message"]
     assert (m["id"], m["items"], m["attempts"], m["error"]) == (msg.id, 2, 3, "boom") and m["sent_at"] is None
-    for state, word in (("ready", "ждёт повтора"), ("leased", "выдана"), ("sent", "ушла")):
+    for state, word in (("ready", "ждёт повтора"), ("leased", "передана телефону"), ("sent", "ушла")):
         msg.state = state
         await db_session.commit()
         items = (await client.get("/api/v1/sms/log", headers=headers)).json()["items"]
@@ -112,19 +110,19 @@ async def test_retry_only_failed(client, db_session):
 async def test_issue_key_shown_once_and_works(client, db_session):
     headers = await _token(client, db_session, UserRole.ADMIN, PHONE)
     st = (await client.get("/api/v1/sms/status", headers=headers)).json()
-    assert st["has_live_key"] is False and st["has_test_key"] is False and st["pending"] == 0
-    assert (await client.post("/api/v1/sms/keys/bogus", headers=headers)).status_code == 404
-    key = (await client.post("/api/v1/sms/keys/live", headers=headers)).json()["key"]
+    assert st["has_key"] is False and st["key_issued_at"] is None and st["pending"] == 0
+    old = (await client.post("/api/v1/sms/key", headers=headers)).json()["key"]
+    key = (await client.post("/api/v1/sms/key", headers=headers)).json()["key"]
+    assert (await client.get("/api/v1/sms/ping", headers={"X-SMS-Key": old})).status_code == 401   # replaced
     ping = await client.get("/api/v1/sms/ping", headers={"Authorization": f"Bearer {key}"})
     assert ping.status_code == 200 and ping.json()["mode"] == "live"
     stored = (await db_session.execute(select(ConfigKV.value).where(ConfigKV.key.like("sms_key_live%")))).scalars().all()
     assert key not in stored and len(stored) == 2
     st = (await client.get("/api/v1/sms/status", headers=headers)).json()
-    assert st["has_live_key"] is True and st["has_test_key"] is False
-    tkey = (await client.post("/api/v1/sms/keys/test", headers=headers)).json()["key"]
-    assert (await client.get("/api/v1/sms/ping", headers={"X-SMS-Key": tkey})).json()["mode"] == "test"
-    messages = {e.message for e in (await db_session.execute(select(EventLog))).scalars()}
-    assert {"Выпущен боевой ключ СМС", "Выпущен тестовый ключ СМС"} <= messages
+    assert st["has_key"] is True and st["key_issued_at"]
+    assert (await client.post("/api/v1/sms/keys/test", headers=headers)).status_code in (404, 405)
+    messages = [e.message for e in (await db_session.execute(select(EventLog))).scalars()]
+    assert messages.count("Выдан новый ключ телефона СМС") == 2
 
 
 @pytest.mark.asyncio
@@ -132,16 +130,14 @@ async def test_test_me_requires_phone(client, db_session):
     headers = await _token(client, db_session, UserRole.ADMIN)
     resp = await client.post("/api/v1/sms/test-me", headers=headers)
     assert resp.status_code == 400 and resp.json()["detail"] == "У вас не указан телефон"
-    assert (await client.post("/api/v1/sms/test-queue", headers=headers)).status_code == 400
     user = (await db_session.execute(select(User))).scalar_one()
     user.phone = PHONE
     await db_session.commit()
     assert (await client.post("/api/v1/sms/test-me", headers=headers)).status_code == 200
-    assert (await client.post("/api/v1/sms/test-queue", headers=headers)).status_code == 200
+    assert (await client.post("/api/v1/sms/test-queue", headers=headers)).status_code in (404, 405)
     items = (await db_session.execute(select(SmsItem).order_by(SmsItem.id))).scalars().all()
     assert [(i.is_test, i.kind, i.state, i.phone, i.text, i.user_id) for i in items] == [
-        (False, "test", "pending", PHONE, "Тестовая СМС HomeSite", user.id),
-        (True, "test", "pending", PHONE, "Тестовая СМС HomeSite", user.id)]
+        (False, "test", "pending", PHONE, "Тестовая СМС HomeSite", user.id)]
     assert all((i.problem, i.code, i.level, i.raised) == ("test", "test", "INFO", True) for i in items)
     messages = {e.message for e in (await db_session.execute(select(EventLog))).scalars()}
     assert "Тестовая СМС поставлена в очередь" in messages
@@ -150,7 +146,7 @@ async def test_test_me_requires_phone(client, db_session):
 @pytest.mark.asyncio
 async def test_viewer_and_operator_forbidden(client, db_session):
     calls = [("GET", "/sms/log"), ("GET", "/sms/status"), ("POST", "/sms/messages/1/retry"),
-             ("POST", "/sms/keys/live"), ("POST", "/sms/test-me"), ("POST", "/sms/test-queue")]
+             ("POST", "/sms/key"), ("POST", "/sms/test-me")]
     for role in (UserRole.VIEWER, UserRole.OPERATOR):
         headers = await _token(client, db_session, role, PHONE)
         for method, path in calls:

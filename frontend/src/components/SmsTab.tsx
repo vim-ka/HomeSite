@@ -2,7 +2,6 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "@/api/client";
-import { useAuthStore } from "@/stores/authStore";
 import { useSettingUpdate } from "@/hooks/useSettingUpdate";
 import { useToast } from "@/components/Toast";
 import Modal from "@/components/Modal";
@@ -26,8 +25,8 @@ interface SmsStatus {
   silent: boolean;
   pending: number;
   failed: number;
-  has_live_key: boolean;
-  has_test_key: boolean;
+  has_key: boolean;
+  key_issued_at: string | null;
 }
 
 const PAGE_SIZE = 50;
@@ -58,24 +57,20 @@ function errorText(err: unknown, fallback: string): string {
   return typeof detail === "string" ? detail : fallback;
 }
 
-const inputCls = "px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:outline-none";
+// same look as the other settings cards
+const cardCls = "rounded-xl border border-gray-200 bg-white p-5 shadow-sm space-y-3";
+const inputCls = "px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:outline-none";
 const btnCls = "px-3 py-1.5 bg-primary-600 text-white text-sm rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors";
 
-export default function SmsPage() {
-  const role = useAuthStore((s) => s.user?.role);
-  const { t } = useTranslation();
-  if (role !== "admin") return <p className="p-6 text-gray-500">{t("sms.noAccess")}</p>;
-  return <SmsAdmin />;
-}
-
-function SmsAdmin() {
+/** «СМС» tab of the settings page (admin only — the page shows the tab only to admins). */
+export default function SmsTab() {
   const { t, i18n } = useTranslation();
   const queryClient = useQueryClient();
   const toast = useToast();
   const locale = i18n.language?.startsWith("en") ? "en-US" : "ru-RU";
   const fmt = (s: string | null) => (s ? parseUtc(s).toLocaleString(locale) : "—");
 
-  const [filters, setFilters] = useState({ state: "", code: "", user_id: "", test: false });
+  const [filters, setFilters] = useState({ state: "", code: "", user_id: "" });
   const [page, setPage] = useState(1);
   const [revealed, setRevealed] = useState<string | null>(null);
 
@@ -83,6 +78,10 @@ function SmsAdmin() {
     queryKey: ["sms-status"],
     queryFn: async () => (await api.get("/sms/status")).data,
     refetchInterval: 30_000,
+  });
+  const { data: me } = useQuery<{ phone: string | null }>({
+    queryKey: ["me"],
+    queryFn: async () => (await api.get("/auth/me")).data,
   });
   const { data: log } = useQuery<LogResponse>({
     queryKey: ["sms-log", filters, page],
@@ -92,7 +91,6 @@ function SmsAdmin() {
           state: filters.state || undefined,
           code: filters.code || undefined,
           user_id: filters.user_id || undefined,
-          test: filters.test,
           page,
         },
       })).data,
@@ -112,18 +110,18 @@ function SmsAdmin() {
       queryClient.invalidateQueries({ queryKey: ["sms-log"] });
       queryClient.invalidateQueries({ queryKey: ["sms-status"] });
     },
-    onError: (e) => toast.error(errorText(e, t("sms.testFailed"))),
+    onError: (e) => toast.error(errorText(e, t("sms.retryFailed"))),
   });
   const keyMut = useMutation({
-    mutationFn: async (mode: "live" | "test") => (await api.post<{ key: string }>(`/sms/keys/${mode}`)).data.key,
+    mutationFn: async () => (await api.post<{ key: string }>("/sms/key")).data.key,
     onSuccess: (key) => {
       setRevealed(key);
       queryClient.invalidateQueries({ queryKey: ["sms-status"] });
     },
-    onError: (e) => toast.error(errorText(e, t("sms.testFailed"))),
+    onError: (e) => toast.error(errorText(e, t("sms.keyFailed"))),
   });
   const testMut = useMutation({
-    mutationFn: async (path: "test-me" | "test-queue") => api.post(`/sms/${path}`),
+    mutationFn: async () => api.post("/sms/test-me"),
     onSuccess: () => {
       toast.success(t("sms.testSent"));
       queryClient.invalidateQueries({ queryKey: ["sms-log"] });
@@ -131,9 +129,13 @@ function SmsAdmin() {
     onError: (e) => toast.error(errorText(e, t("sms.testFailed"))),
   });
 
-  const issueKey = (mode: "live" | "test", exists: boolean) => {
-    if (exists && !window.confirm(t("sms.reissueConfirm"))) return;
-    keyMut.mutate(mode);
+  const issueKey = () => {
+    if (status?.has_key && !window.confirm(t("sms.replaceConfirm"))) return;
+    keyMut.mutate();
+  };
+  const closeKey = () => {
+    setRevealed(null);
+    keyMut.reset(); // don't keep the key in the mutation cache
   };
 
   const totalPages = Math.max(1, Math.ceil((log?.total ?? 0) / PAGE_SIZE));
@@ -145,10 +147,8 @@ function SmsAdmin() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-xl font-semibold text-gray-800">{t("sms.title")}</h1>
-
-      {/* Status */}
-      <section className="rounded-xl border bg-white p-4 space-y-2">
+      {/* Phone state */}
+      <section className={cardCls}>
         <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm text-gray-700">
           <span>{t("sms.lastPoll")}: <b>{status?.last_poll_at ? fmt(status.last_poll_at) : t("sms.never")}</b></span>
           <span>{t("sms.pending")}: <b>{status?.pending ?? 0}</b></span>
@@ -162,8 +162,8 @@ function SmsAdmin() {
       </section>
 
       {/* Journal */}
-      <section className="rounded-xl border bg-white p-4 space-y-3">
-        <h2 className="font-semibold text-gray-800">{t("sms.journal")}</h2>
+      <section className={cardCls}>
+        <h3 className="font-semibold text-gray-800">{t("sms.journal")}</h3>
         <div className="flex flex-wrap items-end gap-3 text-sm">
           <label className="flex flex-col gap-1">
             {t("sms.state")}
@@ -180,15 +180,11 @@ function SmsAdmin() {
             {t("sms.recipient")}
             <input inputMode="numeric" value={filters.user_id} onChange={(e) => setFilter({ user_id: e.target.value.replace(/\D/g, "") })} className={`${inputCls} w-28`} />
           </label>
-          <label className="flex items-center gap-2 pb-2">
-            <input type="checkbox" checked={filters.test} onChange={(e) => setFilter({ test: e.target.checked })} />
-            {t("sms.showTest")}
-          </label>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="text-left text-gray-500 border-b">
+              <tr className="text-left text-gray-500 border-b border-gray-200">
                 <th className="py-1 pr-3">{t("sms.colTime")}</th>
                 <th className="pr-3">{t("sms.colCode")}</th>
                 <th className="pr-3">{t("sms.colText")}</th>
@@ -199,7 +195,7 @@ function SmsAdmin() {
             </thead>
             <tbody>
               {log?.items.map((it) => (
-                <tr key={it.id} className="border-b last:border-0 align-top">
+                <tr key={it.id} className="border-b border-gray-100 last:border-0 align-top">
                   <td className="py-1 pr-3 whitespace-nowrap">{fmt(it.created_at)}</td>
                   <td className="pr-3">{it.code}</td>
                   <td className="pr-3">{it.text}</td>
@@ -235,41 +231,41 @@ function SmsAdmin() {
 
       {settings && <SmsSettings settings={settings} />}
 
-      {/* Keys */}
-      <section className="rounded-xl border bg-white p-4 space-y-3">
-        <h2 className="font-semibold text-gray-800">{t("sms.keys")}</h2>
-        {([["live", status?.has_live_key], ["test", status?.has_test_key]] as const).map(([mode, exists]) => (
-          <div key={mode} className="flex flex-wrap items-center gap-3 text-sm">
-            <span className="w-36">{t(`sms.${mode}`)}: {exists ? t("sms.exists") : t("sms.absent")}</span>
-            <button className={btnCls} disabled={keyMut.isPending} onClick={() => issueKey(mode, !!exists)}>
-              {exists ? t("sms.reissue") : t("sms.create")}
-            </button>
-          </div>
-        ))}
-      </section>
-
-      {/* Tests + API */}
-      <section className="rounded-xl border bg-white p-4 space-y-3">
-        <h2 className="font-semibold text-gray-800">{t("sms.tests")}</h2>
-        <div className="flex flex-wrap items-center gap-3">
-          <button className={btnCls} disabled={testMut.isPending} onClick={() => testMut.mutate("test-me")}>{t("sms.testMe")}</button>
-          <button className={btnCls} disabled={testMut.isPending} onClick={() => testMut.mutate("test-queue")}>{t("sms.testQueue")}</button>
-          <a href="/api/v1/sms/docs" target="_blank" rel="noreferrer" className="text-sm text-primary-700 underline">{t("sms.api")}</a>
+      {/* Phone connection: key, test SMS, API, MacroDroid */}
+      <section className={cardCls}>
+        <h3 className="font-semibold text-gray-800">{t("sms.phone")}</h3>
+        <p className="text-sm text-gray-600">{t("sms.keyAbout")}</p>
+        <div className="flex flex-wrap items-center gap-3 text-sm">
+          <span>
+            {status?.has_key
+              ? t("sms.keyIssued", { when: fmt(status.key_issued_at) })
+              : t("sms.keyNone")}
+          </span>
+          <button className={btnCls} disabled={keyMut.isPending} onClick={issueKey}>
+            {status?.has_key ? t("sms.keyReplace") : t("sms.keyIssue")}
+          </button>
         </div>
-      </section>
-
-      {/* MacroDroid */}
-      <section className="rounded-xl border bg-white p-4 space-y-2">
-        <h2 className="font-semibold text-gray-800">{t("sms.guide")}</h2>
+        <div className="flex flex-wrap items-center gap-3 text-sm">
+          <button className={btnCls} disabled={testMut.isPending || !me?.phone} onClick={() => testMut.mutate()}>
+            {t("sms.testMe")}
+          </button>
+          <span className="text-gray-500">
+            {me?.phone ? t("sms.testTo", { phone: me.phone }) : t("sms.testNoPhone")}
+          </span>
+        </div>
+        <a href="/api/v1/sms/docs" target="_blank" rel="noreferrer" className="inline-block text-sm text-primary-700 underline">
+          {t("sms.api")}
+        </a>
+        <h4 className="pt-2 text-sm font-semibold text-gray-700">{t("sms.guide")}</h4>
         <ol className="list-decimal pl-5 space-y-1 text-sm text-gray-700">
-          {["g1", "g2", "g3", "g4", "g5", "g6"].map((k) => (
+          {["g1", "g2", "g3", "g4", "g5"].map((k) => (
             <li key={k}>{t(`sms.${k}`, { url: origin, interpolation: { escapeValue: false } })}</li>
           ))}
         </ol>
       </section>
 
-      <Modal open={revealed !== null} onClose={() => setRevealed(null)}>
-        <h3 className="mb-3 text-lg font-semibold text-gray-800">{t("sms.keys")}</h3>
+      <Modal open={revealed !== null} onClose={closeKey}>
+        <h3 className="mb-3 text-lg font-semibold text-gray-800">{t("sms.keyNew")}</h3>
         <p className="mb-2 text-sm text-gray-600">{t("sms.keyShown")}</p>
         <code className="block break-all rounded-lg bg-gray-100 p-3 text-sm">{revealed}</code>
         <div className="mt-4 flex gap-3">
@@ -281,7 +277,7 @@ function SmsAdmin() {
           >
             {t("sms.copy")}
           </button>
-          <button className="px-3 py-1.5 text-sm text-gray-600" onClick={() => setRevealed(null)}>{t("sms.close")}</button>
+          <button className="px-3 py-1.5 text-sm text-gray-600" onClick={closeKey}>{t("sms.close")}</button>
         </div>
       </Modal>
     </div>
@@ -316,8 +312,8 @@ function SmsSettings({ settings }: { settings: Record<string, string> }) {
   };
 
   return (
-    <section className="rounded-xl border bg-white p-4 space-y-4">
-      <h2 className="font-semibold text-gray-800">{t("sms.settings")}</h2>
+    <section className={`${cardCls} space-y-4`}>
+      <h3 className="font-semibold text-gray-800">{t("sms.settings")}</h3>
       <div className="flex flex-wrap gap-6">
         {(["sms_quiet_start", "sms_quiet_end"] as const).map((k) => (
           <div key={k} className="flex flex-col gap-1 text-sm">

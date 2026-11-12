@@ -91,14 +91,13 @@ async def test_key_in_query_401(client, db_session):
 @pytest.mark.asyncio
 async def test_bearer_and_x_sms_key_both_work(client, db_session):
     live = await issue_key(db_session, "live")
-    test = await issue_key(db_session, "test")
     r = await client.get("/api/v1/sms/ping", headers=bearer(live))
     assert r.status_code == 200
     body = r.json()
     assert {k: v for k, v in body.items() if k != "quiet"} == {"mode": "live", "queue": 0, "poll_after": 60}
     assert isinstance(body["quiet"], bool)   # default quiet hours: depends on the clock
-    r = await client.get("/api/v1/sms/ping", headers={"X-SMS-Key": test})
-    assert r.status_code == 200 and r.json()["mode"] == "test"
+    r = await client.get("/api/v1/sms/ping", headers={"X-SMS-Key": live})
+    assert r.status_code == 200 and r.json()["mode"] == "live"
 
 
 @pytest.mark.asyncio
@@ -142,13 +141,15 @@ async def test_next_204_has_x_poll_after(client, db_session):
 @pytest.mark.asyncio
 async def test_done_unknown_404(client, db_session):
     live = await issue_key(db_session, "live")
-    test = await issue_key(db_session, "test")
     r = await client.post("/api/v1/sms/done", headers=bearer(live), json={"id": 999, "ok": True})
     assert r.status_code == 404
-    await add_pending(db_session)
-    msg_id = (await client.get("/api/v1/sms/next", headers=bearer(live))).json()["id"]
-    r = await client.post("/api/v1/sms/done", headers=bearer(test), json={"id": msg_id, "ok": True})
-    assert r.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_old_test_key_rejected(client, db_session):
+    """There is one phone key per installation; a test key left from before is not accepted."""
+    test = await issue_key(db_session, "test")
+    assert (await client.get("/api/v1/sms/ping", headers=bearer(test))).status_code == 401
 
 
 @pytest.mark.asyncio
@@ -167,14 +168,12 @@ async def test_done_repeat_200(client, db_session):
 @pytest.mark.asyncio
 async def test_live_request_updates_last_poll(client, db_session):
     live = await issue_key(db_session, "live")
-    test = await issue_key(db_session, "test")
 
     async def last_poll() -> str | None:
         db_session.expire_all()
         row = (await db_session.execute(select(ConfigKV).where(ConfigKV.key == "sms_last_poll_at"))).scalar_one_or_none()
         return row.value if row else None
 
-    await client.get("/api/v1/sms/ping", headers=bearer(test))
     assert await last_poll() is None
     before = datetime.now(UTC)
     await client.get("/api/v1/sms/next", headers=bearer(live))
