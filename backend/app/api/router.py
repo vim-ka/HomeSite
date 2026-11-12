@@ -11,6 +11,7 @@ from app.api.v1.internal import router as internal_router
 from app.api.v1.scheme import router as scheme_router
 from app.api.v1.sensors import router as sensor_router
 from app.api.v1.settings import router as settings_router
+from app.api.v1.sms import router as sms_router
 from app.api.v1.ws import router as ws_router
 
 api_v1_router = APIRouter(prefix="/api/v1")
@@ -29,4 +30,6 @@ api_v1_router.include_router(ws_router, prefix="/ws", tags=["websocket"])
 api_v1_router.include_router(
     event_router, prefix="/events", tags=["events"], dependencies=[Depends(get_current_user)]
 )
+# the phone authenticates with its own SMS key, not a login
+api_v1_router.include_router(sms_router, prefix="/sms", tags=["sms"])
 api_v1_router.include_router(internal_router, prefix="/internal", tags=["internal"])

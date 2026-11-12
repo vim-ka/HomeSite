@@ -17,6 +17,9 @@ PUBLIC = {
     ("GET", "/health/sensors"),
     ("POST", "/api/v1/auth/login"),
     ("POST", "/api/v1/auth/refresh"),
+    # the phone API's own Swagger: no secrets in it, the calls themselves need the SMS key
+    ("GET", "/api/v1/sms/openapi.json"),
+    ("GET", "/api/v1/sms/docs"),
 }
 # Protected by X-Internal-Secret instead of a user token
 INTERNAL_PREFIX = "/api/v1/internal/"
