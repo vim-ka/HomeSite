@@ -193,11 +193,14 @@ def evaluate(s: Snapshot, active: set[str]) -> list[Alarm]:
         add(Alarm("supply_below_return", "WARNING",
                   "Подача котла холоднее обратки — перепутаны датчики или вода идёт в обратную сторону", 10 * 60))
 
-    # --- internet / local network (no router → no internet alarm: the phone can't be reached either)
-    if s.net.get("router") is False:
-        add(Alarm("lan_down", "WARNING", "Нет локальной сети — сервер не видит роутер", 300))
-    elif s.net.get("internet") is False:
-        add(Alarm("internet_down", "ERROR", "Нет интернета", int(s.net.get("down_s", 300))))
+    # --- internet / local network. The router only matters once the internet is gone: a working internet goes
+    # through the router, so the LAN is fine (a gateway may simply ignore the TCP probe). No internet and no router
+    # → the LAN is down (banner only: the phone can't reach the server either); no internet, router there → ISP.
+    if s.net.get("internet") is False:
+        if s.net.get("router") is False:
+            add(Alarm("lan_down", "WARNING", "Нет локальной сети — сервер не видит роутер", 300))
+        else:
+            add(Alarm("internet_down", "ERROR", "Нет интернета", int(s.net.get("down_s", 300))))
 
     # --- SMS phone queue (banner only)
     if s.sms.get("silent"):
@@ -222,7 +225,7 @@ def unknown(s: Snapshot) -> set[str]:
     if s.net:   # no router or a failed probe says nothing about the internet
         if s.net.get("internet") is None:
             codes |= {"internet_down", "lan_down"}
-        elif s.net.get("router") is False:
+        elif s.net.get("internet") is False and s.net.get("router") is False:
             codes.add("internet_down")
     return codes
 

@@ -297,6 +297,20 @@ def test_partial_internet_no_alarm():
     assert "internet_down" not in got and "lan_down" not in got
 
 
+def test_working_internet_means_the_lan_works():
+    """The internet goes through the router: if it answers, the LAN is fine even when the router ignores the probe
+    (a gateway that drops TCP :80 — e.g. the WSL/Hyper-V virtual switch). No network alarm, nothing held."""
+    net = {"internet": True, "router": False, "down_s": 300}
+    got = codes(snap(net=net))
+    assert "internet_down" not in got and "lan_down" not in got
+    assert not {"internet_down", "lan_down"} & unknown(snap(net=net))
+
+
+def test_no_router_found_still_reports_internet_loss():
+    got = codes(snap(net={"internet": False, "router": None, "down_s": 300}))
+    assert "internet_down" in got and "lan_down" not in got
+
+
 def test_no_probe_no_alarm():
     got = codes(snap(net={}))
     assert "internet_down" not in got and "lan_down" not in got
