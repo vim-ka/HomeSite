@@ -70,7 +70,7 @@ the tank coil at the start of a loading and the expansion vessel (heating pressu
 **SMS notifications**: the HealthMonitor hands every poll's alarms to `SmsNotifier.apply` (`app/services/sms_notifier.py`),
 which for each (problem, recipient) asks `sms_policy.decide` and writes `SmsItem` rows (the queue, `sms_queue.py`).
 The home Android phone (MacroDroid, over Wi-Fi) calls `GET /api/v1/sms/next`: the queue forms an immutable `SmsMessage`
-(`sms_text.merge`, ≤ 134 chars) and the phone confirms with `POST /api/v1/sms/done`; `ping` reports the phone is alive.
+(`sms_text.merge`, ≤ 134 chars) and the phone confirms with `POST /api/v1/sms/done`; every live-key call (`ping` included) counts as a phone poll.
 First SMS about a problem goes at once, then only the settled last state (`sms_merge_seconds`, `sms_settle_minutes`);
 ERROR any time, WARNING outside quiet hours (`sms_quiet_start/end`). `SMS_LOCK` serialises notifier and queue (one
 process, one event loop). After a restart a 15 min grace (`STARTUP_GRACE_S`) forbids lowering a level while the
