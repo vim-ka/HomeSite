@@ -102,7 +102,8 @@ def parse_hhmm(value: str | None) -> time | None:
 
 
 DEFAULT_QUIET = ("18:00", "04:00")   # UTC (22:00–08:00 at the house, +4); the one source of the default
-CFG_KEYS = ("sms_quiet_start", "sms_quiet_end", "sms_merge_seconds", "sms_settle_minutes")
+DEFAULT_INTERNET_DOWN_MINUTES = 5
+CFG_KEYS = ("sms_quiet_start", "sms_quiet_end", "sms_merge_seconds", "sms_settle_minutes", "internet_down_minutes")
 
 
 def cfg_from_kv(kv: dict[str, str]) -> Cfg:
@@ -117,6 +118,7 @@ def cfg_from_kv(kv: dict[str, str]) -> Cfg:
         parse_hhmm(kv.get("sms_quiet_end", DEFAULT_QUIET[1])),
         merge_s=_int("sms_merge_seconds", 60),
         settle_s=_int("sms_settle_minutes", 10) * 60,
+        internet_down_s=_int("internet_down_minutes", DEFAULT_INTERNET_DOWN_MINUTES) * 60,
     )
 
 

@@ -18,6 +18,7 @@ from app.services.sms_policy import Cfg, Sub, category, current_problems, decide
 from app.services.sms_text import raised_text, summary_text
 
 STARTUP_GRACE_S = 900      # after a restart the tracker is empty until the raise delays pass: no lowering yet
+GRACE_MARGIN_S = 60        # on top of the longest raise delay (internet_down_minutes can be up to 60)
 RETENTION_DAYS = 90
 
 
@@ -78,7 +79,8 @@ class SmsNotifier:
 
         pairs = {(p, uid) for p in problems for uid in recipients}
         pairs |= {k for k, s in subs.items() if s.sent is not None or s.seen is not None}
-        in_grace = now < self.started_at + timedelta(seconds=STARTUP_GRACE_S)
+        grace_s = max(STARTUP_GRACE_S, cfg.internet_down_s + GRACE_MARGIN_S)
+        in_grace = now < self.started_at + timedelta(seconds=grace_s)
 
         for problem, uid in sorted(pairs):
             if uid not in users:
@@ -96,7 +98,7 @@ class SmsNotifier:
                 continue
             if cats is None:
                 continue
-            eff = effective_level(a, cats)
+            eff = effective_level(a, cats, told=(row.seen or row.sent) if row else None)
             sub = Sub(row.sent, row.seen, row.changes, _utc(row.episode_start)) if row else Sub(None, None, 0, None)
             if in_grace and _rank(eff) < _rank(sub.seen):
                 continue
@@ -105,12 +107,14 @@ class SmsNotifier:
                 row = SmsSubscription(problem=problem, user_id=uid, changes=0, last_text="", code="")
                 session.add(row)
                 subs[(problem, uid)] = row
-            if row is not None and a is not None and eff is not None:
+            if row is not None and a is not None and eff == a.level:   # the text of what they were told about
                 row.last_text, row.code = raised_text(a), a.code
             if d.kind == "none":
                 continue
+            kept = waiting.pop((problem, uid), []) if d.keep else []
             for it in waiting.pop((problem, uid), []):
                 it.state = "not_needed" if d.kind == "drop" else "superseded"
+            level_before = sub.seen
             row.sent, row.seen, row.changes, row.episode_start = (
                 d.sub.sent, d.sub.seen, d.sub.changes, d.sub.episode_start)
             if d.kind == "drop":
@@ -120,7 +124,9 @@ class SmsNotifier:
             else:
                 start = d.sub.episode_start or now
                 if eff is None:
-                    code, level, raised = row.code, d.sub.sent, False
+                    code, level, raised = row.code, d.sub.sent or level_before, False
+                    if code == "internet_down":     # the outage began a raise delay before the alarm
+                        start -= timedelta(seconds=cfg.internet_down_s)
                     text = summary_text(row.code, None, row.last_text, d.sub.changes, start, now)
                 else:
                     code, level, raised = a.code, eff, True
@@ -129,7 +135,7 @@ class SmsNotifier:
                            phone=users[uid].phone, text=text, is_test=False, state="pending",
                            created_at=now, ready_at=d.ready_at)
             session.add(item)
-            waiting[(problem, uid)] = [item]
+            waiting[(problem, uid)] = [*kept, item]
 
         # still-pending items: current number and text; the recipient may have dropped the category or number
         for (problem, uid), its in waiting.items():

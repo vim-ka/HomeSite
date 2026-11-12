@@ -111,3 +111,20 @@ def test_drop_to_nothing_resets_episode():
 def test_new_raise_after_ended_episode_starts_fresh():
     d = decide(Sub(None, None, 0, T0), "ERROR", at(2, day=25), CFG)
     assert d.sub.episode_start == at(2, day=25)
+
+
+def test_error_cleared_before_its_first_sms_keeps_it_and_adds_a_clear():
+    """A lost alarm SMS is worse than a duplicate: the pending ERROR first stays, «Снято» follows."""
+    d = decide(Sub(None, "ERROR", 0, T0), None, at(3), CFG)
+    assert (d.kind, d.keep) == ("summary", True)
+    assert d.ready_at == at(3) + timedelta(seconds=600)          # an ERROR's clear ignores the quiet hours
+    assert (d.sub.sent, d.sub.seen, d.sub.changes, d.sub.episode_start) == (None, None, 1, T0)
+
+
+def test_error_seen_by_a_warning_only_recipient_stays_a_warning():
+    err = Alarm("pressure_low", "ERROR", "t", group="pressure")
+    assert effective_level(err, {"warning"}) is None                     # never told: no ERROR SMS for them
+    assert effective_level(err, {"warning"}, told="WARNING") == "WARNING"  # escalation of their warning
+    assert effective_level(err, {"critical", "warning"}, told="WARNING") == "ERROR"
+    nl = Alarm("no_link", "ERROR", "t", group="link")
+    assert effective_level(nl, {"warning"}, told="WARNING") is None      # not a level-based category

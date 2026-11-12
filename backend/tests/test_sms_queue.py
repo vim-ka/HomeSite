@@ -353,3 +353,11 @@ async def test_quiet_default_when_keys_missing(db_session):
     from app.services.sms_queue import quiet_now
     assert await quiet_now(db_session, datetime(2026, 11, 12, 2, 0, tzinfo=UTC)) is True
     assert await quiet_now(db_session, datetime(2026, 11, 12, 12, 0, tzinfo=UTC)) is False
+
+
+def test_cfg_carries_the_internet_raise_delay():
+    from app.services.sms_queue import cfg_from_kv
+
+    assert cfg_from_kv({}).internet_down_s == 300
+    assert cfg_from_kv({"internet_down_minutes": "30"}).internet_down_s == 1800
+    assert cfg_from_kv({"internet_down_minutes": "x"}).internet_down_s == 300

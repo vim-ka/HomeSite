@@ -22,7 +22,13 @@ from app.services.gateway_client import GatewayClient
 from app.services.internet_probe import default_router, reachable, target
 from app.services.scheme_service import CONTROLLER_DEVICE, SchemeService
 from app.services.sms_notifier import SmsNotifier
-from app.services.sms_queue import CFG_KEYS, cfg_from_kv, phone_status, poll_seconds
+from app.services.sms_queue import (
+    CFG_KEYS,
+    DEFAULT_INTERNET_DOWN_MINUTES,
+    cfg_from_kv,
+    phone_status,
+    poll_seconds,
+)
 
 logger = get_logger(__name__)
 
@@ -30,10 +36,9 @@ DEFAULT_POLL_INTERVAL = 30  # seconds
 DEFAULT_STALE_MINUTES = 5
 
 DEFAULT_INTERNET_HOSTS = "77.88.8.8:53,1.1.1.1:53,ya.ru:443,8.8.8.8:53"
-DEFAULT_INTERNET_DOWN_MINUTES = 5
 PROBE_EVERY_S = 60
 PROBE_TIMEOUT_S = 3.0
-SMS_KEYS = (*CFG_KEYS, "internet_check_hosts", "internet_down_minutes", "internet_router_host")
+SMS_KEYS = (*CFG_KEYS, "internet_check_hosts", "internet_router_host")
 
 # Safety flags reported in the boiler controller heartbeat → event text
 

@@ -1,6 +1,6 @@
 """SmsNotifier: per-(problem, recipient) subscriptions and the SMS queue items (DB-backed)."""
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, time, timedelta
 
 import pytest
 from sqlalchemy import select
@@ -10,6 +10,7 @@ from app.models.user import User
 from app.services.alarm_rules import Alarm
 from app.services.sms_notifier import STARTUP_GRACE_S, SmsNotifier
 from app.services.sms_policy import Cfg
+from app.services.sms_queue import _record_sent
 
 T0 = datetime(2026, 11, 12, 12, 0, tzinfo=UTC)
 CFG = Cfg(None, None)
@@ -37,13 +38,11 @@ async def pending(db) -> list[SmsItem]:
 
 
 async def form_all(db) -> None:
-    """What the queue (Task 5) does when it forms pending items into a message."""
-    for it in await pending(db):
+    """What the queue does when it forms pending items into a message (its own bookkeeping, `_record_sent`)."""
+    got = await pending(db)
+    for it in got:
         it.state = "formed"
-        sub = (await db.execute(select(SmsSubscription).where(
-            SmsSubscription.problem == it.problem, SmsSubscription.user_id == it.user_id))).scalar_one()
-        sub.sent = it.level if it.raised else None
-        sub.changes = 0
+    await _record_sent(db, got)
     await db.commit()
 
 
@@ -255,3 +254,128 @@ async def test_deescalation_for_critical_only_still_clears(db_session):
     p = await pending(db_session)
     assert len(p) == 1 and (p[0].kind, p[0].raised) == ("summary", False)
     assert p[0].text.startswith("Снято: Низкое давление")
+
+
+# ---------------------------------------------------------------- final review fixes
+WARN = Alarm("pressure_warn", "WARNING", "Давление отопления понижено: 0.9 бар", 60, group="pressure")
+NET = Alarm("internet_down", "ERROR", "Нет интернета", 300)
+
+
+@pytest.mark.asyncio
+async def test_short_error_is_not_lost(db_session):
+    """Raised and cleared before its SMS was formed: the ERROR still goes, «Снято» follows."""
+    await add_user(db_session, "a", "+79990000001", "critical")
+    n = notifier()
+    await n.apply(db_session, [LOW], T0, CFG)
+    t = T0 + timedelta(seconds=20)
+    await n.apply(db_session, [], t, CFG)
+    p = await pending(db_session)
+    assert [(i.kind, i.raised, i.level) for i in p] == [("first", True, "ERROR"), ("summary", False, "ERROR")]
+    assert p[0].ready_at.replace(tzinfo=UTC) == T0 + timedelta(seconds=60)
+    assert p[1].text == f"Снято: {LOW.text}"
+    assert p[1].ready_at.replace(tzinfo=UTC) == t + timedelta(seconds=600)
+    await n.apply(db_session, [], t + timedelta(seconds=30), CFG)      # nothing new while it stays clear
+    assert len(await items(db_session)) == 2
+    await form_all(db_session)
+    s = await _sub(db_session)
+    assert (s.sent, s.seen, s.episode_start) == (None, None, None)     # episode over after both went out
+
+
+@pytest.mark.asyncio
+async def test_short_error_formed_together_with_its_clear(db_session):
+    from app.services.sms_queue import next_message
+
+    await add_user(db_session, "a", "+79990000001", "critical")
+    n = notifier()
+    await n.apply(db_session, [LOW], T0, CFG)
+    await n.apply(db_session, [], T0 + timedelta(seconds=20), CFG)
+    msg = await next_message(db_session, False, T0 + timedelta(minutes=15))   # the phone was away meanwhile
+    assert msg.text == f"{LOW.text}; Снято: {LOW.text}"
+    s = await _sub(db_session)
+    assert (s.sent, s.seen, s.episode_start) == (None, None, None)
+
+
+@pytest.mark.asyncio
+async def test_short_warning_at_night_sends_nothing(db_session):
+    await add_user(db_session, "a", "+79990000001", "warning")
+    night = Cfg(time(10), time(14))
+    n = notifier()
+    await n.apply(db_session, [WARN], T0, night)
+    await n.apply(db_session, [], T0 + timedelta(minutes=5), night)
+    assert await pending(db_session) == []
+
+
+@pytest.mark.asyncio
+async def test_escalation_for_a_warning_only_recipient_is_no_clear(db_session):
+    await add_user(db_session, "a", "+79990000001", "warning")
+    n = notifier()
+    await n.apply(db_session, [WARN], T0, CFG)
+    await form_all(db_session)
+    await n.apply(db_session, [LOW], T0 + timedelta(minutes=1), CFG)    # WARNING → ERROR in the group
+    assert await pending(db_session) == []                              # no false «Снято», no ERROR SMS
+    s = await _sub(db_session)
+    assert (s.sent, s.seen) == ("WARNING", "WARNING")
+    await n.apply(db_session, [], T0 + timedelta(minutes=2), CFG)
+    p = await pending(db_session)
+    assert len(p) == 1 and (p[0].kind, p[0].raised, p[0].level) == ("summary", False, "WARNING")
+    assert p[0].text == f"Снято: {WARN.text}"
+
+
+@pytest.mark.asyncio
+async def test_internet_clear_counts_from_the_outage_start(db_session):
+    await add_user(db_session, "a", "+79990000001", "internet")
+    n = notifier()
+    await n.apply(db_session, [NET], T0, CFG)           # raised after its 5-min delay: the outage began at T0 − 5
+    await form_all(db_session)
+    await n.apply(db_session, [], T0 + timedelta(minutes=40), CFG)
+    p = await pending(db_session)
+    assert [i.text for i in p] == ["Интернет есть, не было 45 мин"]
+
+
+async def _restored_net(db) -> None:
+    u = await add_user(db, "a", "+79990000001", "internet")
+    db.add(SmsSubscription(problem="internet_down", user_id=u.id, sent="ERROR", seen="ERROR", changes=0,
+                           episode_start=T0 - timedelta(hours=2), last_text=NET.text, code=NET.code))
+    await db.commit()
+
+
+@pytest.mark.asyncio
+async def test_startup_grace_covers_a_long_internet_delay(db_session):
+    """Restarted mid-outage with a 30-min delay: no false «Интернет есть» before the tracker can re-raise it."""
+    await _restored_net(db_session)
+    cfg = Cfg(None, None, internet_down_s=30 * 60)
+    n = SmsNotifier(started_at=T0)
+    await n.apply(db_session, [], T0 + timedelta(seconds=STARTUP_GRACE_S + 60), cfg)
+    await n.apply(db_session, [], T0 + timedelta(minutes=30), cfg)
+    assert await items(db_session) == []
+    t = T0 + timedelta(minutes=31, seconds=1)
+    await n.apply(db_session, [], t, cfg)
+    p = await pending(db_session)
+    assert len(p) == 1 and (p[0].kind, p[0].raised) == ("summary", False)
+
+
+@pytest.mark.asyncio
+async def test_escalation_during_startup_grace_goes_out(db_session):
+    u = await add_user(db_session, "a", "+79990000001", "critical,warning")
+    db_session.add(SmsSubscription(problem="pressure", user_id=u.id, sent="WARNING", seen="WARNING", changes=0,
+                                   episode_start=T0 - timedelta(hours=2), last_text=WARN.text, code=WARN.code))
+    await db_session.commit()
+    n = SmsNotifier(started_at=T0)
+    await n.apply(db_session, [LOW], T0 + timedelta(minutes=1), CFG)
+    p = await pending(db_session)
+    assert len(p) == 1 and (p[0].kind, p[0].level, p[0].text) == ("first", "ERROR", LOW.text)
+
+
+@pytest.mark.asyncio
+async def test_error_lowered_to_warning_at_night_goes_at_once(db_session):
+    """Recovery after a critical: the summary ignores the quiet hours."""
+    await add_user(db_session, "a", "+79990000001", "critical,warning")
+    night = Cfg(time(10), time(14))                      # T0 = 12:00 is inside
+    n = notifier()
+    await n.apply(db_session, [LOW], T0, night)
+    await form_all(db_session)
+    t = T0 + timedelta(minutes=1)
+    await n.apply(db_session, [WARN], t, night)
+    p = await pending(db_session)
+    assert len(p) == 1 and (p[0].kind, p[0].raised, p[0].level) == ("summary", True, "WARNING")
+    assert p[0].ready_at.replace(tzinfo=UTC) == t + timedelta(seconds=600)

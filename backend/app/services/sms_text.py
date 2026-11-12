@@ -63,11 +63,12 @@ def merge(parts: list[Part], limit: int = SMS_LIMIT) -> tuple[str, list[Part]]:
 
     Parts that do not fit are summarised as «…и ещё N, подробнее на сайте» and still count as reported."""
     ordered = sorted(parts, key=lambda p: (_LEVEL_ORDER.get(p.level, 2), 0 if p.raised else 1))
-    seen: set[str] = set()
+    # one raise and one clear per problem: a short ERROR's first SMS and its «Снято» may be formed together
+    seen: set[tuple[str, bool]] = set()
     uniq: list[Part] = []
     for p in ordered:
-        if p.problem not in seen:
-            seen.add(p.problem)
+        if (p.problem, p.raised) not in seen:
+            seen.add((p.problem, p.raised))
             uniq.append(p)
     if not uniq:
         return "", []

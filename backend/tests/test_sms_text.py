@@ -44,6 +44,13 @@ def test_merge_dedupes_problem():
     assert [p.problem for p in out] == ["a", "b"]
 
 
+def test_merge_keeps_a_raise_and_its_clear_of_one_problem():
+    """A short ERROR whose first SMS and «Снято» are formed together: both are told, raise first."""
+    text, out = merge([P("a", "Снято: low", raised=False), P("a", "low")])
+    assert text == "low; Снято: low"
+    assert [(p.problem, p.raised) for p in out] == [("a", True), ("a", False)]
+
+
 def test_summary_internet():
     assert summary_text("internet_down", None, "", 1, NOW - timedelta(minutes=47), NOW) == "Интернет есть, не было 47 мин"
 

@@ -37,10 +37,19 @@ def current_problems(active: Iterable[Alarm]) -> dict[str, Alarm]:
     return out
 
 
-def effective_level(a: Alarm | None, categories: set[str]) -> str | None:
-    if a is None or category(a) not in categories:
+def effective_level(a: Alarm | None, categories: set[str], told: str | None = None) -> str | None:
+    """The alarm's level as this recipient sees it; None if their categories don't cover it.
+
+    `told` is the level the recipient's episode is at: a warning-only recipient told about a WARNING keeps
+    seeing that problem at WARNING when it escalates to ERROR (no false «Снято», no ERROR SMS they opted out of)."""
+    if a is None:
         return None
-    return a.level
+    cat = category(a)
+    if cat in categories:
+        return a.level
+    if cat == "critical" and "warning" in categories and told == "WARNING":
+        return "WARNING"
+    return None
 
 
 @dataclass
@@ -49,6 +58,7 @@ class Cfg:
     quiet_end: time | None
     merge_s: int = 60
     settle_s: int = 600
+    internet_down_s: int = 300    # the raise delay of «Нет интернета» (internet_down_minutes)
 
 
 def _has_quiet(cfg: Cfg) -> bool:
@@ -84,6 +94,7 @@ class Decision:
     kind: Literal["none", "first", "summary", "drop"]
     ready_at: datetime | None
     sub: Sub
+    keep: bool = False    # a summary that must not replace the pending items (they still have to go out)
 
 
 def _rank(level: str | None) -> int:
@@ -98,8 +109,13 @@ def decide(sub: Sub, eff: str | None, now: datetime, cfg: Cfg) -> Decision:
         new = replace(sub, seen=eff, changes=0, episode_start=now if fresh else (sub.episode_start or now))
         ready, quiet_level, kind = now + timedelta(seconds=cfg.merge_s), eff, "first"
     elif eff == sub.sent:
-        if eff is None and sub.sent is None:   # episode ended with nothing to send
-            return Decision("drop", None, Sub(None, None, 0, None))
+        if eff is None and sub.sent is None:
+            if sub.seen == "ERROR":
+                # an ERROR cleared before its first SMS was formed: that SMS still goes (a lost alarm SMS is
+                # worse than a duplicate) and its «Снято» follows; a WARNING is just forgotten
+                new = replace(sub, seen=None, changes=sub.changes + 1)
+                return Decision("summary", now + timedelta(seconds=cfg.settle_s), new, keep=True)
+            return Decision("drop", None, Sub(None, None, 0, None))   # episode ended with nothing to send
         return Decision("drop", None, replace(sub, seen=eff, changes=sub.changes + 1))
     else:
         new = replace(sub, seen=eff, changes=sub.changes + 1)
