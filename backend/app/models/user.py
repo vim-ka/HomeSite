@@ -23,6 +23,9 @@ class User(Base, TimestampMixin):
     email: Mapped[str] = mapped_column(String(120), unique=True, nullable=False)
     role: Mapped[str] = mapped_column(String(20), default=UserRole.VIEWER.value, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    phone: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    # comma-separated subset of app.services.sms_text.SMS_CATEGORIES
+    sms_categories: Mapped[str] = mapped_column(String(64), default="", server_default="", nullable=False)
 
     def __repr__(self) -> str:
         return f"<User {self.username} role={self.role}>"
