@@ -67,6 +67,18 @@ the tank coil at the start of a loading and the expansion vessel (heating pressu
 ΔT colours too (`frontend/src/scheme/deltas.ts`) — change both together. Statistics → «Эффективность»: charts
 `ChartDeltas` (per-circuit supply − return from the circuits' mount points) and `ChartBoilerReturn`.
 
+**SMS notifications**: the HealthMonitor hands every poll's alarms to `SmsNotifier.apply` (`app/services/sms_notifier.py`),
+which for each (problem, recipient) asks `sms_policy.decide` and writes `SmsItem` rows (the queue, `sms_queue.py`).
+The home Android phone (MacroDroid, over Wi-Fi) calls `GET /api/v1/sms/next`: the queue forms an immutable `SmsMessage`
+(`sms_text.merge`, ≤ 134 chars) and the phone confirms with `POST /api/v1/sms/done`; `ping` reports the phone is alive.
+First SMS about a problem goes at once, then only the settled last state (`sms_merge_seconds`, `sms_settle_minutes`);
+ERROR any time, WARNING outside quiet hours (`sms_quiet_start/end`). `SMS_LOCK` serialises notifier and queue (one
+process, one event loop). After a restart a 15 min grace (`STARTUP_GRACE_S`) forbids lowering a level while the
+AlarmTracker is still empty. Recipients = phone + SMS categories in the user card (admin only). Journal / keys / test
+SMS: page `/sms` (`app/api/v1/sms.py`, `SmsPage.tsx`); the phone's own Swagger: `/api/v1/sms/docs` (works on prod).
+Internet loss is probed by `internet_probe.py` (several hosts, router for the LAN check). New alarms in `alarm_rules.py`:
+`internet_down` (ERROR), `lan_down`, `sms_phone_silent`, `sms_failed` (banner only, no SMS).
+
 **Scheme page** (`/scheme`): SCADA-style mnemonic of the boiler room. Backend `GET /api/v1/scheme/state`
 (`app/services/scheme_service.py`) aggregates sensors by role (circuit mount points), controller heartbeat
 (relays, flags, targets), gateway sync lists and alarms. Frontend `src/scheme/*`: pure SVG elements,
@@ -128,6 +140,9 @@ Runtime settings stored in `config_kv` table (not in `.env`):
   `watersupply_recirc_schedule_enabled` + `watersupply_recirc_{morning,evening}_{start,end}`
 - Well water pressure range for the scheme manometer (display only): `water_pressure_min`, `water_pressure_max`
 - Backups: `backup_enabled`, `backup_interval`, `backup_time` (UTC), `backup_last_run` — set via `/settings/backup-schedule`
+- SMS: `sms_quiet_start`, `sms_quiet_end` (HH:MM UTC, default 18:00–04:00), `sms_merge_seconds`, `sms_settle_minutes`,
+  `sms_poll_seconds`; internet loss: `internet_check_hosts`, `internet_down_minutes`, `internet_router_host`.
+  Internal (not PUT-writable): `sms_key_*_hash`, `sms_key_*_issued_at`, `sms_last_poll_at`
 
 Every key writable via `PUT /settings` must be in the allowlist `backend/app/core/setting_rules.py`
 (type, range, admin-only flag). Device ranges there mirror the firmware SETTINGS table in
@@ -203,21 +218,17 @@ CI/CD planned via GitHub Actions self-hosted runner.
 - [ ] **CI/CD**: GitHub Actions self-hosted runner on the VM
 - [x] **ESP32 firmware**: Add `/ack` response and `/heartbeat` publishing to firmware
 - [x] **Range monitoring**: Pressure outside min/max → ERROR, boiler overheating → ERROR
-- [ ] **СМС-уведомления** (решение владельца 11.11.2026; заменяет «Notifications: Push/Telegram»):
-  Android-телефон дома с MacroDroid по Wi-Fi забирает СМС из очереди бэкенда и шлёт со своей SIM.
-  Контракт API — как у сайта клуба LiteEnglishSite (`/api/sms/ping|next|done`, ключ в заголовке
-  `Authorization: Bearer` / `X-SMS-Key`, `poll_after`, бронь 10 мин, повторы, журнал; спека там:
-  `docs/superpowers/specs/2026-11-11-sms-notifications-design.md`). Код пишется заново (FastAPI), второй
-  макрос в том же MacroDroid. Отличия от клуба: критические тревоги идут **сразу, без тихих часов**;
-  склейка и «снята» против дребезга тревог; самоподписанный сертификат Nginx — проверить, примет ли
-  MacroDroid, иначе HTTP только для LAN или Let's Encrypt. Источники СМС:
-  - тревоги `AlarmTracker` (поднята / снята), потеря связи с контроллером;
-  - **пропал интернет** (владелец): HealthMonitor периодически проверяет несколько внешних адресов,
-    все недоступны N минут → СМС «нет интернета», при возврате — «интернет есть, не было X мин».
-    Телефон достаёт бэкенд по Wi-Fi и шлёт через сотовую сеть, так что это работает и без интернета;
-  - **пропало электричество** (владелец): ИБП есть — мониторить его (NUT / USB или ПО ИБП на хосте
-    Hyper-V; как ИБП подключён — выяснить) → СМС «работаем от батареи, заряд N%», «электричество
-    вернулось», «заряд ниже X%, скоро отключение». Роутер и ВМ должны быть на ИБП, иначе СМС не уйдёт.
+- [ ] **СМС-уведомления** (решение владельца 11.11.2026; заменяет «Notifications: Push/Telegram»; спека
+  `docs/superpowers/specs/2026-11-12-sms-notifications-design.md`): Android-телефон дома с MacroDroid по Wi-Fi
+  забирает СМС из очереди бэкенда и шлёт со своей SIM.
+  - Сделано: очередь, API `/api/v1/sms/ping|next|done`, журнал `/sms`, склейка, тревоги `AlarmTracker`
+    (поднята / снята, критические без тихих часов), потеря связи с контроллером, **пропал интернет**
+    (`internet_down`: проверка нескольких адресов, СМС при пропаже и при возврате).
+  - Осталось: **пропало электричество** — ИБП APC (подключён по сети): мониторить его → СМС «работаем от батареи,
+    заряд N%», «электричество вернулось», «заряд ниже X%, скоро отключение». Роутер и ВМ должны быть на ИБП,
+    иначе СМС не уйдёт.
+  - Осталось: проверить на настоящем телефоне, примет ли MacroDroid самоподписанный сертификат Nginx; если нет —
+    включить закомментированный HTTP-блок только для LAN в `deploy/nginx/homesite.conf` или Let's Encrypt.
 
 ### Medium Priority
 - [ ] **Data migration**: Transfer data from SQLite → PostgreSQL (not just schema + seed)
