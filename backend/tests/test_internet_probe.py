@@ -43,3 +43,13 @@ def test_target_adds_the_default_port_and_rejects_garbage():
     assert target("192.168.55.1", 80) == "192.168.55.1:80"
     for bad in ("", "  ", "ya.ru:abc", "ya.ru:0", "ya.ru:70000", ":53", "a:b:c"):
         assert target(bad, 443) is None, bad
+
+
+def test_default_router_survives_a_short_route_line():
+    from unittest.mock import mock_open, patch
+
+    table = "Iface\tDestination\tGateway\tFlags\n" "eth0\t00000000\t0137A8C0\n" "eth1\t00000000\t0137A8C0\t0003\n"
+    with patch("app.services.internet_probe.open", mock_open(read_data=table), create=True):
+        assert default_router() == "192.168.55.1:80"
+    with patch("app.services.internet_probe.open", mock_open(read_data=table.rsplit("\n", 2)[0] + "\n"), create=True):
+        assert default_router() is None

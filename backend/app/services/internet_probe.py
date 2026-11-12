@@ -54,9 +54,9 @@ def default_router() -> str | None:
             next(f, None)
             for line in f:
                 cols = line.split()
-                if len(cols) > 2 and cols[1] == "00000000" and int(cols[3], 16) & 2:
+                if len(cols) > 3 and cols[1] == "00000000" and int(cols[3], 16) & 2:
                     return f"{socket.inet_ntoa(struct.pack('<L', int(cols[2], 16)))}:80"
-    except (OSError, ValueError):
+    except Exception:   # unreadable / odd table: no router known, never an error for the monitor
         pass
     return None
 
