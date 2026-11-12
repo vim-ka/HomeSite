@@ -354,7 +354,7 @@ class HealthMonitor:
                 )
             except Exception as e:
                 logger.exception("internet_probe_error", error=str(e))
-                return {}
+                return {"internet": None, "router": None, "down_s": minutes * 60}   # unknown: alarms held
             self._net = (now, {"internet": internet, "router": router_ok})
         return {**self._net[1], "down_s": minutes * 60}
 

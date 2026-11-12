@@ -60,6 +60,7 @@ class Snapshot:
     rooms: list[tuple[str, float | None]]     # heated rooms: (name, fresh value or None)
     hb: dict = field(default_factory=dict)    # raw controller heartbeat data ({} when offline)
     net: dict = field(default_factory=dict)   # {"internet": bool|None, "router": bool|None, "down_s": int}; {} = no probe
+    #                                           internet None = the probe failed (unknown, alarms held)
     sms: dict = field(default_factory=dict)   # {"silent": bool, "failed": int} — the SMS phone queue
 
 
@@ -218,6 +219,11 @@ def unknown(s: Snapshot) -> set[str]:
         codes |= {"pressure_low", "pressure_low_long", "pressure_high", "pressure_high_long"}
     if not s.online or _val(s, "boiler_supply") is None:
         codes |= {"no_heat:rad", "no_heat:floor", "tank_no_heat", "supply_below_return"}
+    if s.net:   # no router or a failed probe says nothing about the internet
+        if s.net.get("internet") is None:
+            codes |= {"internet_down", "lan_down"}
+        elif s.net.get("router") is False:
+            codes.add("internet_down")
     return codes
 
 

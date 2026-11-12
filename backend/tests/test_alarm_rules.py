@@ -302,6 +302,15 @@ def test_no_probe_no_alarm():
     assert "internet_down" not in got and "lan_down" not in got
 
 
+def test_internet_is_unknown_without_the_router_or_a_probe_result():
+    """No router (or a failed probe) says nothing about the internet: an active «Нет интернета» is held."""
+    assert "internet_down" in unknown(snap(net={"internet": False, "router": False, "down_s": 300}))
+    failed = unknown(snap(net={"internet": None, "router": None, "down_s": 300}))
+    assert {"internet_down", "lan_down"} <= failed
+    for net in ({"internet": False, "router": True, "down_s": 300}, {"internet": True, "router": None}, {}):
+        assert not {"internet_down", "lan_down"} & unknown(snap(net=net)), net
+
+
 def test_sms_phone_silent():
     a = codes(snap(sms={"silent": True, "failed": 0}))["sms_phone_silent"]
     assert a.level == "ERROR"

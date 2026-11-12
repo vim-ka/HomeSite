@@ -302,3 +302,60 @@ async def test_no_parseable_internet_targets_switches_the_probe_off(engine, db_s
     """An unparseable list must never read as «no internet» (a permanent false ERROR)."""
     calls = await _probed(engine, db_session, monkeypatch, "ya.ru:abc, :53")
     assert calls == []
+
+
+async def _net_monitor(engine, db_session, monkeypatch, clock):
+    from app.models.config import ConfigKV
+    await seed(db_session)
+    db_session.add_all([ConfigKV(key="internet_down_minutes", value="1"),
+                        ConfigKV(key="internet_router_host", value="192.168.55.1")])
+    await db_session.commit()
+    m = _monitor(engine)
+    m._now = lambda: clock["now"]
+    _with_gateway(m, monkeypatch, gateway())
+    return m
+
+
+async def test_router_lost_holds_an_active_internet_alarm(engine, db_session, monkeypatch):
+    clock = {"now": NOW}
+    m = await _net_monitor(engine, db_session, monkeypatch, clock)
+    net = {"internet": False, "router": True}
+
+    async def fake(targets, _timeout=3.0):
+        return net["router"] if targets == ["192.168.55.1:80"] else net["internet"]
+
+    monkeypatch.setattr("app.services.health_monitor.reachable", fake)
+    for i in range(3):
+        clock["now"] = NOW + timedelta(seconds=61 * i)
+        await m._check()
+    assert "internet_down" in [a["code"] for a in m.state.active_alarms]
+
+    net["router"] = False
+    for i in range(3, 10):
+        clock["now"] = NOW + timedelta(seconds=61 * i)
+        await m._check()
+    active = [a["code"] for a in m.state.active_alarms]
+    assert "lan_down" in active and "internet_down" in active
+    assert not any((e.message or "") == "Снято: Нет интернета" for e in await _events(db_session))
+
+
+async def test_a_failing_probe_holds_an_active_internet_alarm(engine, db_session, monkeypatch):
+    clock = {"now": NOW}
+    m = await _net_monitor(engine, db_session, monkeypatch, clock)
+    broken = {"on": False}
+
+    async def fake(targets, _timeout=3.0):
+        if broken["on"]:
+            raise RuntimeError("probe bug")
+        return targets == ["192.168.55.1:80"]
+
+    monkeypatch.setattr("app.services.health_monitor.reachable", fake)
+    for i in range(3):
+        clock["now"] = NOW + timedelta(seconds=61 * i)
+        await m._check()
+    assert "internet_down" in [a["code"] for a in m.state.active_alarms]
+    broken["on"] = True
+    for i in range(3, 10):
+        clock["now"] = NOW + timedelta(seconds=61 * i)
+        await m._check()
+    assert "internet_down" in [a["code"] for a in m.state.active_alarms]
