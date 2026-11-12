@@ -4,6 +4,7 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
+from app.models.config import ConfigKV
 from app.models.event import EventLog
 from app.models.heating import HeatingCircuit
 from app.services.health_monitor import HealthMonitor
@@ -206,6 +207,7 @@ async def _sms_setup(engine, db_session, monkeypatch):
     await seed(db_session)
     db_session.add(User(username="a", password_hash="x", email="a@x", role="viewer",
                         phone="+79990000001", sms_categories="critical"))
+    db_session.add(ConfigKV(key="sms_enabled", value="1"))
     await db_session.commit()
     m = _monitor(engine)
     m.sms.started_at = NOW - timedelta(hours=1)
@@ -223,6 +225,18 @@ async def test_alarm_reaches_sms_queue(engine, db_session, monkeypatch):
     db_session.expire_all()
     got = list((await db_session.execute(select(SmsItem))).scalars())
     assert [(i.state, i.code, i.phone) for i in got] == [("pending", "pressure_low", "+79990000001")]
+
+
+async def test_sms_switched_off_queues_nothing(engine, db_session, monkeypatch):
+    m = await _sms_setup(engine, db_session, monkeypatch)
+    row = (await db_session.execute(select(ConfigKV).where(ConfigKV.key == "sms_enabled"))).scalar_one()
+    row.value = "0"
+    await db_session.commit()
+    await m._check()
+    await m._check()
+    db_session.expire_all()
+    assert list((await db_session.execute(select(SmsItem))).scalars()) == []
+    assert "pressure_low" in m.alarms.active          # the alarm itself still works
 
 
 async def test_sms_failure_does_not_break_alarms(engine, db_session, monkeypatch):

@@ -130,6 +130,8 @@ RULES: dict[str, SettingRule] = {
     "sms_poll_seconds": _sys("int", 30, 900),
     "internet_check_hosts": _sys("hostlist"),   # host[:port],… (no port → 443); empty = probe off
     "internet_down_minutes": _sys("int", 1, 60),
+    # master switch of SMS (queue, phone API, settings tab); off by default
+    "sms_enabled": _sys("bool"),
     "internet_router_host": _sys("host"),       # host[:port] (no port → 80); empty = the VM's gateway
 }
 

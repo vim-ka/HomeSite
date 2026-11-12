@@ -417,7 +417,11 @@
       "deviceName": "MQTT device name (node_name from ESP32 firmware). Command is published to home/devices/{device}/command/{param}",
       "mqttParam": "MQTT command parameter name. ESP32 receives JSON {\"param\": \"value\"}"
     },
-    "tabSms": "SMS"
+    "tabSms": "SMS",
+    "smsFeature": "SMS sending",
+    "smsFeatureOn": "SMS sending is on",
+    "smsFeatureOnHint": "Alarms go out as SMS via the phone with MacroDroid. Settings, journal and the phone key are on the «SMS» tab.",
+    "smsFeatureOffHint": "Off: no SMS are queued, the «SMS» tab is hidden, the phone API does not answer."
   },
   "about": {
     "title": "About",
@@ -482,7 +486,6 @@
     "copy": "Copy",
     "copied": "Copied",
     "close": "Close",
-    "testMe": "Send a test SMS to my number",
     "testSent": "Test SMS queued",
     "testFailed": "Could not queue the test SMS",
     "api": "Phone API description (Swagger)",
@@ -502,7 +505,8 @@
     "keyNew": "New phone key",
     "keyFailed": "Could not issue the key",
     "retryFailed": "Could not retry",
-    "testTo": "will go to {{phone}}",
-    "testNoPhone": "Your phone number is not set — add it in the user card (System settings → Users)"
+    "testTo": "Send a test SMS to",
+    "testPhone": "Number for the test SMS",
+    "testBadPhone": "Invalid number. Example: +7 900 123-45-67"
   }
 }

@@ -11,7 +11,7 @@ from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.openapi.utils import get_openapi
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.security import APIKeyHeader, HTTPAuthorizationCredentials, HTTPBearer
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -22,8 +22,15 @@ from app.models.event import EventLog
 from app.models.sms import SmsItem, SmsMessage
 from app.models.user import User, UserRole
 from app.services import sms_queue
+from app.services.sms_text import normalize_phone
 
-router = APIRouter()
+async def sms_switched_on(db: AsyncSession = Depends(get_db)) -> None:
+    """The whole SMS API (phone, Swagger, admin) answers 404 while SMS is switched off in the settings."""
+    if not await sms_queue.sms_enabled(db):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Отправка СМС выключена")
+
+
+router = APIRouter(dependencies=[Depends(sms_switched_on)])
 admin = require_role([UserRole.ADMIN])
 
 _bearer = HTTPBearer(auto_error=False, description="Ключ телефона")
@@ -205,15 +212,23 @@ async def issue_key(user: User = Depends(admin), db: AsyncSession = Depends(get_
     return {"key": key}
 
 
-@router.post("/test-me", summary="Тестовая СМС на свой номер (admin)")
-async def test_me(user: User = Depends(admin), db: AsyncSession = Depends(get_db)) -> dict:
-    if not user.phone:
-        raise HTTPException(status_code=400, detail="У вас не указан телефон")
+class TestSmsIn(BaseModel):
+    phone: str
+
+    @field_validator("phone")
+    @classmethod
+    def _phone(cls, v: str) -> str:
+        return normalize_phone(v)   # ValueError → 422
+
+
+@router.post("/test", summary="Тестовая СМС на указанный номер (admin)")
+async def test_sms(payload: TestSmsIn, user: User = Depends(admin), db: AsyncSession = Depends(get_db)) -> dict:
     now = datetime.now(UTC)
     async with sms_queue.SMS_LOCK:
         db.add(SmsItem(problem="test", code="test", level="INFO", raised=True, kind="test", user_id=user.id,
-                       phone=user.phone, text=TEST_TEXT, is_test=False, state="pending",
+                       phone=payload.phone, text=TEST_TEXT, is_test=False, state="pending",
                        created_at=now, ready_at=now))
-        db.add(EventLog(level="INFO", source="sms", message="Тестовая СМС поставлена в очередь", user_id=user.id))
+        db.add(EventLog(level="INFO", source="sms", message=f"Тестовая СМС на {payload.phone} поставлена в очередь",
+                        user_id=user.id))
         await db.commit()
-    return {"status": "ok"}
+    return {"status": "ok", "phone": payload.phone}

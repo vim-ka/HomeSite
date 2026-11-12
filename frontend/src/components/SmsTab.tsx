@@ -120,13 +120,17 @@ export default function SmsTab() {
     },
     onError: (e) => toast.error(errorText(e, t("sms.keyFailed"))),
   });
+  const [testPhone, setTestPhone] = useState<string | null>(null); // null = not edited yet → the admin's own number
+  const testNumber = testPhone ?? me?.phone ?? "";
   const testMut = useMutation({
-    mutationFn: async () => api.post("/sms/test-me"),
+    mutationFn: async (phone: string) => api.post("/sms/test", { phone }),
     onSuccess: () => {
       toast.success(t("sms.testSent"));
       queryClient.invalidateQueries({ queryKey: ["sms-log"] });
     },
-    onError: (e) => toast.error(errorText(e, t("sms.testFailed"))),
+    onError: (e) =>
+      toast.error((e as { response?: { status?: number } })?.response?.status === 422
+        ? t("sms.testBadPhone") : errorText(e, t("sms.testFailed"))),
   });
 
   const issueKey = () => {
@@ -246,12 +250,17 @@ export default function SmsTab() {
           </button>
         </div>
         <div className="flex flex-wrap items-center gap-3 text-sm">
-          <button className={btnCls} disabled={testMut.isPending || !me?.phone} onClick={() => testMut.mutate()}>
-            {t("sms.testMe")}
+          <button className={btnCls} disabled={testMut.isPending || !testNumber.trim()} onClick={() => testMut.mutate(testNumber.trim())}>
+            {t("sms.testTo")}
           </button>
-          <span className="text-gray-500">
-            {me?.phone ? t("sms.testTo", { phone: me.phone }) : t("sms.testNoPhone")}
-          </span>
+          <input
+            aria-label={t("sms.testPhone")}
+            type="tel"
+            placeholder="+7 900 000-00-00"
+            value={testNumber}
+            onChange={(e) => setTestPhone(e.target.value)}
+            className={`${inputCls} w-48`}
+          />
         </div>
         <a href="/api/v1/sms/docs" target="_blank" rel="noreferrer" className="inline-block text-sm text-primary-700 underline">
           {t("sms.api")}

@@ -72,17 +72,20 @@ describe("SmsTab", () => {
     expect(await screen.findByText("k-123")).toBeInTheDocument();
   });
 
-  it("sends a test SMS to the admin's own number and says which", async () => {
+  it("sends a test SMS to the typed number, prefilled with the admin's own", async () => {
     setup();
-    expect(await screen.findByText("придёт на +79161234567")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Отправить тестовую СМС на мой номер" }));
-    await waitFor(() => expect(api.post).toHaveBeenCalledWith("/sms/test-me"));
+    const input = await screen.findByLabelText("Номер для тестовой СМС");
+    await waitFor(() => expect(input).toHaveValue("+79161234567"));
+    fireEvent.change(input, { target: { value: "8 900 111-22-33" } });
+    fireEvent.click(screen.getByRole("button", { name: "Отправить тестовую СМС на номер" }));
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith("/sms/test", { phone: "8 900 111-22-33" }));
   });
 
-  it("disables the test SMS without the admin's phone", async () => {
+  it("disables the test SMS button while the number is empty", async () => {
     mocked.phone = null;
     setup();
-    expect(await screen.findByText(/У вас не указан телефон/)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Отправить тестовую СМС на мой номер" })).toBeDisabled();
+    const input = await screen.findByLabelText("Номер для тестовой СМС");
+    expect(input).toHaveValue("");
+    expect(screen.getByRole("button", { name: "Отправить тестовую СМС на номер" })).toBeDisabled();
   });
 });

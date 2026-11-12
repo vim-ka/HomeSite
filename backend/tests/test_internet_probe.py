@@ -23,11 +23,21 @@ async def test_reachable_any_target():
         open_ = f"127.0.0.1:{server.sockets[0].getsockname()[1]}"
         assert await reachable([closed, open_], timeout=1) is True
         assert await reachable([closed], timeout=1) is True   # refused = a live host answered
-        assert await reachable([f"10.255.255.1:{await _free_port()}"], timeout=0.3) is False
         assert await reachable([], timeout=1) is False
     finally:
         server.close()
         await server.wait_closed()
+
+
+@pytest.mark.asyncio
+async def test_silent_target_is_unreachable(monkeypatch):
+    """A host that never answers (dropped packets) times out → unreachable. Simulated: real 'black hole'
+    addresses depend on the network (some networks answer them with a refusal)."""
+    async def hang(*_a, **_k):
+        await asyncio.sleep(10)
+
+    monkeypatch.setattr("app.services.internet_probe.asyncio.open_connection", hang)
+    assert await reachable(["192.0.2.1:443"], timeout=0.2) is False
 
 
 def test_default_router_shape():

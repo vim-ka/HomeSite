@@ -26,6 +26,7 @@ from app.services.sms_queue import (
     CFG_KEYS,
     DEFAULT_INTERNET_DOWN_MINUTES,
     cfg_from_kv,
+    is_on,
     phone_status,
     poll_seconds,
 )
@@ -38,7 +39,7 @@ DEFAULT_STALE_MINUTES = 5
 DEFAULT_INTERNET_HOSTS = "77.88.8.8:53,1.1.1.1:53,ya.ru:443,8.8.8.8:53"
 PROBE_EVERY_S = 60
 PROBE_TIMEOUT_S = 3.0
-SMS_KEYS = (*CFG_KEYS, "internet_check_hosts", "internet_router_host")
+SMS_KEYS = (*CFG_KEYS, "internet_check_hosts", "internet_router_host", "sms_enabled")
 
 # Safety flags reported in the boiler controller heartbeat → event text
 
@@ -300,13 +301,15 @@ class HealthMonitor:
         self._targets = dict(c["targets"]) if c["online"] else None
         kv = await self._kv(session, SMS_KEYS)
         net = await self._probe_net(kv, now)
+        sms_on = is_on(kv.get("sms_enabled"))   # SMS switched off: no phone alarms, nothing queued
         sms_state: dict = {}
-        try:
-            async with self.session_factory() as s:
-                st = await phone_status(s, now, await poll_seconds(s))
-            sms_state = {"silent": st["silent"], "failed": st["failed"]}
-        except Exception as e:
-            logger.exception("sms_status_error", error=str(e))
+        if sms_on:
+            try:
+                async with self.session_factory() as s:
+                    st = await phone_status(s, now, await poll_seconds(s))
+                sms_state = {"silent": st["silent"], "failed": st["failed"]}
+            except Exception as e:
+                logger.exception("sms_status_error", error=str(e))
         snap = Snapshot(
             now=now,
             services={"gateway": services.get("gateway", False), "mqtt": services.get("mqtt", False)},
@@ -322,7 +325,8 @@ class HealthMonitor:
             events.append(EventLog(level=a.level, source="alarms", message=a.text))
         for a in cleared:
             events.append(EventLog(level="INFO", source="alarms", message=f"Снято: {a.text}"))
-        await self._notify_sms(kv, now)
+        if sms_on:
+            await self._notify_sms(kv, now)
 
         # efficiency advice over the last 30 min of steady operation (a rule that can't judge holds its advice)
         self.advice_history.add(snap)

@@ -13,6 +13,8 @@ import { useToast } from "@/components/Toast";
 import RfDebugPanel from "@/components/RfDebugPanel";
 import UserSmsModal from "@/components/UserSmsModal";
 import SmsTab from "@/components/SmsTab";
+import SmsFeatureToggle from "@/components/SmsFeatureToggle";
+import { isOn, useSettingsMap } from "@/hooks/useSmsEnabled";
 import Modal from "@/components/Modal";
 
 // ---- Types ----
@@ -1821,6 +1823,12 @@ export default function SettingsPage() {
   const hash = location.hash.replace("#", "");
 
   const [activeTab, setActiveTab] = useState<"equipment" | "system" | "infra" | "devices" | "sms">("equipment");
+  const { data: settingsMap } = useSettingsMap();
+  const smsEnabled = isOn(settingsMap?.sms_enabled);
+  // SMS switched off (or opened by an old /sms link while off): the tab doesn't exist
+  useEffect(() => {
+    if (settingsMap && !smsEnabled && activeTab === "sms") setActiveTab("infra");
+  }, [settingsMap, smsEnabled, activeTab]);
   // on a phone the tab bar scrolls sideways: keep the chosen tab in sight
   useEffect(() => {
     document.querySelector(`[data-tab="${activeTab}"]`)?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
@@ -1948,7 +1956,7 @@ export default function SettingsPage() {
             { id: "system", label: t("settings.tabSystem"), icon: SlidersHorizontal },
             { id: "infra", label: t("settings.tabInfra"), icon: Database },
             { id: "sms", label: t("settings.tabSms"), icon: MessageSquare },
-          ] as const).map(({ id, label, icon: Icon }) => (
+          ] as const).filter(({ id }) => id !== "sms" || smsEnabled).map(({ id, label, icon: Icon }) => (
             <button
               key={id}
               data-tab={id}
@@ -1966,7 +1974,7 @@ export default function SettingsPage() {
         </div>
       )}
 
-      {isAdmin && activeTab === "sms" && <SmsTab />}
+      {isAdmin && activeTab === "sms" && smsEnabled && <SmsTab />}
 
       {/* ======== TAB: EQUIPMENT ======== */}
       {/* Pending Sensors — standalone, only shown when there are new devices */}
@@ -2500,12 +2508,14 @@ export default function SettingsPage() {
                             </span>
                           </td>
                           <td className="px-3 py-2 text-center space-x-2">
-                            <button
-                              onClick={() => setSmsUser(u)}
-                              className="text-primary-600 hover:text-primary-800 text-xs"
-                            >
-                              {t("settings.smsButton")}
-                            </button>
+                            {smsEnabled && (
+                              <button
+                                onClick={() => setSmsUser(u)}
+                                className="text-primary-600 hover:text-primary-800 text-xs"
+                              >
+                                {t("settings.smsButton")}
+                              </button>
+                            )}
                             <button
                               onClick={() => setPwdModal({ userId: u.id, username: u.username })}
                               className="text-primary-600 hover:text-primary-800 text-xs"
@@ -3216,6 +3226,7 @@ export default function SettingsPage() {
 
       {isAdmin && activeTab === "infra" && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="space-y-6">
           {/* MQTT Broker */}
           <CollapsibleSection title={t("settings.mqtt")} icon={Radio} id="mqtt" forceOpen={hash === "mqtt"}>
             <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
@@ -3284,6 +3295,10 @@ export default function SettingsPage() {
               </div>
             </div>
           </CollapsibleSection>
+
+          {/* SMS: master switch */}
+          <SmsFeatureToggle />
+          </div>
 
           {/* Device Gateway */}
           <CollapsibleSection title={t("settings.gateway")} icon={Wrench} id="gateway" forceOpen={hash === "gateway"}>

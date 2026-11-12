@@ -3,6 +3,7 @@
 from datetime import UTC, datetime, timedelta
 
 import pytest
+import pytest_asyncio
 from sqlalchemy import select
 
 from app.models.config import ConfigKV
@@ -11,6 +12,13 @@ from app.models.user import User
 from app.services.sms_queue import issue_key
 
 PHONE = "+79990000001"
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def _sms_on(db_session):
+    """These tests exercise the SMS API, which answers 404 while SMS is switched off."""
+    db_session.add(ConfigKV(key="sms_enabled", value="1"))
+    await db_session.commit()
 
 
 async def add_pending(db, text: str = "Низкое давление", is_test: bool = False) -> SmsItem:

@@ -141,7 +141,8 @@ Runtime settings stored in `config_kv` table (not in `.env`):
   `watersupply_recirc_schedule_enabled` + `watersupply_recirc_{morning,evening}_{start,end}`
 - Well water pressure range for the scheme manometer (display only): `water_pressure_min`, `water_pressure_max`
 - Backups: `backup_enabled`, `backup_interval`, `backup_time` (UTC), `backup_last_run` — set via `/settings/backup-schedule`
-- SMS: `sms_quiet_start`, `sms_quiet_end` (HH:MM UTC, default 18:00–04:00), `sms_merge_seconds`, `sms_settle_minutes`,
+- SMS: master switch `sms_enabled` (bool, default off; Settings → Инфраструктура → «Отправка СМС»: off = nothing
+  queued, no phone alarms, the «СМС» tab hidden, the whole `/api/v1/sms/*` answers 404); `sms_quiet_start`, `sms_quiet_end` (HH:MM UTC, default 18:00–04:00), `sms_merge_seconds`, `sms_settle_minutes`,
   `sms_poll_seconds`; internet loss: `internet_check_hosts`, `internet_down_minutes`, `internet_router_host`.
   Internal (not PUT-writable): `sms_key_*_hash`, `sms_key_*_issued_at`, `sms_last_poll_at`
 

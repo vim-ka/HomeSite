@@ -127,6 +127,16 @@ async def load_cfg(session: AsyncSession) -> Cfg:
     return cfg_from_kv({k: v for k, v in rows})
 
 
+def is_on(value: str | None) -> bool:
+    """A bool setting as stored in config_kv ("1" after PUT /settings normalisation; "true" also accepted)."""
+    return (value or "").strip().lower() in ("1", "true")
+
+
+async def sms_enabled(session: AsyncSession) -> bool:
+    """Master switch `sms_enabled` (config_kv, off by default)."""
+    return is_on(await _get(session, "sms_enabled"))
+
+
 async def quiet_now(session: AsyncSession, now: datetime) -> bool:
     """Whether `now` is inside the quiet hours (`sms_quiet_start`/`sms_quiet_end`, HH:MM UTC; default 18:00–04:00)."""
     return in_quiet(now, await load_cfg(session))

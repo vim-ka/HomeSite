@@ -3,6 +3,7 @@
 from datetime import UTC, datetime, timedelta
 
 import pytest
+import pytest_asyncio
 from sqlalchemy import select
 
 from app.core.security import get_password_hash
@@ -12,6 +13,13 @@ from app.models.sms import SmsItem, SmsMessage
 from app.models.user import User, UserRole
 
 PHONE = "+79990000001"
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def _sms_on(db_session):
+    """These tests exercise the SMS API, which answers 404 while SMS is switched off."""
+    db_session.add(ConfigKV(key="sms_enabled", value="1"))
+    await db_session.commit()
 
 
 async def _token(client, db_session, role: UserRole, phone: str | None = None) -> dict:
@@ -126,27 +134,26 @@ async def test_issue_key_shown_once_and_works(client, db_session):
 
 
 @pytest.mark.asyncio
-async def test_test_me_requires_phone(client, db_session):
+async def test_test_sms_to_typed_number(client, db_session):
     headers = await _token(client, db_session, UserRole.ADMIN)
-    resp = await client.post("/api/v1/sms/test-me", headers=headers)
-    assert resp.status_code == 400 and resp.json()["detail"] == "У вас не указан телефон"
+    for bad in ({}, {"phone": ""}, {"phone": "12345"}, {"phone": "abc"}):
+        assert (await client.post("/api/v1/sms/test", json=bad, headers=headers)).status_code == 422, bad
+    resp = await client.post("/api/v1/sms/test", json={"phone": "8 (916) 123-45-67"}, headers=headers)
+    assert resp.status_code == 200 and resp.json() == {"status": "ok", "phone": "+79161234567"}
+    assert (await client.post("/api/v1/sms/test-me", headers=headers)).status_code in (404, 405)
     user = (await db_session.execute(select(User))).scalar_one()
-    user.phone = PHONE
-    await db_session.commit()
-    assert (await client.post("/api/v1/sms/test-me", headers=headers)).status_code == 200
-    assert (await client.post("/api/v1/sms/test-queue", headers=headers)).status_code in (404, 405)
     items = (await db_session.execute(select(SmsItem).order_by(SmsItem.id))).scalars().all()
     assert [(i.is_test, i.kind, i.state, i.phone, i.text, i.user_id) for i in items] == [
-        (False, "test", "pending", PHONE, "Тестовая СМС HomeSite", user.id)]
+        (False, "test", "pending", "+79161234567", "Тестовая СМС HomeSite", user.id)]
     assert all((i.problem, i.code, i.level, i.raised) == ("test", "test", "INFO", True) for i in items)
     messages = {e.message for e in (await db_session.execute(select(EventLog))).scalars()}
-    assert "Тестовая СМС поставлена в очередь" in messages
+    assert "Тестовая СМС на +79161234567 поставлена в очередь" in messages
 
 
 @pytest.mark.asyncio
 async def test_viewer_and_operator_forbidden(client, db_session):
     calls = [("GET", "/sms/log"), ("GET", "/sms/status"), ("POST", "/sms/messages/1/retry"),
-             ("POST", "/sms/key"), ("POST", "/sms/test-me")]
+             ("POST", "/sms/key"), ("POST", "/sms/test")]
     for role in (UserRole.VIEWER, UserRole.OPERATOR):
         headers = await _token(client, db_session, role, PHONE)
         for method, path in calls:
@@ -157,3 +164,29 @@ async def test_viewer_and_operator_forbidden(client, db_session):
 async def test_phone_swagger_stays_phone_only(client):
     paths = (await client.get("/api/v1/sms/openapi.json")).json()["paths"]
     assert sorted(paths) == ["/api/v1/sms/done", "/api/v1/sms/next", "/api/v1/sms/ping"]
+
+
+@pytest.mark.asyncio
+async def test_sms_switched_off_hides_the_whole_api(client, db_session):
+    headers = await _token(client, db_session, UserRole.ADMIN, PHONE)
+    row = (await db_session.execute(select(ConfigKV).where(ConfigKV.key == "sms_enabled"))).scalar_one()
+    row.value = "0"
+    await db_session.commit()
+    for method, path in (("GET", "/sms/status"), ("GET", "/sms/log"), ("POST", "/sms/key"), ("GET", "/sms/ping"),
+                         ("GET", "/sms/next"), ("GET", "/sms/docs"), ("GET", "/sms/openapi.json")):
+        resp = await client.request(method, "/api/v1" + path, headers=headers)
+        assert resp.status_code == 404, path
+        assert resp.json()["detail"] == "Отправка СМС выключена"
+    await db_session.delete(row)               # absent key = off (the default)
+    await db_session.commit()
+    assert (await client.get("/api/v1/sms/status", headers=headers)).status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_switch_through_put_settings(client, db_session):
+    """The switch saved by the settings page (PUT /settings normalises a bool to "1"/"0") opens and closes the API."""
+    headers = await _token(client, db_session, UserRole.ADMIN, PHONE)
+    for value, code in (("false", 404), ("true", 200), ("0", 404), ("1", 200)):
+        assert (await client.put("/api/v1/settings", json={"settings": {"sms_enabled": value}},
+                                 headers=headers)).status_code == 200
+        assert (await client.get("/api/v1/sms/status", headers=headers)).status_code == code, value
