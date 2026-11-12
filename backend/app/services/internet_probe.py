@@ -21,6 +21,8 @@ def _split(target: str, default_port: int | None = None) -> tuple[str, int] | No
 async def _connect(host: str, port: int, timeout: float) -> bool:
     try:
         _, writer = await asyncio.wait_for(asyncio.open_connection(host, port), timeout)
+    except ConnectionRefusedError:
+        return True       # an RST comes from a live host: the network path works
     except (OSError, TimeoutError):
         return False
     writer.close()

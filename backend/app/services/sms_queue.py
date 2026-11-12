@@ -94,17 +94,40 @@ async def poll_seconds(session: AsyncSession) -> int:
         return DEFAULT_POLL_S
 
 
-def _parse_hhmm(value: str | None) -> time | None:
+def parse_hhmm(value: str | None) -> time | None:
     try:
         return time.fromisoformat(value) if value else None
     except ValueError:
         return None
 
 
+DEFAULT_QUIET = ("18:00", "04:00")   # UTC (22:00–08:00 at the house, +4); the one source of the default
+CFG_KEYS = ("sms_quiet_start", "sms_quiet_end", "sms_merge_seconds", "sms_settle_minutes")
+
+
+def cfg_from_kv(kv: dict[str, str]) -> Cfg:
+    """Notifier policy from config_kv values; a missing key → the default, an empty/bad quiet time → none."""
+    def _int(key: str, default: int) -> int:
+        try:
+            return int(kv.get(key, default))
+        except ValueError:
+            return default
+    return Cfg(
+        parse_hhmm(kv.get("sms_quiet_start", DEFAULT_QUIET[0])),
+        parse_hhmm(kv.get("sms_quiet_end", DEFAULT_QUIET[1])),
+        merge_s=_int("sms_merge_seconds", 60),
+        settle_s=_int("sms_settle_minutes", 10) * 60,
+    )
+
+
+async def load_cfg(session: AsyncSession) -> Cfg:
+    rows = await session.execute(select(ConfigKV.key, ConfigKV.value).where(ConfigKV.key.in_(CFG_KEYS)))
+    return cfg_from_kv({k: v for k, v in rows})
+
+
 async def quiet_now(session: AsyncSession, now: datetime) -> bool:
-    """Whether `now` is inside the quiet hours (`sms_quiet_start`/`sms_quiet_end`, HH:MM UTC; absent → none)."""
-    cfg = Cfg(_parse_hhmm(await _get(session, "sms_quiet_start")), _parse_hhmm(await _get(session, "sms_quiet_end")))
-    return in_quiet(now, cfg)
+    """Whether `now` is inside the quiet hours (`sms_quiet_start`/`sms_quiet_end`, HH:MM UTC; default 18:00–04:00)."""
+    return in_quiet(now, await load_cfg(session))
 
 
 # ── keys ───────────────────────────────────────────────────────────────────

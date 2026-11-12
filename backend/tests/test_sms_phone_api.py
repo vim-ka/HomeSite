@@ -95,7 +95,8 @@ async def test_bearer_and_x_sms_key_both_work(client, db_session):
     r = await client.get("/api/v1/sms/ping", headers=bearer(live))
     assert r.status_code == 200
     body = r.json()
-    assert body == {"mode": "live", "queue": 0, "quiet": False, "poll_after": 60}
+    assert {k: v for k, v in body.items() if k != "quiet"} == {"mode": "live", "queue": 0, "poll_after": 60}
+    assert isinstance(body["quiet"], bool)   # default quiet hours: depends on the clock
     r = await client.get("/api/v1/sms/ping", headers={"X-SMS-Key": test})
     assert r.status_code == 200 and r.json()["mode"] == "test"
 

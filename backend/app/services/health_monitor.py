@@ -22,8 +22,7 @@ from app.services.gateway_client import GatewayClient
 from app.services.internet_probe import default_router, reachable, with_port
 from app.services.scheme_service import CONTROLLER_DEVICE, SchemeService
 from app.services.sms_notifier import SmsNotifier
-from app.services.sms_policy import Cfg
-from app.services.sms_queue import _parse_hhmm, phone_status, poll_seconds
+from app.services.sms_queue import CFG_KEYS, cfg_from_kv, phone_status, poll_seconds
 
 logger = get_logger(__name__)
 
@@ -32,13 +31,9 @@ DEFAULT_STALE_MINUTES = 5
 
 DEFAULT_INTERNET_HOSTS = "77.88.8.8:53,1.1.1.1:53,ya.ru:443,8.8.8.8:53"
 DEFAULT_INTERNET_DOWN_MINUTES = 5
-DEFAULT_QUIET = ("18:00", "04:00")   # UTC (22:00–08:00 at the house, +4)
 PROBE_EVERY_S = 60
 PROBE_TIMEOUT_S = 3.0
-SMS_KEYS = (
-    "sms_quiet_start", "sms_quiet_end", "sms_merge_seconds", "sms_settle_minutes",
-    "internet_check_hosts", "internet_down_minutes", "internet_router_host",
-)
+SMS_KEYS = (*CFG_KEYS, "internet_check_hosts", "internet_down_minutes", "internet_router_host")
 
 # Safety flags reported in the boiler controller heartbeat → event text
 
@@ -364,18 +359,8 @@ class HealthMonitor:
 
     async def _notify_sms(self, kv: dict[str, str], now: datetime) -> None:
         """Feed the active alarms to the SMS notifier; its own session and try — it never breaks the alarms."""
-        def _int(key: str, default: int) -> int:
-            try:
-                return int(kv.get(key, default))
-            except ValueError:
-                return default
         try:
-            cfg = Cfg(
-                _parse_hhmm(kv.get("sms_quiet_start", DEFAULT_QUIET[0])),
-                _parse_hhmm(kv.get("sms_quiet_end", DEFAULT_QUIET[1])),
-                merge_s=_int("sms_merge_seconds", 60),
-                settle_s=_int("sms_settle_minutes", 10) * 60,
-            )
+            cfg = cfg_from_kv(kv)
             async with self.session_factory() as s:
                 await self.sms.apply(s, list(self.alarms.active.values()), now, cfg)
             if self._sms_cleanup_at is None or now - self._sms_cleanup_at >= timedelta(days=1):

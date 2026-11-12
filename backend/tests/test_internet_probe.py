@@ -22,7 +22,8 @@ async def test_reachable_any_target():
     try:
         open_ = f"127.0.0.1:{server.sockets[0].getsockname()[1]}"
         assert await reachable([closed, open_], timeout=1) is True
-        assert await reachable([closed], timeout=1) is False
+        assert await reachable([closed], timeout=1) is True   # refused = a live host answered
+        assert await reachable([f"10.255.255.1:{await _free_port()}"], timeout=0.3) is False
         assert await reachable([], timeout=1) is False
     finally:
         server.close()

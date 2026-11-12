@@ -344,3 +344,12 @@ async def test_queue_waits_for_lock(db_session):
         done, _ = await asyncio.wait({task}, timeout=0.3)
         assert not done
     assert (await task) is not None
+
+
+@pytest.mark.asyncio
+async def test_quiet_default_when_keys_missing(db_session):
+    from datetime import UTC, datetime
+
+    from app.services.sms_queue import quiet_now
+    assert await quiet_now(db_session, datetime(2026, 11, 12, 2, 0, tzinfo=UTC)) is True
+    assert await quiet_now(db_session, datetime(2026, 11, 12, 12, 0, tzinfo=UTC)) is False
