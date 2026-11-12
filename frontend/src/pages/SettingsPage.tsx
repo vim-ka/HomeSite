@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, type ReactNode } from "react";
 import { useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Radio, Users, Database, Download, X, MapPin, Cpu, Waypoints, Radar, Wrench, CircuitBoard, SlidersHorizontal } from "lucide-react";
+import { Radio, Users, Database, Download, X, MapPin, Cpu, Waypoints, Radar, Wrench, CircuitBoard, SlidersHorizontal, MessageSquare } from "lucide-react";
 import api, { authFetch } from "@/api/client";
 import { useAuthStore } from "@/stores/authStore";
 import { useThemeStore } from "@/stores/themeStore";
@@ -11,6 +11,7 @@ import TimeInput from "@/components/TimeInput";
 import TipLabel from "@/components/TipLabel";
 import { useToast } from "@/components/Toast";
 import RfDebugPanel from "@/components/RfDebugPanel";
+import UserSmsModal from "@/components/UserSmsModal";
 
 // ---- Types ----
 
@@ -27,6 +28,8 @@ interface UserInfo {
   email: string;
   role: string;
   is_active: boolean;
+  phone?: string | null;
+  sms_categories?: string[];
 }
 
 interface DatabaseInfo {
@@ -1499,6 +1502,7 @@ export default function SettingsPage() {
   });
 
   const [addUserOpen, setAddUserOpen] = useState(false);
+  const [smsUser, setSmsUser] = useState<UserInfo | null>(null);
   const [pwdModal, setPwdModal] = useState<{ userId: number; username: string } | null>(null);
 
   // ---- Database ----
@@ -2501,6 +2505,7 @@ export default function SettingsPage() {
                       <tr>
                         <th className="px-3 py-2 text-left">{t("settings.user")}</th>
                         <th className="px-3 py-2 text-left">Email</th>
+                        <th className="px-3 py-2 text-left">{t("settings.smsPhone")}</th>
                         <th className="px-3 py-2 text-left">{t("settings.role")}</th>
                         <th className="px-3 py-2 text-center">{t("settings.actions")}</th>
                       </tr>
@@ -2510,12 +2515,28 @@ export default function SettingsPage() {
                         <tr key={u.id} className="hover:bg-gray-50">
                           <td className="px-3 py-2 font-medium">{u.username}</td>
                           <td className="px-3 py-2 text-gray-600">{u.email}</td>
+                          <td className="px-3 py-2 text-gray-600 whitespace-nowrap">
+                            {u.phone ? (
+                              <>
+                                {u.phone}
+                                {(u.sms_categories?.length ?? 0) > 0 && (
+                                  <MessageSquare className="ml-1 inline h-3.5 w-3.5 text-primary-600" />
+                                )}
+                              </>
+                            ) : "—"}
+                          </td>
                           <td className="px-3 py-2">
                             <span className="px-2 py-0.5 rounded text-xs bg-primary-100 text-primary-700">
                               {u.role}
                             </span>
                           </td>
                           <td className="px-3 py-2 text-center space-x-2">
+                            <button
+                              onClick={() => setSmsUser(u)}
+                              className="text-primary-600 hover:text-primary-800 text-xs"
+                            >
+                              {t("settings.smsButton")}
+                            </button>
                             <button
                               onClick={() => setPwdModal({ userId: u.id, username: u.username })}
                               className="text-primary-600 hover:text-primary-800 text-xs"
@@ -2551,6 +2572,17 @@ export default function SettingsPage() {
               onClose={() => setAddUserOpen(false)}
               onCreated={() => queryClient.invalidateQueries({ queryKey: ["users"] })}
             />
+
+            {smsUser && (
+              <UserSmsModal
+                open={true}
+                onClose={() => setSmsUser(null)}
+                userId={smsUser.id}
+                username={smsUser.username}
+                phone={smsUser.phone ?? null}
+                categories={smsUser.sms_categories ?? []}
+              />
+            )}
 
             {pwdModal && (
               <ChangePasswordModal
