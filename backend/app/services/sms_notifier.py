@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.sms import SmsItem, SmsMessage, SmsSubscription
 from app.models.user import User
 from app.services.alarm_rules import LEVEL_RANK, Alarm
+from app.services.sms_queue import SMS_LOCK
 from app.services.sms_policy import Cfg, Sub, category, current_problems, decide, effective_level
 from app.services.sms_text import raised_text, summary_text
 
@@ -62,6 +63,10 @@ class SmsNotifier:
         self.started_at = started_at
 
     async def apply(self, session: AsyncSession, active: Iterable[Alarm], now: datetime, cfg: Cfg) -> None:
+        async with SMS_LOCK:      # the phone API forms items and updates subscriptions in another session
+            await self._apply(session, active, now, cfg)
+
+    async def _apply(self, session: AsyncSession, active: Iterable[Alarm], now: datetime, cfg: Cfg) -> None:
         problems = current_problems(active)
         users = {u.id: u for u in (await session.execute(select(User))).scalars()}
         recipients = {uid: cats for uid, u in users.items() if (cats := _alarm_categories(u)) is not None}
@@ -147,6 +152,7 @@ class SmsNotifier:
     async def cleanup(self, session: AsyncSession, now: datetime) -> None:
         """Delete queue items and messages older than RETENTION_DAYS (items first: they point at messages)."""
         cutoff = now - timedelta(days=RETENTION_DAYS)
-        await session.execute(delete(SmsItem).where(SmsItem.created_at < cutoff))
-        await session.execute(delete(SmsMessage).where(SmsMessage.created_at < cutoff))
-        await session.commit()
+        async with SMS_LOCK:
+            await session.execute(delete(SmsItem).where(SmsItem.created_at < cutoff))
+            await session.execute(delete(SmsMessage).where(SmsMessage.created_at < cutoff))
+            await session.commit()

@@ -283,3 +283,64 @@ async def test_phone_status_counts(db_session):
         await next_message(db_session, False, now)
     st = await phone_status(db_session, now, 60)
     assert st["failed"] == 1
+
+
+@pytest.mark.asyncio
+async def test_notifier_and_queue_do_not_interleave(db_session, engine):
+    """Lost-raise race: the phone forms a pending «Снято» while the notifier, which already read the
+    subscription, sees the alarm back at the sent level. Serialised by SMS_LOCK, the end state stays consistent."""
+    import asyncio
+
+    from sqlalchemy.ext.asyncio import async_sessionmaker
+
+    from app.services.alarm_rules import Alarm
+    from app.services.sms_notifier import SmsNotifier
+    from app.services.sms_policy import Cfg
+
+    u = await add_user(db_session, "a", cats="critical")
+    sub = await add_sub(db_session, "pressure", u, sent="ERROR", changes=1, episode_start=T0 - timedelta(minutes=20))
+    sub.seen = None
+    sub.code, sub.last_text = "pressure_low", "Низкое давление"
+    await db_session.commit()
+    await add_item(db_session, "pressure", u, "Снято: Низкое давление", raised=False, kind="summary")
+
+    phone_session = async_sessionmaker(engine, expire_on_commit=False)()
+    phone_task: asyncio.Task | None = None
+    real_commit = db_session.commit
+
+    async def commit_after_phone_ran():
+        # the notifier's await point after its reads: let the phone's `next` run in between if it can
+        nonlocal phone_task
+        if phone_task is None:
+            phone_task = asyncio.create_task(next_message(phone_session, False, T0))
+            await asyncio.wait({phone_task}, timeout=0.5)
+        await real_commit()
+
+    db_session.commit = commit_after_phone_ran
+    low = Alarm("pressure_low", "ERROR", "Низкое давление отопления: 0.4 бар", 60, group="pressure")
+    try:
+        await SmsNotifier(started_at=T0 - timedelta(hours=1)).apply(db_session, [low], T0, Cfg(None, None))
+    finally:
+        db_session.commit = real_commit
+    await phone_task
+    await phone_session.close()
+
+    pending_items = [i for i in await all_items(db_session) if i.state == "pending"]  # expires the session
+    sub = (await db_session.execute(select(SmsSubscription))).scalar_one()
+    assert not (sub.seen == "ERROR" and sub.sent is None and not pending_items), (sub.sent, sub.seen)
+    assert pending_items or sub.sent == sub.seen
+
+
+@pytest.mark.asyncio
+async def test_queue_waits_for_lock(db_session):
+    import asyncio
+
+    from app.services.sms_queue import SMS_LOCK
+
+    u = await add_user(db_session, "a")
+    await add_item(db_session, "pressure", u, "Низкое давление")
+    async with SMS_LOCK:
+        task = asyncio.create_task(next_message(db_session, False, T0))
+        done, _ = await asyncio.wait({task}, timeout=0.3)
+        assert not done
+    assert (await task) is not None

@@ -4,6 +4,7 @@
 immutable `sms_message`, leases it to the phone and retries failures. Captures are guarded `UPDATE … WHERE state`
 with a `rowcount` check: the HealthMonitor writes the same tables from its own session."""
 
+import asyncio
 import hashlib
 import hmac
 import secrets
@@ -24,6 +25,33 @@ RETRY_S = (300, 900, 3600)
 MAX_ATTEMPTS = 3
 SILENT_MIN_S = 900
 DEFAULT_POLL_S = 60
+
+class _LoopLock:
+    """An asyncio.Lock for the running loop (tests run each in its own loop; production has one)."""
+
+    def __init__(self) -> None:
+        self._loop: asyncio.AbstractEventLoop | None = None
+        self._lock = asyncio.Lock()
+
+    def _current(self) -> asyncio.Lock:
+        loop = asyncio.get_running_loop()
+        if loop is not self._loop:
+            self._loop, self._lock = loop, asyncio.Lock()
+        return self._lock
+
+    def locked(self) -> bool:
+        return self._lock.locked()
+
+    async def __aenter__(self) -> None:
+        await self._current().acquire()
+
+    async def __aexit__(self, *exc) -> None:
+        self._lock.release()
+
+
+# Serialises every read-decide-commit on SMS items/messages/subscriptions (SmsNotifier vs the phone API).
+# Assumes one process / one event loop (single uvicorn worker running the HealthMonitor too).
+SMS_LOCK = _LoopLock()
 
 Mode = Literal["live", "test"]
 _MODES: tuple[Mode, ...] = ("live", "test")
@@ -194,12 +222,19 @@ async def _record_sent(session: AsyncSession, items: list[SmsItem]) -> None:
 
 async def next_message(session: AsyncSession, is_test: bool, now: datetime) -> SmsMessage | None:
     """What the phone should send now: an expired lease, a due retry, else a newly formed message."""
-    return await _reissue(session, is_test, now) or await _form(session, is_test, now)
+    async with SMS_LOCK:
+        return await _reissue(session, is_test, now) or await _form(session, is_test, now)
 
 
 async def mark_done(session: AsyncSession, msg_id: int, is_test: bool, ok: bool, error: str | None,
                     now: datetime) -> bool:
     """The phone's report. False if there is no such message for this key's mode; a repeat changes nothing."""
+    async with SMS_LOCK:
+        return await _mark_done(session, msg_id, is_test, ok, error, now)
+
+
+async def _mark_done(session: AsyncSession, msg_id: int, is_test: bool, ok: bool, error: str | None,
+                     now: datetime) -> bool:
     msg = (await session.execute(select(SmsMessage).where(
         SmsMessage.id == msg_id, SmsMessage.is_test.is_(is_test)))).scalar_one_or_none()
     if msg is None:
