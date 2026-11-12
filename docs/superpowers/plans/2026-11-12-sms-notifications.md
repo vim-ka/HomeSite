@@ -205,10 +205,10 @@ if quiet_level == "WARNING" and (in_quiet(ready) ): ready = quiet_end_after(read
   - `GET /api/v1/sms/ping` → `{"mode", "queue", "quiet", "poll_after"}`
   - `GET /api/v1/sms/next` → 200 `{"id", "to", "text", "poll_after"}` / 204 + `X-Poll-After`
   - `POST /api/v1/sms/done` `{"id": int, "ok": bool, "error": str | None}` → 200 `{"ok": true, "poll_after"}` / 404
-  - Для Swagger: `HTTPBearer(auto_error=False)` в зависимости, чтобы в `/docs` (стенд, `debug`) была кнопка Authorize.
+  - **Swagger API телефона — и на проде** (владелец: «сваггер не забудь на API»). Общий `/docs` на проде выключен (`debug`), поэтому отдельно: `GET /api/v1/sms/openapi.json` — `get_openapi(routes=<только ping/next/done>)` со схемой безопасности `HTTPBearer` (зависимость `HTTPBearer(auto_error=False)` + `APIKeyHeader("X-SMS-Key", auto_error=False)`), и `GET /api/v1/sms/docs` — `get_swagger_ui_html(openapi_url=…)` с ассетами Swagger UI с jsdelivr закреплённой версии (`swagger-ui-dist@5.17.14`). Обе страницы без входа (моё: браузер не шлёт JWT при переходе по ссылке; в схеме нет секретов, вызовы всё равно требуют ключ). Кнопка Authorize → тестовый ключ → «Try it out» работает против прода. Ссылка на `/api/v1/sms/docs` — на странице `/sms` (Task 9).
 
 - [ ] **Step 1: Тесты очереди:** `test_merge_same_phone_into_one_message` (две записи одного номера → одна `SmsMessage`, `items == 2`, обе `formed`); `test_shared_number_one_sms_problem_once` (два пользователя, один номер, одна проблема → в тексте один раз); `test_not_ready_not_issued`; `test_expired_lease_reissues_same_text` (после `LEASE_S + 1` — тот же `id` и текст); `test_failure_retries_then_failed` (`ok=False` → `ready_at` +300, +900, затем `failed`); `test_formed_message_is_immutable` (после формирования новая summary той же проблемы → отдельное сообщение, старое не тронуто); `test_formation_sets_sent` (`sub.sent` = `"ERROR"` после выдачи «поднята», `None` после «снята»); `test_test_and_live_isolated`; `test_phone_silent_threshold`.
-- [ ] **Step 2: Тесты API:** `test_no_key_401`, `test_key_in_query_401`, `test_bearer_and_x_sms_key_both_work`, `test_next_204_has_x_poll_after`, `test_done_unknown_404`, `test_done_repeat_200`, `test_live_request_updates_last_poll`.
+- [ ] **Step 2: Тесты API:** `test_sms_docs_available_without_debug` (`/api/v1/sms/docs` → 200 HTML со ссылкой на `openapi.json`; `openapi.json` содержит ровно `/api/v1/sms/ping`, `/next`, `/done` и `securitySchemes` с bearer и `X-SMS-Key`), `test_no_key_401`, `test_key_in_query_401`, `test_bearer_and_x_sms_key_both_work`, `test_next_204_has_x_poll_after`, `test_done_unknown_404`, `test_done_repeat_200`, `test_live_request_updates_last_poll`.
 - [ ] **Step 3:** `pytest tests/test_sms_queue.py tests/test_sms_phone_api.py -v` → FAIL.
 - [ ] **Step 4:** Реализовать.
 - [ ] **Step 5:** → PASS; `pytest` → PASS.
@@ -277,7 +277,7 @@ if quiet_level == "WARNING" and (in_quiet(ready) ): ready = quiet_end_after(read
 
 **Interfaces:**
 - Consumes: Task 7.
-- Содержимое (спека, «Раздел СМС»): над журналом — последний опрос телефона, ждёт / не ушло, предупреждение «телефон молчит»; журнал с фильтрами (статус, тип, получатель, тестовые) и листанием, «Повторить» у «не ушла», склеенные — «в одной СМС с N»; блок настроек через существующий `useSettingUpdate` (тихие часы в местном времени ↔ UTC, как у расписания бэкапов; окно склейки, успокоение, опрос, интернет); ключи — «Создать/перевыпустить» с показом один раз и копированием; кнопки тестовых СМС; инструкция MacroDroid (интервал 1 мин; переменная из `poll_after` / `X-Poll-After`; цикл next → отправить СМС → done → next до 204; отключить оптимизацию батареи; сначала тестовый ключ).
+- Содержимое (спека, «Раздел СМС»): над журналом — последний опрос телефона, ждёт / не ушло, предупреждение «телефон молчит»; журнал с фильтрами (статус, тип, получатель, тестовые) и листанием, «Повторить» у «не ушла», склеенные — «в одной СМС с N»; блок настроек через существующий `useSettingUpdate` (тихие часы в местном времени ↔ UTC, как у расписания бэкапов; окно склейки, успокоение, опрос, интернет); ключи — «Создать/перевыпустить» с показом один раз и копированием; кнопки тестовых СМС; ссылка «API (Swagger)» на `/api/v1/sms/docs`; инструкция MacroDroid (интервал 1 мин; переменная из `poll_after` / `X-Poll-After`; цикл next → отправить СМС → done → next до 204; отключить оптимизацию батареи; сначала тестовый ключ).
 - [ ] **Step 1: Тест:** страница рендерит журнал из замоканного `/sms/log`, статус «не ушла» показывает кнопку «Повторить», клик шлёт `POST /sms/messages/{id}/retry`; не-admin пункт меню не видит.
 - [ ] **Step 2:** → FAIL. **Step 3:** реализовать. **Step 4:** → PASS; `npm run build`.
 - [ ] **Step 5:** скриншоты десктоп + телефон, commit `SMS: SMS page (log, status, keys, settings, MacroDroid guide)`.
@@ -288,7 +288,7 @@ if quiet_level == "WARNING" and (in_quiet(ready) ): ready = quiet_end_after(read
 - Modify: `CLAUDE.md` (раздел про СМС в Architecture, новые ключи в Settings Architecture, TODO: СМС — частично, ИБП — осталось), `deploy/nginx/` (заготовка LAN-only HTTP `location /api/v1/sms/` с `allow 192.168.0.0/16; deny all;`, закомментированная, с пояснением)
 
 - [ ] **Step 1:** Обновить `CLAUDE.md` и nginx-заготовку.
-- [ ] **Step 2:** Стенд: `bash tools/dev_stack.sh`, выпустить тестовый ключ, `curl -H "Authorization: Bearer …" /api/v1/sms/ping|next|done` — цикл до 204; «Создать тестовую СМС» → видна в журнале как «ушла».
+- [ ] **Step 2:** Стенд: `bash tools/dev_stack.sh`, выпустить тестовый ключ, пройти цикл в Swagger `/api/v1/sms/docs` (Authorize → ping → next → done), `curl -H "Authorization: Bearer …" /api/v1/sms/ping|next|done` — цикл до 204; «Создать тестовую СМС» → видна в журнале как «ушла».
 - [ ] **Step 3:** `cd backend && pytest` и `cd frontend && npm test` → всё зелёное.
 - [ ] **Step 4:** commit `Docs: SMS notifications`.
 - [ ] **Step 5 (после деплоя, вручную с владельцем):** MacroDroid на телефоне с самоподписанным сертификатом; если не принимает — включить LAN-only HTTP из заготовки.
