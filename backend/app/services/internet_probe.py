@@ -61,7 +61,12 @@ def default_router() -> str | None:
     return None
 
 
-def with_port(host: str, default_port: int = 80) -> str:
-    """`host` without a port → `host:80`."""
-    host = host.strip()
-    return host if _split(host) and ":" in host else f"{host}:{default_port}"
+def target(raw: str, default_port: int) -> str | None:
+    """`host[:port]` → `host:port` (no port → `default_port`); None when it can't be parsed."""
+    raw = raw.strip()
+    host, sep, port = raw.partition(":")
+    if not host or ":" in port:
+        return None
+    if not sep:
+        return f"{host}:{default_port}"
+    return f"{host}:{int(port)}" if port.isdigit() and 1 <= int(port) <= 65535 else None

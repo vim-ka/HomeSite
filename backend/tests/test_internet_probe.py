@@ -33,3 +33,13 @@ async def test_reachable_any_target():
 def test_default_router_shape():
     r = default_router()
     assert r is None or r.endswith(":80")
+
+
+def test_target_adds_the_default_port_and_rejects_garbage():
+    from app.services.internet_probe import target
+
+    assert target("ya.ru", 443) == "ya.ru:443"
+    assert target(" 1.1.1.1:53 ", 443) == "1.1.1.1:53"
+    assert target("192.168.55.1", 80) == "192.168.55.1:80"
+    for bad in ("", "  ", "ya.ru:abc", "ya.ru:0", "ya.ru:70000", ":53", "a:b:c"):
+        assert target(bad, 443) is None, bad

@@ -270,3 +270,35 @@ async def test_empty_internet_hosts_disables_the_probe(engine, db_session, monke
     monkeypatch.setattr("app.services.health_monitor.reachable", fake)
     await m._check()
     assert m.state.database is True
+
+
+async def _probed(engine, db_session, monkeypatch, hosts: str, router: str | None = None) -> list[list[str]]:
+    from app.models.config import ConfigKV
+    await seed(db_session)
+    db_session.add(ConfigKV(key="internet_check_hosts", value=hosts))
+    if router is not None:
+        db_session.add(ConfigKV(key="internet_router_host", value=router))
+    await db_session.commit()
+    m = _monitor(engine)
+    m._now = lambda: NOW
+    _with_gateway(m, monkeypatch, gateway())
+    calls: list[list[str]] = []
+
+    async def fake(targets, _timeout=3.0):
+        calls.append(list(targets))
+        return False
+
+    monkeypatch.setattr("app.services.health_monitor.reachable", fake)
+    await m._check()
+    return calls
+
+
+async def test_a_host_without_port_is_probed_on_443(engine, db_session, monkeypatch):
+    calls = await _probed(engine, db_session, monkeypatch, "ya.ru,1.1.1.1:53", router="192.168.55.1")
+    assert calls == [["ya.ru:443", "1.1.1.1:53"], ["192.168.55.1:80"]]
+
+
+async def test_no_parseable_internet_targets_switches_the_probe_off(engine, db_session, monkeypatch):
+    """An unparseable list must never read as «no internet» (a permanent false ERROR)."""
+    calls = await _probed(engine, db_session, monkeypatch, "ya.ru:abc, :53")
+    assert calls == []

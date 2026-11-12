@@ -296,3 +296,36 @@ def test_anti_legionella_temperature_must_be_reachable_by_the_boiler():
     assert validate_settings({"watersupply_alm_temp": "63"}, current, "admin") == {"watersupply_alm_temp": "63"}
     # an unrelated change is never blocked by an old combination
     assert validate_settings({"heating_boiler_temp": "50"}, {**current, "watersupply_alm_temp": "75"}, "admin")
+
+
+def test_internet_hosts_accept_the_documented_format():
+    from app.core.setting_rules import validate_settings
+    from app.services.health_monitor import DEFAULT_INTERNET_HOSTS
+
+    assert validate_settings({"internet_check_hosts": DEFAULT_INTERNET_HOSTS}, {}, "admin") == {
+        "internet_check_hosts": DEFAULT_INTERNET_HOSTS}
+    assert validate_settings({"internet_check_hosts": " ya.ru , 1.1.1.1:53 "}, {}, "admin") == {
+        "internet_check_hosts": "ya.ru,1.1.1.1:53"}
+    assert validate_settings({"internet_check_hosts": ""}, {}, "admin") == {"internet_check_hosts": ""}
+    assert validate_settings({"internet_router_host": "192.168.55.1:80"}, {}, "admin") == {
+        "internet_router_host": "192.168.55.1:80"}
+    assert validate_settings({"internet_router_host": "router.lan"}, {}, "admin") == {
+        "internet_router_host": "router.lan"}
+    assert validate_settings({"internet_router_host": ""}, {}, "admin") == {"internet_router_host": ""}
+
+
+@pytest.mark.parametrize("key,value", [
+    ("internet_check_hosts", "ya.ru:0"),
+    ("internet_check_hosts", "ya.ru:65536"),
+    ("internet_check_hosts", "ya.ru:abc"),
+    ("internet_check_hosts", "ya.ru,,1.1.1.1"),
+    ("internet_check_hosts", "http://ya.ru"),
+    ("internet_check_hosts", "999.1.1.1:53"),
+    ("internet_router_host", "a.lan,b.lan"),
+    ("internet_router_host", "-bad.lan"),
+])
+def test_internet_hosts_reject_garbage(key, value):
+    from app.core.setting_rules import SettingsValidationError, validate_settings
+
+    with pytest.raises(SettingsValidationError):
+        validate_settings({key: value}, {}, "admin")

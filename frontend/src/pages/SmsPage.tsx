@@ -295,6 +295,9 @@ const NUM_FIELDS = [
   { key: "internet_down_minutes", label: "internetDown", def: "5", min: 1, max: 60 },
 ] as const;
 
+// what the backend probes while the key is unset (health_monitor.DEFAULT_INTERNET_HOSTS); no port → 443
+const DEFAULT_INTERNET_HOSTS = "77.88.8.8:53,1.1.1.1:53,ya.ru:443,8.8.8.8:53";
+
 function SmsSettings({ settings }: { settings: Record<string, string> }) {
   const { t } = useTranslation();
   const { update } = useSettingUpdate();
@@ -338,7 +341,7 @@ function SmsSettings({ settings }: { settings: Record<string, string> }) {
         ))}
         <label className="flex flex-col gap-1 sm:col-span-2">
           {t("sms.internetHosts")}
-          <input value={val("internet_check_hosts")} onChange={(e) => setDraft({ ...draft, internet_check_hosts: e.target.value })} className={inputCls} />
+          <input value={val("internet_check_hosts", DEFAULT_INTERNET_HOSTS)} onChange={(e) => setDraft({ ...draft, internet_check_hosts: e.target.value })} className={inputCls} />
         </label>
         <label className="flex flex-col gap-1 sm:col-span-2">
           {t("sms.routerHost")}

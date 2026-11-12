@@ -19,7 +19,7 @@ from app.models.sensor import MountPoint, Sensor, SensorData
 from app.services.advice_rules import AdviceHistory, evaluate_advice
 from app.services.alarm_rules import Alarm, AlarmTracker, Snapshot, evaluate, unknown
 from app.services.gateway_client import GatewayClient
-from app.services.internet_probe import default_router, reachable, with_port
+from app.services.internet_probe import default_router, reachable, target
 from app.services.scheme_service import CONTROLLER_DEVICE, SchemeService
 from app.services.sms_notifier import SmsNotifier
 from app.services.sms_queue import CFG_KEYS, cfg_from_kv, phone_status, poll_seconds
@@ -335,8 +335,9 @@ class HealthMonitor:
 
     async def _probe_net(self, kv: dict[str, str], now: datetime) -> dict:
         """Internet and router reachability (at most once a minute); {} when the check is switched off."""
-        hosts = [h.strip() for h in kv.get("internet_check_hosts", DEFAULT_INTERNET_HOSTS).split(",") if h.strip()]
-        if not hosts:
+        raw = kv.get("internet_check_hosts", DEFAULT_INTERNET_HOSTS).split(",")
+        hosts = [t for h in raw if (t := target(h, 443))]
+        if not hosts:   # switched off (or nothing parseable — never read as «no internet»)
             self._net = None
             return {}
         try:
@@ -344,7 +345,7 @@ class HealthMonitor:
         except ValueError:
             minutes = DEFAULT_INTERNET_DOWN_MINUTES
         if self._net is None or (now - self._net[0]).total_seconds() >= PROBE_EVERY_S:
-            router = (with_port(kv["internet_router_host"]) if kv.get("internet_router_host", "").strip()
+            router = (target(kv["internet_router_host"], 80) if kv.get("internet_router_host", "").strip()
                       else default_router())
             try:
                 internet, router_ok = await asyncio.gather(

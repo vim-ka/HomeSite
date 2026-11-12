@@ -14,7 +14,7 @@ from urllib.parse import urlparse
 
 from app.models.user import UserRole
 
-Kind = Literal["bool", "float", "int", "time", "days", "enum", "str", "url", "rate"]
+Kind = Literal["bool", "float", "int", "time", "days", "enum", "str", "url", "rate", "host", "hostlist"]
 
 
 @dataclass(frozen=True)
@@ -128,9 +128,9 @@ RULES: dict[str, SettingRule] = {
     "sms_merge_seconds": _sys("int", 0, 600),
     "sms_settle_minutes": _sys("int", 1, 120),
     "sms_poll_seconds": _sys("int", 30, 900),
-    "internet_check_hosts": _sys("str"),
+    "internet_check_hosts": _sys("hostlist"),   # host[:port],… (no port → 443); empty = probe off
     "internet_down_minutes": _sys("int", 1, 60),
-    "internet_router_host": _sys("str"),
+    "internet_router_host": _sys("host"),       # host[:port] (no port → 80); empty = the VM's gateway
 }
 
 # Never returned by GET /settings (admin reads MQTT credentials via /settings/mqtt)
@@ -140,6 +140,23 @@ _TIME_RE = re.compile(r"^([01]?\d|2[0-3]):[0-5]\d$")
 _DAYS_RE = re.compile(r"^([1-7](,[1-7])*)?$")
 _RATE_RE = re.compile(r"^\d+/(second|minute|hour|day)$")
 _STR_RE = re.compile(r"^[\w./#+-]{0,128}$")
+_HOSTNAME_RE = re.compile(r"^(?=.{1,253}$)[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*$")
+_IPV4_RE = re.compile(r"^\d{1,3}(\.\d{1,3}){3}$")
+
+
+def _host_port(target: str) -> str:
+    """`host[:port]` (hostname or IPv4, port 1–65535) → its canonical form, or ValueError."""
+    host, sep, port = target.strip().partition(":")
+    if _IPV4_RE.match(host):
+        if any(int(o) > 255 for o in host.split(".")):
+            raise ValueError(f"bad IPv4 address: {host}")
+    elif not _HOSTNAME_RE.match(host):
+        raise ValueError(f"bad host: {target.strip()!r}")
+    if not sep:
+        return host
+    if not port.isdigit() or not 1 <= int(port) <= 65535:
+        raise ValueError(f"bad port in {target.strip()!r}: expected 1-65535")
+    return f"{host}:{int(port)}"
 
 
 class SettingsValidationError(Exception):
@@ -205,6 +222,10 @@ def _normalize(rule: SettingRule, raw: object) -> str:
         if parsed.scheme not in ("http", "https") or not parsed.hostname:
             raise ValueError("expected http(s) URL")
         return value.rstrip("/")
+    if rule.kind == "host":
+        return _host_port(value) if value else ""
+    if rule.kind == "hostlist":
+        return ",".join(_host_port(t) for t in value.split(",")) if value else ""
     if rule.kind == "rate":
         if not _RATE_RE.match(value):
             raise ValueError("expected N/second|minute|hour|day")
