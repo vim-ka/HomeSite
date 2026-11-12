@@ -40,9 +40,21 @@ def _alarm_categories(u: User) -> set[str] | None:
     return cats if u.is_active and u.phone and cats else None
 
 
+def _category_of(problem: str, code: str, level: str) -> str:
+    return category(Alarm(code, level, "", group=problem if problem != code else None))
+
+
 def _item_category(it: SmsItem) -> str:
-    group = it.problem if it.problem != it.code else None
-    return category(Alarm(it.code, it.level, "", group=group))
+    return _category_of(it.problem, it.code, it.level)
+
+
+def _told_category(row: SmsSubscription) -> str | None:
+    """Category of the alarm this pair's episode is about (last one the user saw), None if there is no episode.
+
+    Judged by the alarm the user was told about, not the current one: an ERROR lowered to WARNING for a
+    critical-only user is still their episode and ends with «Снято»."""
+    level = row.seen or row.sent
+    return _category_of(row.problem, row.code, level) if level else None
 
 
 class SmsNotifier:
@@ -67,9 +79,19 @@ class SmsNotifier:
             if uid not in users:
                 continue
             a = problems.get(problem)
-            # a user who no longer gets alarm SMS sees nothing: their episode winds down without new items
-            eff = effective_level(a, recipients.get(uid, set()))
+            cats = recipients.get(uid)
             row = subs.get((problem, uid))
+            told = _told_category(row) if row is not None else None
+            if told is not None and (cats is None or told not in cats):
+                # the user stopped getting this kind of SMS (number, activity or category changed): forget the
+                # episode, so the next raise is a fresh first SMS and no «Снято» comes for it later
+                row.sent, row.seen, row.changes, row.episode_start = None, None, 0, None
+                for it in waiting.pop((problem, uid), []):
+                    it.state = "not_needed"
+                continue
+            if cats is None:
+                continue
+            eff = effective_level(a, cats)
             sub = Sub(row.sent, row.seen, row.changes, _utc(row.episode_start)) if row else Sub(None, None, 0, None)
             if in_grace and _rank(eff) < _rank(sub.seen):
                 continue
@@ -86,7 +108,7 @@ class SmsNotifier:
                 it.state = "not_needed" if d.kind == "drop" else "superseded"
             row.sent, row.seen, row.changes, row.episode_start = (
                 d.sub.sent, d.sub.seen, d.sub.changes, d.sub.episode_start)
-            if d.kind == "drop" or uid not in recipients:
+            if d.kind == "drop":
                 continue
             if d.kind == "first":
                 code, level, raised, text = a.code, eff, True, raised_text(a)

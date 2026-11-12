@@ -196,3 +196,62 @@ async def test_cleanup_removes_older_than_90_days(db_session):
     left_msgs = list((await db_session.execute(select(SmsMessage))).scalars())
     assert [i.created_at.replace(tzinfo=UTC) for i in left_items] == [new]
     assert [m.created_at.replace(tzinfo=UTC) for m in left_msgs] == [new]
+
+
+async def _sub(db) -> SmsSubscription:
+    return (await db.execute(select(SmsSubscription))).scalar_one()
+
+
+@pytest.mark.asyncio
+async def test_category_off_forgets_episode(db_session):
+    u = await add_user(db_session, "a", "+79990000001", "critical,warning")
+    n = notifier()
+    await n.apply(db_session, [LOW], T0, CFG)
+    await form_all(db_session)
+    u.sms_categories = "warning"
+    await db_session.commit()
+    await n.apply(db_session, [LOW], T0 + timedelta(minutes=1), CFG)
+    assert await pending(db_session) == []
+    assert len(await items(db_session)) == 1          # no «Снято» row for a still-active alarm
+    s = await _sub(db_session)
+    assert (s.sent, s.seen, s.changes, s.episode_start) == (None, None, 0, None)
+    await n.apply(db_session, [], T0 + timedelta(minutes=2), CFG)
+    u.sms_categories = "critical,warning"
+    await db_session.commit()
+    await n.apply(db_session, [], T0 + timedelta(hours=3), CFG)
+    await n.apply(db_session, [LOW], T0 + timedelta(hours=4), CFG)
+    p = await pending(db_session)
+    assert len(p) == 1 and p[0].kind == "first"
+
+
+@pytest.mark.asyncio
+async def test_phone_removed_after_sent_forgets_episode(db_session):
+    u = await add_user(db_session, "a", "+79990000001", "critical")
+    n = notifier()
+    await n.apply(db_session, [LOW], T0, CFG)
+    await form_all(db_session)
+    u.phone = None
+    await db_session.commit()
+    await n.apply(db_session, [LOW], T0 + timedelta(minutes=1), CFG)
+    await n.apply(db_session, [], T0 + timedelta(minutes=2), CFG)
+    assert len(await items(db_session)) == 1
+    u.phone = "+79990000001"
+    await db_session.commit()
+    await n.apply(db_session, [], T0 + timedelta(hours=3), CFG)
+    assert await pending(db_session) == []           # episode forgotten: no late «Снято»
+    await n.apply(db_session, [LOW], T0 + timedelta(hours=4), CFG)
+    p = await pending(db_session)
+    assert len(p) == 1 and p[0].kind == "first"
+
+
+@pytest.mark.asyncio
+async def test_deescalation_for_critical_only_still_clears(db_session):
+    await add_user(db_session, "a", "+79990000001", "critical")
+    warn = Alarm("pressure_warn", "WARNING", "Давление отопления понижено: 0.9 бар", 60, group="pressure")
+    n = notifier()
+    await n.apply(db_session, [LOW], T0, CFG)
+    await form_all(db_session)
+    await n.apply(db_session, [warn], T0 + timedelta(minutes=1), CFG)
+    p = await pending(db_session)
+    assert len(p) == 1 and (p[0].kind, p[0].raised) == ("summary", False)
+    assert p[0].text.startswith("Снято: Низкое давление")
