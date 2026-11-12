@@ -10,6 +10,7 @@ import {
   ScrollText,
   Settings,
   Info,
+  MessageSquare,
   PanelLeftClose,
   LogOut,
 } from "lucide-react";
@@ -31,6 +32,7 @@ const NAV_ITEMS = [
   { to: "/statistics", key: "statistics", icon: BarChart3 },
   { to: "/events", key: "events", icon: ScrollText },
   { to: "/settings", key: "settings", icon: Settings },
+  { to: "/sms", key: "sms", icon: MessageSquare, adminOnly: true },
   { to: "/about", key: "about", icon: Info },
 ] as const;
 
@@ -99,7 +101,7 @@ export default function Layout() {
 
         {/* Navigation */}
         <nav className="flex-1 overflow-y-auto py-2">
-          {NAV_ITEMS.map((item) => {
+          {NAV_ITEMS.filter((item) => !("adminOnly" in item) || user?.role === "admin").map((item) => {
             const isActive =
               location.pathname === item.to ||
               (item.to !== "/dashboard" &&

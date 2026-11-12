@@ -1,8 +1,8 @@
-import { useState, useEffect, useCallback, type ReactNode } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Radio, Users, Database, Download, X, MapPin, Cpu, Waypoints, Radar, Wrench, CircuitBoard, SlidersHorizontal, MessageSquare } from "lucide-react";
+import { Radio, Users, Database, Download, MapPin, Cpu, Waypoints, Radar, Wrench, CircuitBoard, SlidersHorizontal, MessageSquare } from "lucide-react";
 import api, { authFetch } from "@/api/client";
 import { useAuthStore } from "@/stores/authStore";
 import { useThemeStore } from "@/stores/themeStore";
@@ -12,6 +12,7 @@ import TipLabel from "@/components/TipLabel";
 import { useToast } from "@/components/Toast";
 import RfDebugPanel from "@/components/RfDebugPanel";
 import UserSmsModal from "@/components/UserSmsModal";
+import Modal from "@/components/Modal";
 
 // ---- Types ----
 
@@ -190,48 +191,6 @@ interface ScannedSensor {
 function scannedAddress(s: ScannedSensor): string {
   if (s.protocol) return `${s.protocol}:${s.id ?? ""}:${s.channel ?? 0}`;
   return s.addr ?? "";
-}
-
-// ---- Modal backdrop ----
-
-function Modal({
-  open,
-  onClose,
-  children,
-}: {
-  open: boolean;
-  onClose: () => void;
-  children: ReactNode;
-}) {
-  useEffect(() => {
-    if (!open) return;
-    const handleKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    document.addEventListener("keydown", handleKey);
-    return () => document.removeEventListener("keydown", handleKey);
-  }, [open, onClose]);
-
-  if (!open) return null;
-
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-    >
-      <div className="relative w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
-        <button
-          onClick={onClose}
-          className="absolute right-3 top-3 text-gray-400 hover:text-gray-600"
-        >
-          <X className="h-5 w-5" />
-        </button>
-        {children}
-      </div>
-    </div>
-  );
 }
 
 const OFFSET_UNITS: Record<string, string> = {

@@ -1,8 +1,8 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { X } from "lucide-react";
 import api from "@/api/client";
+import Modal from "@/components/Modal";
 
 export const SMS_CATEGORIES = ["critical", "warning", "link", "internet", "test"] as const;
 
@@ -32,15 +32,6 @@ export default function UserSmsModal({ open, onClose, userId, username, phone, c
   const [phoneValue, setPhoneValue] = useState(phone ?? "");
   const [selected, setSelected] = useState<string[]>(categories);
 
-  useEffect(() => {
-    if (!open) return;
-    const handleKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    document.addEventListener("keydown", handleKey);
-    return () => document.removeEventListener("keydown", handleKey);
-  }, [open, onClose]);
-
   const mutation = useMutation({
     mutationFn: async () => {
       await api.put(`/auth/users/${userId}/sms`, {
@@ -54,22 +45,11 @@ export default function UserSmsModal({ open, onClose, userId, username, phone, c
     },
   });
 
-  if (!open) return null;
-
   const toggle = (c: string) =>
     setSelected((s) => (s.includes(c) ? s.filter((x) => x !== c) : [...s, c]));
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-    >
-      <div className="relative w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
-        <button onClick={onClose} className="absolute right-3 top-3 text-gray-400 hover:text-gray-600">
-          <X className="h-5 w-5" />
-        </button>
+    <Modal open={open} onClose={onClose}>
         <h3 className="mb-4 text-lg font-semibold text-gray-800">
           {t("settings.smsTitle")} — {username}
         </h3>
@@ -110,7 +90,6 @@ export default function UserSmsModal({ open, onClose, userId, username, phone, c
             {t("common.cancel")}
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
