@@ -100,3 +100,14 @@ def test_current_problems_group_and_banner_only():
     res = current_problems([low, long, Alarm("sms_failed", "ERROR", "c"), Alarm("i", "INFO", "d")])
     assert res == {"p": long}
     assert current_problems([long, low]) == {"p": long}
+
+
+def test_drop_to_nothing_resets_episode():
+    d = decide(Sub(None, "WARNING", 0, T0), None, at(2), CFG)
+    assert d.kind == "drop"
+    assert d.sub.episode_start is None and d.sub.changes == 0
+
+
+def test_new_raise_after_ended_episode_starts_fresh():
+    d = decide(Sub(None, None, 0, T0), "ERROR", at(2, day=25), CFG)
+    assert d.sub.episode_start == at(2, day=25)

@@ -94,9 +94,12 @@ def decide(sub: Sub, eff: str | None, now: datetime, cfg: Cfg) -> Decision:
     if eff == sub.seen:
         return Decision("none", None, sub)
     if eff is not None and (sub.sent is None or _rank(eff) > _rank(sub.sent)):
-        new = replace(sub, seen=eff, changes=0, episode_start=sub.episode_start or now)
+        fresh = sub.sent is None and sub.seen is None
+        new = replace(sub, seen=eff, changes=0, episode_start=now if fresh else (sub.episode_start or now))
         ready, quiet_level, kind = now + timedelta(seconds=cfg.merge_s), eff, "first"
     elif eff == sub.sent:
+        if eff is None and sub.sent is None:   # episode ended with nothing to send
+            return Decision("drop", None, Sub(None, None, 0, None))
         return Decision("drop", None, replace(sub, seen=eff, changes=sub.changes + 1))
     else:
         new = replace(sub, seen=eff, changes=sub.changes + 1)
