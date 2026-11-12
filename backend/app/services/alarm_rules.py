@@ -59,6 +59,8 @@ class Snapshot:
     settings: dict[str, str]
     rooms: list[tuple[str, float | None]]     # heated rooms: (name, fresh value or None)
     hb: dict = field(default_factory=dict)    # raw controller heartbeat data ({} when offline)
+    net: dict = field(default_factory=dict)   # {"internet": bool|None, "router": bool|None, "down_s": int}; {} = no probe
+    sms: dict = field(default_factory=dict)   # {"silent": bool, "failed": int} — the SMS phone queue
 
 
 def _fmt(v: float) -> str:
@@ -189,6 +191,19 @@ def evaluate(s: Snapshot, active: set[str]) -> list[Alarm]:
             and boiler is not None and ret is not None and boiler < ret - 3):
         add(Alarm("supply_below_return", "WARNING",
                   "Подача котла холоднее обратки — перепутаны датчики или вода идёт в обратную сторону", 10 * 60))
+
+    # --- internet / local network (no router → no internet alarm: the phone can't be reached either)
+    if s.net.get("router") is False:
+        add(Alarm("lan_down", "WARNING", "Нет локальной сети — сервер не видит роутер", 300))
+    elif s.net.get("internet") is False:
+        add(Alarm("internet_down", "ERROR", "Нет интернета", int(s.net.get("down_s", 300))))
+
+    # --- SMS phone queue (banner only)
+    if s.sms.get("silent"):
+        add(Alarm("sms_phone_silent", "ERROR", "Телефон СМС не на связи — СМС не уходят"))
+    failed = int(s.sms.get("failed") or 0)
+    if failed > 0:
+        add(Alarm("sms_failed", "WARNING", f"{failed} СМС не отправлено — смотрите журнал СМС"))
 
     return [a for a in out if a is not None]
 

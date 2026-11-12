@@ -122,6 +122,15 @@ RULES: dict[str, SettingRule] = {
     # Forward an outdoor sensor reading to a device for PZA (empty = disabled)
     "pza_outdoor_sensor": _sys("str"),
     "pza_outdoor_device": _sys("str"),
+    # SMS notifications and the internet probe (defaults live in the code that reads them)
+    "sms_quiet_start": _sys("time"),
+    "sms_quiet_end": _sys("time"),
+    "sms_merge_seconds": _sys("int", 0, 600),
+    "sms_settle_minutes": _sys("int", 1, 120),
+    "sms_poll_seconds": _sys("int", 30, 900),
+    "internet_check_hosts": _sys("str"),
+    "internet_down_minutes": _sys("int", 1, 60),
+    "internet_router_host": _sys("str"),
 }
 
 # Never returned by GET /settings (admin reads MQTT credentials via /settings/mqtt)

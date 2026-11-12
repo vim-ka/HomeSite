@@ -278,3 +278,36 @@ def test_well_dry_text_points_to_the_reset_button():
     from app.services.controller_flags import CONTROLLER_FLAGS
     assert "Сбросить блокировку" in CONTROLLER_FLAGS["well_dry"][1]
     assert "ТЭН отключён" in CONTROLLER_FLAGS["ihb_sensor_lost"][1]
+
+
+# ---------------------------------------------------------------- internet and SMS alarms
+def test_internet_down_raised():
+    a = codes(snap(net={"internet": False, "router": True, "down_s": 300}))["internet_down"]
+    assert (a.level, a.delay_s, a.text) == ("ERROR", 300, "Нет интернета")
+
+
+def test_lan_down_instead_of_internet():
+    got = codes(snap(net={"internet": False, "router": False, "down_s": 300}))
+    assert got["lan_down"].level == "WARNING" and got["lan_down"].delay_s == 300
+    assert "internet_down" not in got
+
+
+def test_partial_internet_no_alarm():
+    got = codes(snap(net={"internet": True, "router": True, "down_s": 300}))
+    assert "internet_down" not in got and "lan_down" not in got
+
+
+def test_no_probe_no_alarm():
+    got = codes(snap(net={}))
+    assert "internet_down" not in got and "lan_down" not in got
+
+
+def test_sms_phone_silent():
+    a = codes(snap(sms={"silent": True, "failed": 0}))["sms_phone_silent"]
+    assert a.level == "ERROR"
+
+
+def test_sms_failed_count_in_text():
+    got = codes(snap(sms={"silent": False, "failed": 3}))
+    assert got["sms_failed"].level == "WARNING" and "3 СМС не отправлено" in got["sms_failed"].text
+    assert "sms_phone_silent" not in got

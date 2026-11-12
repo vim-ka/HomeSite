@@ -19,12 +19,26 @@ from app.models.sensor import MountPoint, Sensor, SensorData
 from app.services.advice_rules import AdviceHistory, evaluate_advice
 from app.services.alarm_rules import Alarm, AlarmTracker, Snapshot, evaluate, unknown
 from app.services.gateway_client import GatewayClient
+from app.services.internet_probe import default_router, reachable, with_port
 from app.services.scheme_service import CONTROLLER_DEVICE, SchemeService
+from app.services.sms_notifier import SmsNotifier
+from app.services.sms_policy import Cfg
+from app.services.sms_queue import _parse_hhmm, phone_status, poll_seconds
 
 logger = get_logger(__name__)
 
 DEFAULT_POLL_INTERVAL = 30  # seconds
 DEFAULT_STALE_MINUTES = 5
+
+DEFAULT_INTERNET_HOSTS = "77.88.8.8:53,1.1.1.1:53,ya.ru:443,8.8.8.8:53"
+DEFAULT_INTERNET_DOWN_MINUTES = 5
+DEFAULT_QUIET = ("18:00", "04:00")   # UTC (22:00–08:00 at the house, +4)
+PROBE_EVERY_S = 60
+PROBE_TIMEOUT_S = 3.0
+SMS_KEYS = (
+    "sms_quiet_start", "sms_quiet_end", "sms_merge_seconds", "sms_settle_minutes",
+    "internet_check_hosts", "internet_down_minutes", "internet_router_host",
+)
 
 # Safety flags reported in the boiler controller heartbeat → event text
 
@@ -87,6 +101,9 @@ class HealthMonitor:
         self._initialized = False
         self.alarms = AlarmTracker()
         self._now = lambda: datetime.now(UTC)  # replaceable clock (tests)
+        self.sms = SmsNotifier(started_at=self._now())
+        self._net: tuple[datetime, dict] | None = None   # last probe: (when, {"internet", "router"})
+        self._sms_cleanup_at: datetime | None = None
 
     async def run(self) -> None:
         """Main loop — polls at configured interval."""
@@ -281,13 +298,22 @@ class HealthMonitor:
             await self._forward_indoor(state)
         c = state["controller"]
         self._targets = dict(c["targets"]) if c["online"] else None
+        kv = await self._kv(session, SMS_KEYS)
+        net = await self._probe_net(kv, now)
+        sms_state: dict = {}
+        try:
+            async with self.session_factory() as s:
+                st = await phone_status(s, now, await poll_seconds(s))
+            sms_state = {"silent": st["silent"], "failed": st["failed"]}
+        except Exception as e:
+            logger.exception("sms_status_error", error=str(e))
         snap = Snapshot(
             now=now,
             services={"gateway": services.get("gateway", False), "mqtt": services.get("mqtt", False)},
             online=c["online"], values=state["values"], relays=c["relays"], flags=c["flags"],
             targets=c["targets"], settings=state["settings"],
             rooms=[(r["name"], None if r["stale"] else r["value"]) for r in state["rooms"]],
-            hb=scheme.heartbeat_data,
+            hb=scheme.heartbeat_data, net=net, sms=sms_state,
         )
         # while the controller is unreachable its flags are unknown, not cleared
         hold = () if c["online"] else ("flag:", "pza_", "alm_")
@@ -296,6 +322,7 @@ class HealthMonitor:
             events.append(EventLog(level=a.level, source="alarms", message=a.text))
         for a in cleared:
             events.append(EventLog(level="INFO", source="alarms", message=f"Снято: {a.text}"))
+        await self._notify_sms(kv, now)
 
         # efficiency advice over the last 30 min of steady operation (a rule that can't judge holds its advice)
         self.advice_history.add(snap)
@@ -305,6 +332,58 @@ class HealthMonitor:
             events.append(EventLog(level="INFO", source="advice", message=f"Совет: {a.text}"))
         for a in cleared:
             events.append(EventLog(level="INFO", source="advice", message=f"Совет снят: {a.text.split(' — ')[0]}"))
+
+    @staticmethod
+    async def _kv(session: AsyncSession, keys) -> dict[str, str]:
+        rows = await session.execute(select(ConfigKV.key, ConfigKV.value).where(ConfigKV.key.in_(keys)))
+        return {k: v for k, v in rows}
+
+    async def _probe_net(self, kv: dict[str, str], now: datetime) -> dict:
+        """Internet and router reachability (at most once a minute); {} when the check is switched off."""
+        hosts = [h.strip() for h in kv.get("internet_check_hosts", DEFAULT_INTERNET_HOSTS).split(",") if h.strip()]
+        if not hosts:
+            self._net = None
+            return {}
+        try:
+            minutes = int(kv.get("internet_down_minutes", DEFAULT_INTERNET_DOWN_MINUTES))
+        except ValueError:
+            minutes = DEFAULT_INTERNET_DOWN_MINUTES
+        if self._net is None or (now - self._net[0]).total_seconds() >= PROBE_EVERY_S:
+            router = (with_port(kv["internet_router_host"]) if kv.get("internet_router_host", "").strip()
+                      else default_router())
+            try:
+                internet, router_ok = await asyncio.gather(
+                    reachable(hosts, PROBE_TIMEOUT_S),
+                    reachable([router], PROBE_TIMEOUT_S) if router else asyncio.sleep(0, result=None),
+                )
+            except Exception as e:
+                logger.exception("internet_probe_error", error=str(e))
+                return {}
+            self._net = (now, {"internet": internet, "router": router_ok})
+        return {**self._net[1], "down_s": minutes * 60}
+
+    async def _notify_sms(self, kv: dict[str, str], now: datetime) -> None:
+        """Feed the active alarms to the SMS notifier; its own session and try — it never breaks the alarms."""
+        def _int(key: str, default: int) -> int:
+            try:
+                return int(kv.get(key, default))
+            except ValueError:
+                return default
+        try:
+            cfg = Cfg(
+                _parse_hhmm(kv.get("sms_quiet_start", DEFAULT_QUIET[0])),
+                _parse_hhmm(kv.get("sms_quiet_end", DEFAULT_QUIET[1])),
+                merge_s=_int("sms_merge_seconds", 60),
+                settle_s=_int("sms_settle_minutes", 10) * 60,
+            )
+            async with self.session_factory() as s:
+                await self.sms.apply(s, list(self.alarms.active.values()), now, cfg)
+            if self._sms_cleanup_at is None or now - self._sms_cleanup_at >= timedelta(days=1):
+                self._sms_cleanup_at = now
+                async with self.session_factory() as s:
+                    await self.sms.cleanup(s, now)
+        except Exception as e:
+            logger.exception("sms_notify_error", error=str(e))
 
     async def _forward_indoor(self, state: dict) -> None:
         """The house average → the controller, for the room correction of its weather curves.

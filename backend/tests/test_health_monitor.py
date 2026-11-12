@@ -194,3 +194,79 @@ async def test_no_forward_with_room_correction_off(engine, db_session, monkeypat
 
 async def test_a_stale_house_average_is_not_forwarded(engine, db_session, monkeypatch):
     assert await _forwarded(engine, db_session, monkeypatch, "2", fresh=False) == []
+
+
+# ---------------------------------------------------------------- SMS hookup
+from app.models.sms import SmsItem  # noqa: E402
+from app.models.user import User  # noqa: E402
+from app.services.alarm_rules import Alarm  # noqa: E402
+
+
+async def _sms_setup(engine, db_session, monkeypatch):
+    await seed(db_session)
+    db_session.add(User(username="a", password_hash="x", email="a@x", role="viewer",
+                        phone="+79990000001", sms_categories="critical"))
+    await db_session.commit()
+    m = _monitor(engine)
+    m.sms.started_at = NOW - timedelta(hours=1)
+    m._now = lambda: NOW
+    _with_gateway(m, monkeypatch, gateway())
+    monkeypatch.setattr("app.services.health_monitor.evaluate",
+                        lambda snap, active: [Alarm("pressure_low", "ERROR", "Низкое давление: 0.4 бар", 0, "pressure")])
+    return m
+
+
+async def test_alarm_reaches_sms_queue(engine, db_session, monkeypatch):
+    m = await _sms_setup(engine, db_session, monkeypatch)
+    await m._check()
+    await m._check()
+    db_session.expire_all()
+    got = list((await db_session.execute(select(SmsItem))).scalars())
+    assert [(i.state, i.code, i.phone) for i in got] == [("pending", "pressure_low", "+79990000001")]
+
+
+async def test_sms_failure_does_not_break_alarms(engine, db_session, monkeypatch):
+    m = await _sms_setup(engine, db_session, monkeypatch)
+
+    async def boom(*_a, **_k):
+        raise RuntimeError("sms down")
+
+    monkeypatch.setattr(m.sms, "apply", boom)
+    await m._check()
+    assert "pressure_low" in [a["code"] for a in m.state.active_alarms]
+    assert "alarm_check_failed" not in [a["code"] for a in m.state.active_alarms]
+
+
+async def test_internet_probe_feeds_alarm_and_is_cached(engine, db_session, monkeypatch):
+    await seed(db_session)
+    m = _monitor(engine)
+    m._now = lambda: NOW
+    _with_gateway(m, monkeypatch, gateway())
+    calls = []
+
+    async def fake(targets, _timeout=3.0):
+        calls.append(targets)
+        return False
+
+    monkeypatch.setattr("app.services.health_monitor.reachable", fake)
+    monkeypatch.setattr("app.services.health_monitor.default_router", lambda: "10.0.0.1:80")
+    await m._check()
+    await m._check()
+    assert len(calls) == 2          # internet + router, once (cached for the second poll)
+
+
+async def test_empty_internet_hosts_disables_the_probe(engine, db_session, monkeypatch):
+    from app.models.config import ConfigKV
+    await seed(db_session)
+    db_session.add(ConfigKV(key="internet_check_hosts", value=""))
+    await db_session.commit()
+    m = _monitor(engine)
+    m._now = lambda: NOW
+    _with_gateway(m, monkeypatch, gateway())
+
+    async def fake(*_a, **_k):
+        raise AssertionError("probe must be off")
+
+    monkeypatch.setattr("app.services.health_monitor.reachable", fake)
+    await m._check()
+    assert m.state.database is True

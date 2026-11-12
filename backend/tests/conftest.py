@@ -78,3 +78,12 @@ async def client(engine):
         yield ac
 
     app.dependency_overrides.clear()
+
+
+@pytest.fixture(autouse=True)
+def _no_real_network_probe(monkeypatch):
+    """The HealthMonitor's internet probe must never touch the network in tests."""
+    async def fake(_targets, _timeout=3.0):
+        return True
+    monkeypatch.setattr("app.services.health_monitor.reachable", fake)
+    monkeypatch.setattr("app.services.health_monitor.default_router", lambda: None)
