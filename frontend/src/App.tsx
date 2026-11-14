@@ -31,6 +31,7 @@ export default function App() {
         <Route path="statistics" element={<StatisticsPage />} />
         <Route path="events" element={<EventsPage />} />
         <Route path="settings" element={<SettingsPage />} />
+        <Route path="sms" element={<Navigate to="/settings#sms" replace />} />
         <Route path="about" element={<AboutPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/dashboard" replace />} />

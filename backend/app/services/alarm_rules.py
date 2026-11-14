@@ -59,6 +59,9 @@ class Snapshot:
     settings: dict[str, str]
     rooms: list[tuple[str, float | None]]     # heated rooms: (name, fresh value or None)
     hb: dict = field(default_factory=dict)    # raw controller heartbeat data ({} when offline)
+    net: dict = field(default_factory=dict)   # {"internet": bool|None, "router": bool|None, "down_s": int}; {} = no probe
+    #                                           internet None = the probe failed (unknown, alarms held)
+    sms: dict = field(default_factory=dict)   # {"silent": bool, "failed": int} — the SMS phone queue
 
 
 def _fmt(v: float) -> str:
@@ -190,6 +193,22 @@ def evaluate(s: Snapshot, active: set[str]) -> list[Alarm]:
         add(Alarm("supply_below_return", "WARNING",
                   "Подача котла холоднее обратки — перепутаны датчики или вода идёт в обратную сторону", 10 * 60))
 
+    # --- internet / local network. The router only matters once the internet is gone: a working internet goes
+    # through the router, so the LAN is fine (a gateway may simply ignore the TCP probe). No internet and no router
+    # → the LAN is down (banner only: the phone can't reach the server either); no internet, router there → ISP.
+    if s.net.get("internet") is False:
+        if s.net.get("router") is False:
+            add(Alarm("lan_down", "WARNING", "Нет локальной сети — сервер не видит роутер", 300))
+        else:
+            add(Alarm("internet_down", "ERROR", "Нет интернета", int(s.net.get("down_s", 300))))
+
+    # --- SMS phone queue (banner only)
+    if s.sms.get("silent"):
+        add(Alarm("sms_phone_silent", "ERROR", "Телефон СМС не на связи — СМС не уходят"))
+    failed = int(s.sms.get("failed") or 0)
+    if failed > 0:
+        add(Alarm("sms_failed", "WARNING", f"{failed} СМС не отправлено — смотрите журнал СМС"))
+
     return [a for a in out if a is not None]
 
 
@@ -203,6 +222,11 @@ def unknown(s: Snapshot) -> set[str]:
         codes |= {"pressure_low", "pressure_low_long", "pressure_high", "pressure_high_long"}
     if not s.online or _val(s, "boiler_supply") is None:
         codes |= {"no_heat:rad", "no_heat:floor", "tank_no_heat", "supply_below_return"}
+    if s.net:   # no router or a failed probe says nothing about the internet
+        if s.net.get("internet") is None:
+            codes |= {"internet_down", "lan_down"}
+        elif s.net.get("internet") is False and s.net.get("router") is False:
+            codes.add("internet_down")
     return codes
 
 

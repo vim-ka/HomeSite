@@ -67,6 +67,19 @@ the tank coil at the start of a loading and the expansion vessel (heating pressu
 ΔT colours too (`frontend/src/scheme/deltas.ts`) — change both together. Statistics → «Эффективность»: charts
 `ChartDeltas` (per-circuit supply − return from the circuits' mount points) and `ChartBoilerReturn`.
 
+**SMS notifications**: the HealthMonitor hands every poll's alarms to `SmsNotifier.apply` (`app/services/sms_notifier.py`),
+which for each (problem, recipient) asks `sms_policy.decide` and writes `SmsItem` rows (the queue, `sms_queue.py`).
+The home Android phone (MacroDroid, over Wi-Fi) calls `GET /api/v1/sms/next`: the queue forms an immutable `SmsMessage`
+(`sms_text.merge`, ≤ 134 chars) and the phone confirms with `POST /api/v1/sms/done`; every call with the phone key (`ping` included) counts as a phone poll.
+First SMS about a problem goes at once, then only the settled last state (`sms_merge_seconds`, `sms_settle_minutes`);
+ERROR any time, WARNING outside quiet hours (`sms_quiet_start/end`). `SMS_LOCK` serialises notifier and queue (one
+process, one event loop). After a restart a 15 min grace (`STARTUP_GRACE_S`) forbids lowering a level while the
+AlarmTracker is still empty. Recipients = phone + SMS categories in the user card (admin only). Journal / phone key / test
+SMS: Settings → «СМС» tab (`app/api/v1/sms.py`, `components/SmsTab.tsx`; one phone key per installation — the
+dev stand and prod have their own); the phone's own Swagger: `/api/v1/sms/docs` (works on prod).
+Internet loss is probed by `internet_probe.py` (several hosts, router for the LAN check). New alarms in `alarm_rules.py`:
+`internet_down` (ERROR), `lan_down`, `sms_phone_silent`, `sms_failed` (banner only, no SMS).
+
 **Scheme page** (`/scheme`): SCADA-style mnemonic of the boiler room. Backend `GET /api/v1/scheme/state`
 (`app/services/scheme_service.py`) aggregates sensors by role (circuit mount points), controller heartbeat
 (relays, flags, targets), gateway sync lists and alarms. Frontend `src/scheme/*`: pure SVG elements,
@@ -128,6 +141,10 @@ Runtime settings stored in `config_kv` table (not in `.env`):
   `watersupply_recirc_schedule_enabled` + `watersupply_recirc_{morning,evening}_{start,end}`
 - Well water pressure range for the scheme manometer (display only): `water_pressure_min`, `water_pressure_max`
 - Backups: `backup_enabled`, `backup_interval`, `backup_time` (UTC), `backup_last_run` — set via `/settings/backup-schedule`
+- SMS: master switch `sms_enabled` (bool, default off; Settings → Инфраструктура → «Отправка СМС»: off = nothing
+  queued, no phone alarms, the «СМС» tab hidden, the whole `/api/v1/sms/*` answers 404); `sms_quiet_start`, `sms_quiet_end` (HH:MM UTC, default 18:00–04:00), `sms_merge_seconds`, `sms_settle_minutes`,
+  `sms_poll_seconds`; internet loss: `internet_check_hosts`, `internet_down_minutes`, `internet_router_host`.
+  Internal (not PUT-writable): `sms_key_*_hash`, `sms_key_*_issued_at`, `sms_last_poll_at`
 
 Every key writable via `PUT /settings` must be in the allowlist `backend/app/core/setting_rules.py`
 (type, range, admin-only flag). Device ranges there mirror the firmware SETTINGS table in
@@ -203,6 +220,17 @@ CI/CD planned via GitHub Actions self-hosted runner.
 - [ ] **CI/CD**: GitHub Actions self-hosted runner on the VM
 - [x] **ESP32 firmware**: Add `/ack` response and `/heartbeat` publishing to firmware
 - [x] **Range monitoring**: Pressure outside min/max → ERROR, boiler overheating → ERROR
+- [ ] **СМС-уведомления** (решение владельца 11.11.2026; заменяет «Notifications: Push/Telegram»; спека
+  `docs/superpowers/specs/2026-11-12-sms-notifications-design.md`): Android-телефон дома с MacroDroid по Wi-Fi
+  забирает СМС из очереди бэкенда и шлёт со своей SIM.
+  - Сделано: очередь, API `/api/v1/sms/ping|next|done`, журнал (Настройки → «СМС»), склейка, тревоги `AlarmTracker`
+    (поднята / снята, критические без тихих часов), потеря связи с контроллером, **пропал интернет**
+    (`internet_down`: проверка нескольких адресов, СМС при пропаже и при возврате).
+  - Осталось: **пропало электричество** — ИБП APC (подключён по сети): мониторить его → СМС «работаем от батареи,
+    заряд N%», «электричество вернулось», «заряд ниже X%, скоро отключение». Роутер и ВМ должны быть на ИБП,
+    иначе СМС не уйдёт.
+  - Осталось: проверить на настоящем телефоне, примет ли MacroDroid самоподписанный сертификат Nginx; если нет —
+    включить закомментированный HTTP-блок только для LAN в `deploy/nginx/homesite.conf` или Let's Encrypt.
 
 ### Medium Priority
 - [ ] **Data migration**: Transfer data from SQLite → PostgreSQL (not just schema + seed)
@@ -212,11 +240,11 @@ CI/CD planned via GitHub Actions self-hosted runner.
 
 ### Low Priority
 - [x] **Mobile app**: Паритет с десктопом — WS `/ws/sensors`, Events-фильтр по level, линейные графики Stats (react-native-svg), админ-раздел из 13 экранов в `mobile/app/admin/`, EN локализация + language picker
-- [ ] **Notifications**: Push/Telegram on critical alerts
+- [ ] **Notifications**: см. «СМС-уведомления» в High Priority
 - [ ] **Real-time charts**: WebSocket for live chart updates (currently polling)
 - [x] **Action audit**: EventLog джойнится с User — username отображается во всех мутирующих эндпоинтах
 - [x] **Section tooltips**: TipLabel с иконкой "?" добавлен на Heating и Water Supply
 - [x] **Statistics page rework**: Fixed — chart sections are collapsed + lazy by default, data loads only when section is expanded
-- [x] **Settings page UX**: 4 вкладки (Оборудование / Устройства / Параметры системы / Инфраструктура)
+- [x] **Settings page UX**: 5 вкладок (Оборудование / Устройства / Параметры системы / Инфраструктура / СМС — только при включённой отправке СМС)
 - [x] **About page UX**: Архитектурная SVG-схема с тёмной темой и реальными портами из API
 - [ ] **OpenTherm integration**: Подключить ESP32 к котлу по OpenTherm (проект [OTGateway](https://github.com/Laxilef/OTGateway), библиотека ihormelnyk/opentherm_library). Нужен OT-адаптер (~$15, Tindie/DIYLESS/DIY). Даёт: уставки CH/DHW, вкл/выкл, сброс ошибок, PID, погодозависимые кривые; мониторинг — коды ошибок, пламя, модуляция %, давление, температуры подачи/обратки, ГВС. Интеграция через MQTT. Совместимость Beretta: MyNute X, MySmart подтверждены; Ciao — только Green/X (конденсационные), обычная Ciao не поддерживает OT. Для Vaillant — протокол eBUS (не OT), нужен eBUS-адаптер + ebusd.

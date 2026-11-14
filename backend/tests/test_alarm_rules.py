@@ -278,3 +278,59 @@ def test_well_dry_text_points_to_the_reset_button():
     from app.services.controller_flags import CONTROLLER_FLAGS
     assert "Сбросить блокировку" in CONTROLLER_FLAGS["well_dry"][1]
     assert "ТЭН отключён" in CONTROLLER_FLAGS["ihb_sensor_lost"][1]
+
+
+# ---------------------------------------------------------------- internet and SMS alarms
+def test_internet_down_raised():
+    a = codes(snap(net={"internet": False, "router": True, "down_s": 300}))["internet_down"]
+    assert (a.level, a.delay_s, a.text) == ("ERROR", 300, "Нет интернета")
+
+
+def test_lan_down_instead_of_internet():
+    got = codes(snap(net={"internet": False, "router": False, "down_s": 300}))
+    assert got["lan_down"].level == "WARNING" and got["lan_down"].delay_s == 300
+    assert "internet_down" not in got
+
+
+def test_partial_internet_no_alarm():
+    got = codes(snap(net={"internet": True, "router": True, "down_s": 300}))
+    assert "internet_down" not in got and "lan_down" not in got
+
+
+def test_working_internet_means_the_lan_works():
+    """The internet goes through the router: if it answers, the LAN is fine even when the router ignores the probe
+    (a gateway that drops TCP :80 — e.g. the WSL/Hyper-V virtual switch). No network alarm, nothing held."""
+    net = {"internet": True, "router": False, "down_s": 300}
+    got = codes(snap(net=net))
+    assert "internet_down" not in got and "lan_down" not in got
+    assert not {"internet_down", "lan_down"} & unknown(snap(net=net))
+
+
+def test_no_router_found_still_reports_internet_loss():
+    got = codes(snap(net={"internet": False, "router": None, "down_s": 300}))
+    assert "internet_down" in got and "lan_down" not in got
+
+
+def test_no_probe_no_alarm():
+    got = codes(snap(net={}))
+    assert "internet_down" not in got and "lan_down" not in got
+
+
+def test_internet_is_unknown_without_the_router_or_a_probe_result():
+    """No router (or a failed probe) says nothing about the internet: an active «Нет интернета» is held."""
+    assert "internet_down" in unknown(snap(net={"internet": False, "router": False, "down_s": 300}))
+    failed = unknown(snap(net={"internet": None, "router": None, "down_s": 300}))
+    assert {"internet_down", "lan_down"} <= failed
+    for net in ({"internet": False, "router": True, "down_s": 300}, {"internet": True, "router": None}, {}):
+        assert not {"internet_down", "lan_down"} & unknown(snap(net=net)), net
+
+
+def test_sms_phone_silent():
+    a = codes(snap(sms={"silent": True, "failed": 0}))["sms_phone_silent"]
+    assert a.level == "ERROR"
+
+
+def test_sms_failed_count_in_text():
+    got = codes(snap(sms={"silent": False, "failed": 3}))
+    assert got["sms_failed"].level == "WARNING" and "3 СМС не отправлено" in got["sms_failed"].text
+    assert "sms_phone_silent" not in got

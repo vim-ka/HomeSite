@@ -3,10 +3,12 @@
 import re
 
 import pytest
+import pytest_asyncio
 from fastapi.routing import APIRoute
 
 from app.core.security import get_password_hash
 from app.main import app
+from app.models.config import ConfigKV
 from app.models.user import User, UserRole
 
 # Endpoints that are intentionally reachable without a user token
@@ -17,9 +19,19 @@ PUBLIC = {
     ("GET", "/health/sensors"),
     ("POST", "/api/v1/auth/login"),
     ("POST", "/api/v1/auth/refresh"),
+    # the phone API's own Swagger: no secrets in it, the calls themselves need the SMS key
+    ("GET", "/api/v1/sms/openapi.json"),
+    ("GET", "/api/v1/sms/docs"),
 }
 # Protected by X-Internal-Secret instead of a user token
 INTERNAL_PREFIX = "/api/v1/internal/"
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def _sms_on(db_session):
+    """With SMS switched off its API answers 404 to everyone; switch it on so the auth itself is checked."""
+    db_session.add(ConfigKV(key="sms_enabled", value="1"))
+    await db_session.commit()
 
 
 def _routes():

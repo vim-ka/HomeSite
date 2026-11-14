@@ -1,8 +1,8 @@
-import { useState, useEffect, useCallback, type ReactNode } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Radio, Users, Database, Download, X, MapPin, Cpu, Waypoints, Radar, Wrench, CircuitBoard, SlidersHorizontal } from "lucide-react";
+import { Radio, Users, Database, Download, MapPin, Cpu, Waypoints, Radar, Wrench, CircuitBoard, SlidersHorizontal, MessageSquare } from "lucide-react";
 import api, { authFetch } from "@/api/client";
 import { useAuthStore } from "@/stores/authStore";
 import { useThemeStore } from "@/stores/themeStore";
@@ -11,6 +11,11 @@ import TimeInput from "@/components/TimeInput";
 import TipLabel from "@/components/TipLabel";
 import { useToast } from "@/components/Toast";
 import RfDebugPanel from "@/components/RfDebugPanel";
+import UserSmsModal from "@/components/UserSmsModal";
+import SmsTab from "@/components/SmsTab";
+import SmsFeatureToggle from "@/components/SmsFeatureToggle";
+import { isOn, useSettingsMap } from "@/hooks/useSmsEnabled";
+import Modal from "@/components/Modal";
 
 // ---- Types ----
 
@@ -27,6 +32,8 @@ interface UserInfo {
   email: string;
   role: string;
   is_active: boolean;
+  phone?: string | null;
+  sms_categories?: string[];
 }
 
 interface DatabaseInfo {
@@ -187,48 +194,6 @@ interface ScannedSensor {
 function scannedAddress(s: ScannedSensor): string {
   if (s.protocol) return `${s.protocol}:${s.id ?? ""}:${s.channel ?? 0}`;
   return s.addr ?? "";
-}
-
-// ---- Modal backdrop ----
-
-function Modal({
-  open,
-  onClose,
-  children,
-}: {
-  open: boolean;
-  onClose: () => void;
-  children: ReactNode;
-}) {
-  useEffect(() => {
-    if (!open) return;
-    const handleKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    document.addEventListener("keydown", handleKey);
-    return () => document.removeEventListener("keydown", handleKey);
-  }, [open, onClose]);
-
-  if (!open) return null;
-
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-    >
-      <div className="relative w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
-        <button
-          onClick={onClose}
-          className="absolute right-3 top-3 text-gray-400 hover:text-gray-600"
-        >
-          <X className="h-5 w-5" />
-        </button>
-        {children}
-      </div>
-    </div>
-  );
 }
 
 const OFFSET_UNITS: Record<string, string> = {
@@ -1499,6 +1464,7 @@ export default function SettingsPage() {
   });
 
   const [addUserOpen, setAddUserOpen] = useState(false);
+  const [smsUser, setSmsUser] = useState<UserInfo | null>(null);
   const [pwdModal, setPwdModal] = useState<{ userId: number; username: string } | null>(null);
 
   // ---- Database ----
@@ -1856,7 +1822,17 @@ export default function SettingsPage() {
   const location = useLocation();
   const hash = location.hash.replace("#", "");
 
-  const [activeTab, setActiveTab] = useState<"equipment" | "system" | "infra" | "devices">("equipment");
+  const [activeTab, setActiveTab] = useState<"equipment" | "system" | "infra" | "devices" | "sms">("equipment");
+  const { data: settingsMap } = useSettingsMap();
+  const smsEnabled = isOn(settingsMap?.sms_enabled);
+  // SMS switched off (or opened by an old /sms link while off): the tab doesn't exist
+  useEffect(() => {
+    if (settingsMap && !smsEnabled && activeTab === "sms") setActiveTab("infra");
+  }, [settingsMap, smsEnabled, activeTab]);
+  // on a phone the tab bar scrolls sideways: keep the chosen tab in sight
+  useEffect(() => {
+    document.querySelector(`[data-tab="${activeTab}"]`)?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+  }, [activeTab]);
 
   useEffect(() => {
     if (!hash) return;
@@ -1866,6 +1842,7 @@ export default function SettingsPage() {
     else if (hash === "system" || hash === "users") setActiveTab("system");
     else if (infraHashes.includes(hash)) setActiveTab("infra");
     else if (hash === "devices") setActiveTab("devices");
+    else if (hash === "sms") setActiveTab("sms");
   }, [hash]);
 
   // ---- Devices (ESP32) ----
@@ -1972,17 +1949,19 @@ export default function SettingsPage() {
       )}
 
       {isAdmin && (
-        <div className="flex border-b border-gray-200">
+        <div className="flex overflow-x-auto border-b border-gray-200">
           {([
             { id: "equipment", label: t("settings.tabEquipment"), icon: Cpu },
             { id: "devices", label: t("settings.tabDevices"), icon: CircuitBoard },
             { id: "system", label: t("settings.tabSystem"), icon: SlidersHorizontal },
             { id: "infra", label: t("settings.tabInfra"), icon: Database },
-          ] as const).map(({ id, label, icon: Icon }) => (
+            { id: "sms", label: t("settings.tabSms"), icon: MessageSquare },
+          ] as const).filter(({ id }) => id !== "sms" || smsEnabled).map(({ id, label, icon: Icon }) => (
             <button
               key={id}
+              data-tab={id}
               onClick={() => setActiveTab(id)}
-              className={`flex items-center gap-1.5 px-5 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${
+              className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap px-5 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${
                 activeTab === id
                   ? "border-primary-600 text-primary-700"
                   : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
@@ -1994,6 +1973,8 @@ export default function SettingsPage() {
           ))}
         </div>
       )}
+
+      {isAdmin && activeTab === "sms" && smsEnabled && <SmsTab />}
 
       {/* ======== TAB: EQUIPMENT ======== */}
       {/* Pending Sensors — standalone, only shown when there are new devices */}
@@ -2501,6 +2482,7 @@ export default function SettingsPage() {
                       <tr>
                         <th className="px-3 py-2 text-left">{t("settings.user")}</th>
                         <th className="px-3 py-2 text-left">Email</th>
+                        <th className="px-3 py-2 text-left">{t("settings.smsPhone")}</th>
                         <th className="px-3 py-2 text-left">{t("settings.role")}</th>
                         <th className="px-3 py-2 text-center">{t("settings.actions")}</th>
                       </tr>
@@ -2510,12 +2492,30 @@ export default function SettingsPage() {
                         <tr key={u.id} className="hover:bg-gray-50">
                           <td className="px-3 py-2 font-medium">{u.username}</td>
                           <td className="px-3 py-2 text-gray-600">{u.email}</td>
+                          <td className="px-3 py-2 text-gray-600 whitespace-nowrap">
+                            {u.phone ? (
+                              <>
+                                {u.phone}
+                                {(u.sms_categories?.length ?? 0) > 0 && (
+                                  <MessageSquare className="ml-1 inline h-3.5 w-3.5 text-primary-600" />
+                                )}
+                              </>
+                            ) : "—"}
+                          </td>
                           <td className="px-3 py-2">
                             <span className="px-2 py-0.5 rounded text-xs bg-primary-100 text-primary-700">
                               {u.role}
                             </span>
                           </td>
                           <td className="px-3 py-2 text-center space-x-2">
+                            {smsEnabled && (
+                              <button
+                                onClick={() => setSmsUser(u)}
+                                className="text-primary-600 hover:text-primary-800 text-xs"
+                              >
+                                {t("settings.smsButton")}
+                              </button>
+                            )}
                             <button
                               onClick={() => setPwdModal({ userId: u.id, username: u.username })}
                               className="text-primary-600 hover:text-primary-800 text-xs"
@@ -2551,6 +2551,17 @@ export default function SettingsPage() {
               onClose={() => setAddUserOpen(false)}
               onCreated={() => queryClient.invalidateQueries({ queryKey: ["users"] })}
             />
+
+            {smsUser && (
+              <UserSmsModal
+                open={true}
+                onClose={() => setSmsUser(null)}
+                userId={smsUser.id}
+                username={smsUser.username}
+                phone={smsUser.phone ?? null}
+                categories={smsUser.sms_categories ?? []}
+              />
+            )}
 
             {pwdModal && (
               <ChangePasswordModal
@@ -3215,6 +3226,7 @@ export default function SettingsPage() {
 
       {isAdmin && activeTab === "infra" && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="space-y-6">
           {/* MQTT Broker */}
           <CollapsibleSection title={t("settings.mqtt")} icon={Radio} id="mqtt" forceOpen={hash === "mqtt"}>
             <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
@@ -3283,6 +3295,10 @@ export default function SettingsPage() {
               </div>
             </div>
           </CollapsibleSection>
+
+          {/* SMS: master switch */}
+          <SmsFeatureToggle />
+          </div>
 
           {/* Device Gateway */}
           <CollapsibleSection title={t("settings.gateway")} icon={Wrench} id="gateway" forceOpen={hash === "gateway"}>

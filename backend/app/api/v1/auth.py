@@ -13,9 +13,11 @@ from app.schemas.auth import (
     LoginRequest,
     RefreshRequest,
     TokenResponse,
+    UpdateUserSmsRequest,
     UserResponse,
 )
 from app.services.auth_service import AuthService
+from app.services.sms_text import SMS_CATEGORIES
 
 router = APIRouter()
 
@@ -120,3 +122,28 @@ async def change_password(
         user_id=user.id,
     ))
     return {"detail": "Пароль изменён"}
+
+
+@router.put("/users/{user_id}/sms", response_model=UserResponse)
+async def update_user_sms(
+    user_id: int,
+    payload: UpdateUserSmsRequest,
+    user: User = Depends(require_role([UserRole.ADMIN])),
+    db: AsyncSession = Depends(get_db),
+):
+    """Set the user's phone number and the SMS categories they receive."""
+    target = await UserRepository(db).get_by_id(user_id)
+    if target is None:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    target.phone = payload.phone
+    # keep the canonical order, drop duplicates
+    target.sms_categories = ",".join(c for c in SMS_CATEGORIES if c in payload.categories)
+    db.add(EventLog(
+        level="INFO", source="auth", method="PUT", path=f"/api/v1/auth/users/{user_id}/sms",
+        message=(f"Изменены СМС-настройки пользователя: {target.username} "
+                 f"(телефон: {target.phone or '—'}, категории: {target.sms_categories or '—'})"),
+        user_id=user.id,
+    ))
+    await db.commit()
+    await db.refresh(target)
+    return target
