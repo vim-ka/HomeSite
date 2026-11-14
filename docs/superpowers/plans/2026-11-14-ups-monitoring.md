@@ -1,16 +1,16 @@
-# Мониторинг ИБП (сервер, шлюз, сайт, имитация) — план реализации
+# Мониторинг ИБП (сервер, шлюз, сайт, имитация, прошивка ESP32) — план реализации
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** ИБП в настройках (динамический список), опрос через apcupsd NIS и через MQTT от платы ESP32, тревоги и СМС об электричестве и здоровье ИБП, страница «ИБП» с графиками, напряжение сети на схеме и дашборде, имитация ИБП на стенде.
+**Goal:** ИБП в настройках (динамический список), опрос через apcupsd NIS и через MQTT от платы ESP32, тревоги и СМС об электричестве и здоровье ИБП, страница «ИБП» с графиками, напряжение сети на схеме и дашборде, имитация ИБП на стенде, прошивка ESP32 для Smart-UPS котельной (RS-232, протокол APC «Smart»).
 
 **Architecture:** `UpsMonitor` (вызывается HealthMonitor каждый опрос) раз в 60 с опрашивает ИБП с источником `apcupsd` по TCP (NIS) и берёт отчёты ИБП с источником `mqtt` из `/health` шлюза; приводит всё к одному `UpsStatus`, кэширует «живое» состояние, пишет историю, кладёт вид ИБП в `Snapshot` для правил тревог. Тревоги — правила в `alarm_rules.py`, дальше — существующие `AlarmTracker` и очередь СМС. Сайт читает кэш через `/api/v1/ups/state`, историю — через `/charts`.
 
-**Tech Stack:** FastAPI, SQLAlchemy 2.0 async, Alembic, aiomqtt (шлюз), pytest-asyncio; React 19 + TS, TanStack Query, recharts, vitest.
+**Tech Stack:** FastAPI, SQLAlchemy 2.0 async, Alembic, aiomqtt (шлюз), pytest-asyncio; React 19 + TS, TanStack Query, recharts, vitest; PlatformIO (espressif32 / Arduino, `native` + Unity для тестов логики), PubSubClient, ArduinoJson 7, pyserial (имитация «Smart» на COM-порту).
 
 **Spec:** `docs/superpowers/specs/2026-11-14-ups-monitoring-design.md`
 
-**Вне плана:** прошивка `firmware/esp32-ups/` и сборка железа — отдельный план после этого (порядок спеки). Здесь фиксируется формат MQTT-сообщения, который прошивка обязана выдавать (Task 2).
+**Порядок:** сервер с имитацией (Tasks 1–10) → прошивка на имитации (Tasks 11–13) → документация и стенд (Task 14). Сборка железа и проверка в котельной — вручную с владельцем после плана. Формат MQTT-сообщения задан в Task 2 и обязателен для прошивки.
 
 ## Global Constraints
 
@@ -22,6 +22,7 @@
 - История ИБП не чистится (как показания датчиков, владелец); удаление ИБП удаляет его историю.
 - Тексты интерфейса, тревог и СМС — по-русски, ключи интерфейса в `ru.json` и `en.json`.
 - Мобильное приложение и фото ИБП — не трогаем (рисунок по типу корпуса).
+- Прошивка `esp32-ups` только читает ИБП (ничем не управляет), публикует **не retained**, топик `home/devices/<node>/ups` (префикс как у контроллера); контроллер котельной не трогаем.
 
 ## Review Focus
 
@@ -57,6 +58,12 @@
 | `frontend/src/components/PowerSection.tsx` | секция «Электропитание» на дашборде |
 | `frontend/src/scheme/TopStrip.tsx` (изм.) | «Сеть 228 В» |
 | `docs/ups-apcupsd.md` | инструкция подключения |
+| `firmware/esp32-ups/src/apc_smart.{h,cpp}` | протокол APC «Smart»: команды, разбор ответов (без Arduino, тестируется на хосте) |
+| `firmware/esp32-ups/src/ups_report.{h,cpp}` | состояние ИБП → JSON по контракту `from_mqtt`, детектор смены режима, `onbatt_since` |
+| `firmware/esp32-ups/src/main.cpp`, `config.*`, `portal.*`, `mqtt.*` | плата: UART2, Wi-Fi, портал настройки, MQTT, цикл опроса |
+| `firmware/esp32-ups/test/` | Unity-тесты логики (`pio test -e native`) |
+| `firmware/esp32-ups/PINOUT.md` | распайка DB9 APC ↔ MAX3232 ↔ ESP32 |
+| `tools/ups_emulator/smart_serial.py` | имитация Smart-UPS на COM-порту (стол: ESP32 + USB-UART) |
 
 ---
 
@@ -229,14 +236,63 @@
 - [ ] **Step 2:** → FAIL. **Step 3:** реализовать. **Step 4:** → PASS; `npm test`, `npm run build`.
 - [ ] **Step 5:** commit `UPS: mains voltage on the scheme top strip and a power section on the dashboard`.
 
-### Task 11: Инструкция, документация, проверка на стенде
+### Task 11: Прошивка — протокол APC «Smart» и отчёт (логика, тесты на хосте)
+
+**Files:**
+- Create: `firmware/esp32-ups/platformio.ini` (`[env:esp32dev]` как у `firmware/esp32-homesite`; `[env:native]` — `platform = native`, `test_framework = unity`, `build_src_filter` только `apc_smart.cpp` и `ups_report.cpp`, `lib_deps` ArduinoJson), `src/apc_smart.h`, `src/apc_smart.cpp`, `src/ups_report.h`, `src/ups_report.cpp`, `test/test_apc_smart/test_main.cpp`, `test/test_ups_report/test_main.cpp`
+
+**Interfaces:**
+- Consumes: контракт MQTT-отчёта (Task 2, `from_mqtt`).
+- Produces (C++, без `Arduino.h` — `std::string`, чтобы собиралось в `native`):
+  - `namespace apc`: `struct Reading { std::optional<float> linev, outputv, bcharge, timeleft_min, loadpct, battv; std::optional<uint8_t> flags; std::string selftest, battdate, model; bool answered = false; }`;
+  - `std::optional<float> parseNumber(const std::string&)` (`"228.0"` → 228; `"NA"` / пусто → nullopt), `std::optional<float> parseRuntime(const std::string&)` (`"0045:"` → 45), `std::optional<uint8_t> parseFlags(const std::string&)` (hex `"08"` → 0x08);
+  - `std::vector<std::string> flagNames(uint8_t)` — `0x08`→`ONLINE`, `0x10`→`ONBATT`, `0x20`→`OVERLOAD`, `0x40`→`LOWBATT`, `0x80`→`REPLACEBATT`, `0x04`→`BOOST`, `0x02`→`TRIM`, `0x01`→`CAL`;
+  - `struct Command { char code; const char* field; }` и `constexpr Command POLL[]` — `\x01` модель, `L`, `O`, `f`, `j`, `P`, `B`, `Q`, `X`, `x` (в этом порядке); `void apply(Reading&, char code, const std::string& answer)`.
+  - `class Report`: `void update(const apc::Reading&, uint32_t uptime_s)`; `bool modeChanged()` (ONLINE↔ONBATT или появился LOWBATT с прошлого `update`); `std::string json(uint32_t uptime_s) const` — ключи контракта Task 2 (`status`, `linev`, `outputv`, `bcharge`, `timeleft`, `loadpct`, `battv`, `selftest`, `battdate`, `model`, `uptime`, `onbatt_since`), отсутствующие поля не пишутся; `onbatt_since` — `uptime` в момент перехода на батарею, пока работает от батареи; ИБП не ответил ни на одну команду → `{"status": ["COMMLOST"], "uptime": …}`.
+- [ ] **Step 1: Тесты Unity:** `parseNumber`/`parseRuntime`/`parseFlags` (включая `"NA"`), `flagNames(0x10|0x40)` → `ONBATT`, `LOWBATT`; `apply` заполняет поля; `Report`: переход на батарею даёт `modeChanged()==true` и `onbatt_since` = uptime перехода, возврат на сеть убирает `onbatt_since`; JSON без `linev`, если его не было; «не ответил» → `COMMLOST`.
+- [ ] **Step 2:** `cd firmware/esp32-ups && pio test -e native` → FAIL (нет исходников).
+- [ ] **Step 3:** реализовать. Коды команд и флаги сверить с документацией протокола APC Smart; расхождения записать комментарием рядом с таблицей.
+- [ ] **Step 4:** `pio test -e native` → PASS.
+- [ ] **Step 5:** commit `Firmware esp32-ups: APC Smart protocol parsing and MQTT report (host-tested)`.
+
+### Task 12: Прошивка — плата (UART, Wi-Fi, настройка, MQTT, цикл) и распайка
+
+**Files:**
+- Create: `firmware/esp32-ups/src/main.cpp`, `src/config.{h,cpp}`, `src/portal.{h,cpp}`, `src/mqtt.{h,cpp}`, `firmware/esp32-ups/PINOUT.md`, `firmware/esp32-ups/README.md`
+
+**Interfaces:**
+- Consumes: Task 11 (`apc::POLL`, `apc::apply`, `Report`).
+- Produces:
+  - UART2: `RX = GPIO16`, `TX = GPIO17`, 2400 бод 8N1; при старте и после каждого «не ответил» — `Y`, ожидание `SM`; каждая команда — ответ до `\r\n` с таймаутом 1 с.
+  - Настройка — как у контроллера (`firmware/esp32-homesite`: `ConfigManager` в `Preferences`, точка доступа с порталом при отсутствии Wi-Fi): Wi-Fi SSID/пароль, MQTT host/port/user/password, имя узла (по умолчанию `ups_kotelnaya`); упрощённая страница без датчиков и реле (код контроллера переиспользовать копированием нужного, не общей библиотекой).
+  - Цикл: опрос всех команд раз в 60 с; публикация `home/devices/<node>/ups` после каждого опроса и сразу при `modeChanged()`; MQTT-переподключение не блокирует опрос; сторожевой таймер (`esp_task_wdt`) — как у контроллера, если там есть.
+  - `PINOUT.md`: распайка DB9 ИБП ↔ MAX3232 ↔ ESP32 по кабелю APC 940-0024C — **по документации APC со ссылкой на источник**; питание MAX3232 от 3,3 В; питание платы — USB-блок 5 В из розетки ИБП.
+  - `README.md`: сборка (`pio run -e esp32dev`), прошивка (`pio run -t upload`), первая настройка через портал, проверка на столе (Task 13), добавление ИБП в настройках сайта (источник «ESP32 по MQTT», устройство = имя узла).
+- [ ] **Step 1:** `pio run -e esp32dev` собирается без ошибок и предупреждений проекта.
+- [ ] **Step 2:** `pio test -e native` — по-прежнему PASS.
+- [ ] **Step 3:** commit `Firmware esp32-ups: board (UART2, Wi-Fi portal, MQTT, poll loop), pinout`.
+
+### Task 13: Имитация Smart-UPS на COM-порту и проверка прошивки на столе
+
+**Files:**
+- Create: `tools/ups_emulator/smart_serial.py`, тесты в `tools/ups_emulator/test_ups_emulator.py`
+
+**Interfaces:**
+- Consumes: сценарии Task 7 (`scenarios.py`), коды Task 11.
+- Produces: `python3 -m ups_emulator.smart_serial --port /dev/ttyUSB0 --name kotelnaya --scenarios <file>` — отвечает на `Y` → `SM`, на команды из `apc::POLL` — значениями текущего сценария (`no_linev` → `NA` на `L`; `comm_lost` — молчит); логика ответа отделена от порта (`answer(cmd: str, state) -> str | None`), чтобы тестироваться без железа.
+- [ ] **Step 1: Тесты:** `answer("Y")=="SM"`; `answer("Q")` в `outage` — hex с битом `0x10`; `answer("L")` в `no_linev` — `"NA"`; `comm_lost` → `None`.
+- [ ] **Step 2:** → FAIL. **Step 3:** реализовать (pyserial). **Step 4:** → PASS.
+- [ ] **Step 5 (вручную с владельцем, когда будет плата):** ESP32 + MAX3232 + USB-UART-переходник на ПК с `smart_serial` → на стенде карточка «Котельная» оживает; сценарий `outage` → «От батареи» на схеме за ≤ 5 с (публикация при смене режима).
+- [ ] **Step 6:** commit `Tools: APC Smart UPS emulator on a serial port for bench-testing esp32-ups`.
+
+### Task 14: Инструкция, документация, проверка на стенде
 
 **Files:**
 - Create: `docs/ups-apcupsd.md`
-- Modify: `CLAUDE.md` (абзац «UPS monitoring» в Architecture, ключи `ups_*` в Settings Architecture, TODO: пункт «пропало электричество» — сделано на сервере, осталось: прошивка ESP32 котельной, подключение железа, роутер/Wi-Fi/сервер на ИБП)
+- Modify: `CLAUDE.md` (абзац «UPS monitoring» в Architecture, ключи `ups_*` в Settings Architecture, TODO: пункт «пропало электричество» — сделано; осталось: сборка платы котельной и подключение ИБП, роутер/Wi-Fi/сервер на ИБП); `firmware/esp32-ups` — в список прошивок
 
 - [ ] **Step 1:** `docs/ups-apcupsd.md` по спеке («Инструкция»): кабель USB; apcupsd для Windows (`UPSCABLE usb`, `UPSTYPE usb`, `NETSERVER on`, `NISIP 0.0.0.0`, `NISPORT 3551`), правило брандмауэра только для подсети ВМ, не ставить PowerChute; второй ИБП — второй экземпляр на другом порту (пометка «проверить при подключении») или Raspberry Pi; Raspberry Pi Zero 2 W с apcupsd; как добавить ИБП в настройках и проверить связь; условие «роутер, Wi-Fi и сервер на ИБП, иначе СМС о свете не уйдёт».
 - [ ] **Step 2:** `CLAUDE.md`.
-- [ ] **Step 3:** `cd backend && python3 -m pytest`, `cd frontend && npm test && npm run build` — всё зелёное.
+- [ ] **Step 3:** `cd backend && python3 -m pytest`, `cd frontend && npm test && npm run build`, `cd firmware/esp32-ups && pio test -e native && pio run -e esp32dev`, `cd tools && python3 -m pytest ups_emulator` — всё зелёное.
 - [ ] **Step 4:** commit `Docs: UPS monitoring`.
 - [ ] **Step 5 (контроллер, стенд):** сценарий `outage` у «Серверного» → баннер «Нет электричества», СМС в журнале (при включённой отправке), график заряда, схема «От батареи»; затем `normal` → «Электричество вернулось». Скриншоты страницы «ИБП», дашборда, схемы — десктоп и телефон, тёмная тема.
