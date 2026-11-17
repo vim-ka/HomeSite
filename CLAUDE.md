@@ -204,7 +204,10 @@ circuit's night setback it only lowers — it must not undo the setback), recirc
 runs only in its windows when scheduled (always while NTP is not synced). The dashboard / heating page show the boiler
 and circuit targets the controller reports (HealthMonitor caches them), estimates only while it is offline.
 Boiler: Beretta City 28 CSI (combi, non-condensing, rated 80/60 — boiler ΔT norm 8–20). Relays are written once per control cycle
-(`RelayController::beginBatch/commit`) so a safety override never opens a contact for a moment.
+(`RelayController::beginBatch/commit`) so a safety override never opens a contact for a moment. Open/close pairs of the three-point actuators (K7/K8, K9/K10, K11/K12) are interlocked in `RelayController`:
+switching one on first drops its partner and waits 500 ms (`REVERSE_DEAD_MS`, `relays.service()` in `loop()`); relays are
+initialised first in `setup()`, before Wi-Fi and the AP portal. Wiring rules from the electrical review (GPIO12 eFuse, 3.3 V relay
+inputs, coil GND to the PSU, RC snubbers, 1-Wire 2.2 kΩ): `docs/boiler-room/07-wiring.md` § 7.8.
 Heartbeat loss detected after `heartbeat_timeout_seconds` (default 60s) → ERROR in event log.
 
 ## Deployment Target
