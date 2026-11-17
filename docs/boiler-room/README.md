@@ -42,6 +42,7 @@ python3 docs/boiler-room/draw_wiring.py    # перерисовать листы
 python3 docs/boiler-room/draw_schematic.py # перерисовать листы 7–8 (принципиальная контроллера)
 python3 docs/boiler-room/draw_panel_node.py # перерисовать лист 9 (узел учёта сети в щитке)
 python3 docs/boiler-room/draw_panel_layout.py # перерисовать лист 10 (размещение в щите котельной)
+python3 docs/boiler-room/draw_ups_board.py  # перерисовать лист 11 (плата ИБП котельной)
 python3 docs/boiler-room/spec_html.py      # пересобрать 03-specification.html
 python3 docs/boiler-room/check_docs.py     # сверка: позиции схем ↔ спецификация, реле ↔ PINOUT.md, числа расчёта
 python3 -m pytest docs/boiler-room -q      # тесты инструментов
