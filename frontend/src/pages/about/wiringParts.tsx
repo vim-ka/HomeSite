@@ -156,3 +156,26 @@ export function Db9({ x, y, label, male, t }: { x: number; y: number; label: str
     </g>
   );
 }
+
+/** Capacitor standing between the VCC wire (y1) and the GND wire (y2) (e.g. right at a module's pads). */
+export function InlineCap({ x, y1, y2, electrolytic, t }: { x: number; y1: number; y2: number; electrolytic: boolean; t: Theme }) {
+  const mid = (y1 + y2) / 2;
+  return (
+    <g>
+      <Wire d={`M${x},${y1} V${y2}`} color={t.muted} w={2} />
+      {electrolytic ? (
+        <g>
+          <rect x={x - 6} y={mid - 10} width={12} height={20} rx={2} fill="#1d4ed8" stroke="#1e3a8a" />
+          <rect x={x + 2} y={mid - 10} width={4} height={20} fill="#93c5fd" />
+        </g>
+      ) : (
+        <g>
+          <ellipse cx={x} cy={mid} rx={7} ry={6.5} fill="#f59e0b" stroke="#b45309" strokeWidth="0.8" />
+          <text x={x} y={mid + 2} textAnchor="middle" fontSize="5" fill="#451a03">104</text>
+        </g>
+      )}
+      <circle cx={x} cy={y1} r={3} fill={t.text} />
+      <circle cx={x} cy={y2} r={3} fill={t.text} />
+    </g>
+  );
+}

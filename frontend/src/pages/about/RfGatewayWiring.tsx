@@ -5,7 +5,7 @@
  * Source of truth: firmware/esp32-rf-gateway/PINOUT.md and docs/boiler-room sheet 6 (07d-rf-gateway.svg).
  */
 
-import { Board, InfoBox, Legend, Tag, Title, Wire, XL, XR, rowY, theme, type Theme } from "./wiringParts";
+import { Board, InfoBox, InlineCap, Legend, Tag, Title, Wire, XL, XR, rowY, theme, type Theme } from "./wiringParts";
 
 const PAD_X = 1200;
 /** CC1101 header top to bottom (module drawn with GDO2 on top so the SPI wires hardly cross). */
@@ -20,7 +20,7 @@ const SIGNALS: { pin: string; cc: string; color: string; jog: number | null; wha
   { pin: "IO23", cc: "MOSI", color: "#3b82f6", jog: 1040, what: "MOSI" },
   { pin: "IO18", cc: "SCK", color: "#eab308", jog: null, what: "SCK" },
   { pin: "IO5", cc: "CSN", color: "#ec4899", jog: null, what: "CSN" },
-  { pin: "IO4", cc: "GDO0", color: "#8b5cf6", jog: 1100, what: "данные" },
+  { pin: "IO4", cc: "GDO0", color: "#8b5cf6", jog: 1070, what: "данные" },
 ];
 
 function Cc1101({ t }: { t: Theme }) {
@@ -46,32 +46,6 @@ function Cc1101({ t }: { t: Theme }) {
       <text x={1328} y={200} textAnchor="end" fontSize="11" fontWeight="bold" fill={t.text}>антенна ¼λ — 17,3 см</text>
       <text x={1328} y={216} textAnchor="end" fontSize="9.5" fill={t.muted}>(или спираль на 433 МГц),</text>
       <text x={1328} y={230} textAnchor="end" fontSize="9.5" fill={t.muted}>вертикально, вне металла</text>
-    </g>
-  );
-}
-
-/** Electrolytic or ceramic capacitor between a +3V3 tag (top) and a GND tag (bottom). */
-function DecouplingCap({ x, label, value, electrolytic, t }: {
-  x: number; label: string; value: string; electrolytic: boolean; t: Theme;
-}) {
-  return (
-    <g>
-      <Tag x={x - 23} y={650} net="+3V3" t={t} />
-      <Wire d={`M${x},659 V720`} color={t.muted} w={2} />
-      {electrolytic ? (
-        <g>
-          <rect x={x - 9} y={672} width={18} height={30} rx={3} fill="#1d4ed8" stroke="#1e3a8a" />
-          <rect x={x + 3} y={672} width={6} height={30} fill="#93c5fd" />
-        </g>
-      ) : (
-        <g>
-          <ellipse cx={x} cy={688} rx={9} ry={8} fill="#f59e0b" stroke="#b45309" strokeWidth="0.8" />
-          <text x={x} y={691} textAnchor="middle" fontSize="6" fill="#451a03">104</text>
-        </g>
-      )}
-      <text x={x + 14} y={684} fontSize="10" fontWeight="bold" fill={t.text}>{label}</text>
-      <text x={x + 14} y={696} fontSize="9" fill={t.muted}>{value}</text>
-      <Tag x={x - 23} y={729} net="GND" t={t} />
     </g>
   );
 }
@@ -108,13 +82,14 @@ export default function RfGatewayWiring({ isDark, className }: { isDark: boolean
       ))}
       <Cc1101 t={t} />
       <text x={PAD_X - 12} y={ccY("GDO2") + 4} textAnchor="end" fontSize="9" fill={t.muted}>не подключать</text>
-      <Wire d={`M${PAD_X},${ccY("VCC")} H1176`} color="#f97316" w={3} />
-      <Tag x={1130} y={ccY("VCC")} net="+3V3" t={t} />
-      <Wire d={`M${PAD_X},${ccY("GND")} H1176`} color={t.gnd} w={3} />
-      <Tag x={1130} y={ccY("GND")} net="GND" t={t} />
-      <DecouplingCap x={1240} label="C1" value="10 мкФ" electrolytic t={t} />
-      <DecouplingCap x={1330} label="C2" value="100 нФ" electrolytic={false} t={t} />
-      <text x={1285} y={760} textAnchor="middle" fontSize="9.5" fill={t.muted}>C1, C2 — у самых выводов VCC / GND модуля</text>
+      <Wire d={`M${PAD_X},${ccY("VCC")} H1128`} color="#f97316" w={3} />
+      <Tag x={1082} y={ccY("VCC")} net="+3V3" t={t} />
+      <Wire d={`M${PAD_X},${ccY("GND")} H1128`} color={t.gnd} w={3} />
+      <Tag x={1082} y={ccY("GND")} net="GND" t={t} />
+      <InlineCap x={1148} y1={ccY("VCC")} y2={ccY("GND")} electrolytic t={t} />
+      <InlineCap x={1174} y1={ccY("VCC")} y2={ccY("GND")} electrolytic={false} t={t} />
+      <text x={1161} y={622} textAnchor="middle" fontSize="9.5" fontWeight="bold" fill={t.text}>C1 10 мкФ · C2 100 нФ</text>
+      <text x={1161} y={635} textAnchor="middle" fontSize="9" fill={t.muted}>прямо на выводах VCC–GND модуля</text>
 
       <InfoBox x={40} y={150} w={520} t={t} title="Что принимает" lines={[
         "датчики 433 МГц: комнаты, улица, гараж, анализатор газа",

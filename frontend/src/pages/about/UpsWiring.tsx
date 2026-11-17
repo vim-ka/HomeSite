@@ -6,7 +6,7 @@
  * and the plan's firmware task (UART2: RX = GPIO16, TX = GPIO17). Cable pinout as APC 940-0024C.
  */
 
-import { Board, Db9, InfoBox, Legend, Tag, Title, Wire, XL, XR, rowY, theme, type Theme } from "./wiringParts";
+import { Board, Db9, InfoBox, InlineCap, Legend, Tag, Title, Wire, XL, XR, rowY, theme, type Theme } from "./wiringParts";
 
 const TX = "#f97316";
 const RX = "#22c55e";
@@ -40,10 +40,10 @@ function Max3232({ t }: { t: Theme }) {
 function SmartUps({ t }: { t: Theme }) {
   return (
     <g>
-      <rect x={1290} y={430} width={180} height={270} rx={8} fill="#1f2937" stroke="#4b5563" strokeWidth="1.5" />
-      <text x={1380} y={456} textAnchor="middle" fontSize="12" fontWeight="bold" fill="#e5e7eb">Smart-UPS 750</text>
-      <text x={1380} y={472} textAnchor="middle" fontSize="9" fill="#9ca3af">задняя панель</text>
-      <text x={1336} y={500} textAnchor="middle" fontSize="9" fontWeight="bold" fill="#e5e7eb">COM</text>
+      <rect x={1330} y={430} width={140} height={270} rx={8} fill="#1f2937" stroke="#4b5563" strokeWidth="1.5" />
+      <text x={1400} y={456} textAnchor="middle" fontSize="12" fontWeight="bold" fill="#e5e7eb">Smart-UPS 750</text>
+      <text x={1400} y={472} textAnchor="middle" fontSize="9" fill="#9ca3af">задняя панель</text>
+      <text x={1361} y={500} textAnchor="middle" fontSize="9" fontWeight="bold" fill="#e5e7eb">COM</text>
       {[0, 1, 2, 3].map((i) => (
         <g key={i}>
           <rect x={1385 + (i % 2) * 42} y={520 + Math.floor(i / 2) * 50} width={32} height={36} rx={3} fill="#111827" stroke="#6b7280" />
@@ -52,9 +52,9 @@ function SmartUps({ t }: { t: Theme }) {
         </g>
       ))}
       <text x={1427} y={640} textAnchor="middle" fontSize="9" fill="#9ca3af">выходы → щит</text>
-      <rect x={1330} y={660} width={100} height={26} rx={3} fill="#111827" stroke="#6b7280" />
-      <text x={1380} y={677} textAnchor="middle" fontSize="9" fill="#9ca3af">вход 230 В</text>
-      <text x={1380} y={722} textAnchor="middle" fontSize="10" fill={t.muted}>питает весь щит котельной</text>
+      <rect x={1350} y={660} width={100} height={26} rx={3} fill="#111827" stroke="#6b7280" />
+      <text x={1400} y={677} textAnchor="middle" fontSize="9" fill="#9ca3af">вход 230 В</text>
+      <text x={1400} y={722} textAnchor="middle" fontSize="10" fill={t.muted}>питает весь щит котельной</text>
     </g>
   );
 }
@@ -90,9 +90,14 @@ export default function UpsWiring({ isDark, className }: { isDark: boolean; clas
 
       {/* power: G1 +V → 5V pin; −V → GND */}
       <PanelPsu t={t} />
-      <Wire d={`M430,630 H578 V${rowY("5V", "L")} H${XL}`} color="#dc2626" />
-      <Wire d="M430,670 H470" color={t.gnd} />
-      <Tag x={470} y={670} net="GND" t={t} />
+      <Wire d={`M430,630 H600 V${rowY("5V", "L")} H${XL}`} color="#dc2626" />
+      <Wire d="M430,670 H548" color={t.gnd} />
+      <Tag x={548} y={670} net="GND" t={t} w={40} />
+      {/* filter at the board's 5 V input, as on the controller: the PSU also drives the relay coils */}
+      <InlineCap x={475} y1={630} y2={670} electrolytic t={t} />
+      <InlineCap x={515} y1={630} y2={670} electrolytic={false} t={t} />
+      <text x={495} y={692} textAnchor="middle" fontSize="9.5" fontWeight="bold" fill={t.text}>C7 100 мкФ · C8 100 нФ</text>
+      <text x={495} y={705} textAnchor="middle" fontSize="9" fill={t.muted}>фильтр — у вывода 5V платы</text>
       <Wire d={`M${XL},${rowY("3V3", "L")} H624`} color="#f97316" />
       <Tag x={576} y={rowY("3V3", "L")} net="+3V3" t={t} />
       <Wire d={`M${XR},${rowY("GND", "R")} H896`} color={t.gnd} />
@@ -112,11 +117,19 @@ export default function UpsWiring({ isDark, className }: { isDark: boolean; clas
       {/* RS-232 cable to the UPS */}
       <Db9 x={1166} y={545} label="" male={false} t={t} />
       <SmartUps t={t} />
-      <path d="M1194,545 C1240,545 1250,545 1306,545" fill="none" stroke="#475569" strokeWidth="9" strokeLinecap="round" />
-      <path d="M1194,545 C1240,545 1250,545 1306,545" fill="none" stroke="#94a3b8" strokeWidth="5" strokeLinecap="round" />
-      <Db9 x={1306} y={545} label="" male t={t} />
-      <text x={1248} y={526} textAnchor="middle" fontSize="8.5" fontWeight="bold" fill={t.text}>W1</text>
-      <text x={1248} y={568} textAnchor="middle" fontSize="8.5" fill={t.muted}>3 провода</text>
+      <Db9 x={1346} y={545} label="" male t={t} />
+      {/* W1: three wires — module 2 (transmit) → UPS 1, UPS 2 → module 3 (receive), module 5 — UPS 4 (GND) */}
+      <Wire d="M1176,531 H1206 V517 H1356" color={TX} w={2.5} />
+      <Wire d="M1176,545 H1236 V531 H1356" color={RX} w={2.5} />
+      <Wire d="M1176,573 H1266 V559 H1356" color={t.muted} w={2.5} />
+      {[[1176, 531], [1176, 545], [1176, 573], [1356, 517], [1356, 531], [1356, 559]].map(([x, y]) => (
+        <circle key={`${x}${y}`} cx={x} cy={y} r={3} fill={t.text} />
+      ))}
+      <text x={1270} y={500} textAnchor="middle" fontSize="10" fontWeight="bold" fill={t.text}>W1</text>
+      <text x={1206} y={600} fontSize="9" fontWeight="bold" fill={TX}>2 → 1  передача</text>
+      <text x={1206} y={613} fontSize="9" fontWeight="bold" fill={RX}>3 ← 2  приём</text>
+      <text x={1206} y={626} fontSize="9" fontWeight="bold" fill={t.muted}>5 — 4  GND</text>
+      <text x={1206} y={642} fontSize="8.5" fill={t.muted}>модуль → ИБП</text>
 
       {/* protocol */}
       <InfoBox x={950} y={150} w={520} t={t} title="Протокол APC «Smart» по RS-232" lines={[
@@ -130,9 +143,9 @@ export default function UpsWiring({ isDark, className }: { isDark: boolean; clas
 
       {/* cable pinout */}
       <InfoBox x={950} y={760} w={520} t={t} accent="#f97316" title="Кабель плата → ИБП (распайка как у APC 940-0024C)" lines={[
-        "передача (T1OUT) модуля    →  контакт 1 DB9 ИБП (приём ИБП)",
-        "приём (R1IN) модуля           ←  контакт 2 DB9 ИБП (передача ИБП)",
-        "GND (контакт 5 DB9 модуля)  —  контакт 4 DB9 ИБП (GND)",
+        "передача (T1OUT, у модулей обычно контакт 2)  →  контакт 1 ИБП",
+        "приём (R1IN, обычно контакт 3)  ←  контакт 2 ИБП",
+        "GND (контакт 5 модуля)  —  контакт 4 ИБП",
         "остальные контакты ИБП — не подключать",
       ]} />
 
