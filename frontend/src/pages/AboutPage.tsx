@@ -5,6 +5,8 @@ import { Maximize2, Minus, Plus, X } from "lucide-react";
 import api from "@/api/client";
 import { useAuthStore } from "@/stores/authStore";
 import ControllerWiring from "./about/ControllerWiring";
+import RfGatewayWiring from "./about/RfGatewayWiring";
+import UpsWiring from "./about/UpsWiring";
 
 // ---- Node types ----
 
@@ -403,6 +405,14 @@ const WIRING: Partial<Record<NodeId, { title: string; render: (isDark: boolean, 
   controller: {
     title: "Контроллер котельной — схема подключения",
     render: (isDark, className) => <ControllerWiring isDark={isDark} className={className} />,
+  },
+  upsBoard: {
+    title: "Плата ИБП котельной — схема подключения",
+    render: (isDark, className) => <UpsWiring isDark={isDark} className={className} />,
+  },
+  rfGateway: {
+    title: "RF-шлюз — схема подключения",
+    render: (isDark, className) => <RfGatewayWiring isDark={isDark} className={className} />,
   },
 };
 

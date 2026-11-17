@@ -6,17 +6,7 @@
  * Power nets are drawn as coloured tags (+5V / +3V3 / GND) instead of long wires.
  */
 
-// DevKitC header order, top (antenna end) to bottom (USB end) — same as docs/boiler-room/draw_schematic.py
-const LEFT = ["3V3", "EN", "IO36", "IO39", "IO34", "IO35", "IO32", "IO33", "IO25", "IO26", "IO27", "IO14", "IO12",
-  "GND", "IO13", "SD2", "SD3", "CMD", "5V"];
-const RIGHT = ["GND", "IO23", "IO22", "TXD0", "RXD0", "IO21", "GND", "IO19", "IO18", "IO5", "IO17", "IO16", "IO4",
-  "IO0", "IO2", "IO15", "SD1", "SD0", "CLK"];
-
-const PIN_Y0 = 230;
-const PITCH = 30;
-const XL = 650; // left header pads
-const XR = 870; // right header pads
-const rowY = (pin: string, side: "L" | "R") => PIN_Y0 + (side === "L" ? LEFT : RIGHT).indexOf(pin) * PITCH;
+import { Board, PITCH, Tag, Wire, XL, XR, rowY, theme, type Theme } from "./wiringParts";
 
 const RIBBON_COLOURS = ["#ef4444", "#f97316", "#eab308", "#22c55e", "#06b6d4", "#3b82f6", "#8b5cf6", "#ec4899"];
 const ribbon = (i: number) => RIBBON_COLOURS[i % RIBBON_COLOURS.length] ?? "#64748b";
@@ -44,37 +34,6 @@ const A22: { pin: string; k: number; load: string; jog: number | null }[] = [
   { pin: "IO22", k: 13, load: "лампа «Предупреждение»", jog: null },
   { pin: "IO23", k: 14, load: "лампа «Авария» + зуммер", jog: null },
 ];
-
-interface Theme {
-  bg: string; text: string; muted: string; gnd: string; gndText: string; panel: string; panelStroke: string;
-}
-
-const theme = (dark: boolean): Theme => ({
-  bg: dark ? "#0f172a" : "#f8fafc",
-  text: dark ? "#e2e8f0" : "#1f2937",
-  muted: dark ? "#94a3b8" : "#64748b",
-  gnd: dark ? "#cbd5e1" : "#111827",
-  gndText: dark ? "#0f172a" : "#ffffff",
-  panel: dark ? "#1e293b" : "#ffffff",
-  panelStroke: dark ? "#334155" : "#cbd5e1",
-});
-
-type Net = "+5V" | "+3V3" | "GND";
-
-function Tag({ x, y, net, t, w = 46, label }: { x: number; y: number; net: Net; t: Theme; w?: number; label?: string }) {
-  const fill = net === "+5V" ? "#dc2626" : net === "+3V3" ? "#f97316" : t.gnd;
-  const color = net === "GND" ? t.gndText : "#ffffff";
-  return (
-    <g>
-      <rect x={x} y={y - 9} width={w} height={18} rx={4} fill={fill} />
-      <text x={x + w / 2} y={y + 4} textAnchor="middle" fontSize="10.5" fontWeight="bold" fill={color}>{label ?? net}</text>
-    </g>
-  );
-}
-
-function Wire({ d, color, w = 4 }: { d: string; color: string; w?: number }) {
-  return <path d={d} fill="none" stroke={color} strokeWidth={w} strokeLinecap="round" strokeLinejoin="round" />;
-}
 
 const BAND: Record<string, string> = {
   "2,2 кОм": "#dc2626,#dc2626,#dc2626", "10 кОм": "#78350f,#111827,#f97316", "100 Ом": "#78350f,#111827,#78350f",
@@ -186,46 +145,6 @@ function RelayModule({ side, hx, y0, title, chans, t }: {
           </text>
         </g>
       ))}
-    </g>
-  );
-}
-
-function Board({ t }: { t: Theme }) {
-  return (
-    <g>
-      <rect x={632} y={140} width={256} height={690} rx={10} fill="#111827" stroke="#374151" strokeWidth="2" />
-      {/* WROOM-32 module with the PCB antenna on top */}
-      <rect x={712} y={150} width={96} height={40} fill="#0b1220" />
-      <path d="M720,182 v-24 h10 v18 h10 v-18 h10 v18 h10 v-18 h10 v18 h10 v-18 h10 v24" fill="none" stroke="#d4a017" strokeWidth="2" />
-      <rect x={712} y={190} width={96} height={190} rx={3} fill="#9ca3af" stroke="#6b7280" />
-      <text x={760} y={285} textAnchor="middle" fontSize="11" fontWeight="bold" fill="#1f2937" transform="rotate(-90 760 285)">ESP32-WROOM-32</text>
-      <text x={760} y={470} textAnchor="middle" fontSize="13" fontWeight="bold" fill="#e5e7eb">A1</text>
-      <text x={760} y={488} textAnchor="middle" fontSize="10" fill="#9ca3af">ESP32-DevKitC</text>
-      <rect x={742} y={600} width={36} height={36} rx={2} fill="#000" stroke="#4b5563" />
-      <text x={760} y={622} textAnchor="middle" fontSize="7" fill="#9ca3af">USB-UART</text>
-      {[[722, "EN"], [798, "BOOT"]].map(([x, n]) => (
-        <g key={n as string}>
-          <rect x={(x as number) - 9} y={752} width={18} height={18} rx={2} fill="#d1d5db" />
-          <circle cx={x as number} cy={761} r={5} fill="#4b5563" />
-          <text x={x as number} y={784} textAnchor="middle" fontSize="8" fill="#9ca3af">{n}</text>
-        </g>
-      ))}
-      <rect x={738} y={800} width={44} height={34} rx={4} fill="#9ca3af" stroke="#6b7280" />
-      {LEFT.map((p, i) => (
-        <g key={`L${p}${i}`}>
-          <circle cx={XL} cy={PIN_Y0 + i * PITCH} r={8} fill="#d4a017" stroke="#92400e" />
-          <circle cx={XL} cy={PIN_Y0 + i * PITCH} r={3} fill="#111827" />
-          <text x={XL + 14} y={PIN_Y0 + i * PITCH + 4} fontSize="10.5" fill="#e5e7eb" fontFamily="monospace">{p}</text>
-        </g>
-      ))}
-      {RIGHT.map((p, i) => (
-        <g key={`R${p}${i}`}>
-          <circle cx={XR} cy={PIN_Y0 + i * PITCH} r={8} fill="#d4a017" stroke="#92400e" />
-          <circle cx={XR} cy={PIN_Y0 + i * PITCH} r={3} fill="#111827" />
-          <text x={XR - 14} y={PIN_Y0 + i * PITCH + 4} textAnchor="end" fontSize="10.5" fill="#e5e7eb" fontFamily="monospace">{p}</text>
-        </g>
-      ))}
-      <text x={760} y={128} textAnchor="middle" fontSize="10" fill={t.muted}>антенна — сюда, подальше от металла</text>
     </g>
   );
 }
