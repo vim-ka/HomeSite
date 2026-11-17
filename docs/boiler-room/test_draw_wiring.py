@@ -35,7 +35,7 @@ def test_sensor_sheet_has_bus_pullups_and_every_sensor_on_its_pin():
     _, refs = svg_refs(svg)
     assert {f"BK{i}" for i in range(1, 12)} | {"BP1", "BP2", "A1", "G1"} <= refs
     txt = text_of(svg)
-    for needle in ("GPIO4", "4,7 кОм", "GPIO15", "10 кОм", "GPIO34", "GPIO35", "100 нФ", "GPIO39",
+    for needle in ("GPIO4", "2,2 кОм", "100 Ом", "GPIO15", "10 кОм", "GPIO34", "GPIO35", "100 нФ", "433 МГц",
                    "tsboiler_s", "tswatersupply_h", "prs_heating", "prs_water"):
         assert needle in txt, needle
 
@@ -47,7 +47,7 @@ def test_boiler_sheet_wires_opentherm_to_the_free_pins_and_the_manual_switch():
     txt = text_of(svg)
     # receive on GPIO13 (freed relay K0): GPIO36/39 get spurious pulses while ADC1 runs (ESP32 errata),
     # and the OpenTherm library decodes on interrupts
-    assert "GPIO13" in txt and "GPIO5" in txt
+    assert "GPIO13" in txt and "GPIO32" in txt
     assert "GPIO13 (вход)" in txt and "приём → GPIO13" in txt
     assert "GPIO36 (вход)" not in txt and "приём → GPIO36" not in txt   # the note may still explain why not 36
     assert "OT" in txt
@@ -63,7 +63,7 @@ def test_hardware_interlocks_sit_in_the_power_lines_not_only_in_software():
 def test_relay_channels_given_to_opentherm_are_marked_free():
     load = {ch: text for ch, _, text, _ in RELAYS}
     assert "OpenTherm" in load[0] and "GPIO13" in load[0]
-    assert "OpenTherm" in load[15] and "GPIO5" in load[15]
+    assert "OpenTherm" in load[15] and "GPIO32" in load[15]
 
 
 RF_PINOUT = Path(__file__).resolve().parents[2] / "firmware" / "esp32-rf-gateway" / "PINOUT.md"

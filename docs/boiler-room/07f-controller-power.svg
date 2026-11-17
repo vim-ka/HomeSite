@@ -78,6 +78,9 @@
 <path d="M1009,438 L1560,438" fill="none" stroke="#008400" stroke-width="1.6"/>
 <circle cx="1560" cy="438" r="3" fill="#008400"/>
 <g data-ref="HL7" data-pos="68"><circle cx="1000" cy="438" r="9" fill="#3b82f6" stroke="#840000" stroke-width="1.5"/><path d="M994,432 L1006,444 M994,444 L1006,432" stroke="#840000" stroke-width="1.2"/><rect x="1012" y="430" width="100" height="16" fill="#fff"/><text x="1016" y="442" font-size="9.5" text-anchor="start" fill="#840000" font-weight="bold">HL7  WP · синий</text></g>
+<circle cx="950" cy="418" r="3" fill="#008400"/>
+<circle cx="950" cy="438" r="3" fill="#008400"/>
+<g data-ref="RC1" data-pos="87"><rect x="942" y="421" width="16" height="14" fill="#fffff0" stroke="#840000" stroke-width="1.2"/><text x="950" y="431.5" font-size="7" text-anchor="middle" fill="#840000" font-weight="bold">RC</text><text x="962" y="427" font-size="8" text-anchor="start" fill="#840000" font-weight="normal">RC1</text></g>
 <circle cx="110" cy="470" r="3" fill="#008400"/>
 <path d="M110,470 L170,470" fill="none" stroke="#008400" stroke-width="1.6"/>
 <g data-ref="A2.1" data-pos="51"><circle cx="170" cy="470" r="2.5" fill="#840000"/><path d="M170,470 L205,458" stroke="#840000" stroke-width="1.8"/><circle cx="210" cy="470" r="2.5" fill="#840000"/><text x="160" y="460" font-size="10" text-anchor="end" fill="#840000" font-weight="bold">K5</text><text x="160" y="482" font-size="8" text-anchor="end" fill="#840000" font-weight="normal">A2.1</text></g>
@@ -106,8 +109,13 @@
 <path d="M1009,542 L1560,542" fill="none" stroke="#008400" stroke-width="1.6"/>
 <circle cx="1560" cy="542" r="3" fill="#008400"/>
 <g data-ref="HL9" data-pos="68"><circle cx="1000" cy="542" r="9" fill="#14b8a6" stroke="#840000" stroke-width="1.5"/><path d="M994,536 L1006,548 M994,548 L1006,536" stroke="#840000" stroke-width="1.2"/><rect x="1012" y="534" width="135" height="16" fill="#fff"/><text x="1016" y="546" font-size="9.5" text-anchor="start" fill="#840000" font-weight="bold">HL9  TEN · бирюзовый</text></g>
+<circle cx="950" cy="522" r="3" fill="#008400"/>
+<circle cx="950" cy="542" r="3" fill="#008400"/>
+<g data-ref="RC2" data-pos="87"><rect x="942" y="525" width="16" height="14" fill="#fffff0" stroke="#840000" stroke-width="1.2"/><text x="950" y="535.5" font-size="7" text-anchor="middle" fill="#840000" font-weight="bold">RC</text><text x="962" y="531" font-size="8" text-anchor="start" fill="#840000" font-weight="normal">RC2</text></g>
 <circle cx="110" cy="574" r="3" fill="#008400"/>
 <path d="M110,574 L170,574" fill="none" stroke="#008400" stroke-width="1.6"/>
+<circle cx="210" cy="590" r="2.5" fill="#fff" stroke="#840000" stroke-width="1.2"/><text x="216" y="594" font-size="7.5" text-anchor="start" fill="#840000" font-weight="normal">NC</text>
+<path d="M210,592 L210,604 L125,604 L125,626 L167,626" fill="none" stroke="#008400" stroke-width="1.6"/>
 <g data-ref="A2.2" data-pos="51"><circle cx="170" cy="574" r="2.5" fill="#840000"/><path d="M170,574 L205,562" stroke="#840000" stroke-width="1.8"/><circle cx="210" cy="574" r="2.5" fill="#840000"/><text x="160" y="564" font-size="10" text-anchor="end" fill="#840000" font-weight="bold">K7</text><text x="160" y="586" font-size="8" text-anchor="end" fill="#840000" font-weight="normal">A2.2</text></g>
 <path d="M210,574 L300,574" fill="none" stroke="#008400" stroke-width="1.6"/>
 <g data-ref="XT1" data-pos="63"><circle cx="300" cy="574" r="4" fill="#fff" stroke="#840000" stroke-width="1.2"/><text x="300" y="566" font-size="8" text-anchor="middle" fill="#840000" font-weight="normal">XT1:7</text></g>
@@ -120,8 +128,9 @@
 <path d="M1009,594 L1560,594" fill="none" stroke="#008400" stroke-width="1.6"/>
 <circle cx="1560" cy="594" r="3" fill="#008400"/>
 <g data-ref="HL10" data-pos="68"><circle cx="1000" cy="594" r="9" fill="#ef4444" stroke="#840000" stroke-width="1.5"/><path d="M994,588 L1006,600 M994,600 L1006,588" stroke="#840000" stroke-width="1.2"/><rect x="1012" y="586" width="121" height="16" fill="#fff"/><text x="1016" y="598" font-size="9.5" text-anchor="start" fill="#840000" font-weight="bold">HL10  АП · красный</text></g>
-<circle cx="110" cy="626" r="3" fill="#008400"/>
-<path d="M110,626 L170,626" fill="none" stroke="#008400" stroke-width="1.6"/>
+<circle cx="950" cy="574" r="3" fill="#008400"/>
+<circle cx="950" cy="594" r="3" fill="#008400"/>
+<g data-ref="RC3" data-pos="87"><rect x="942" y="577" width="16" height="14" fill="#fffff0" stroke="#840000" stroke-width="1.2"/><text x="950" y="587.5" font-size="7" text-anchor="middle" fill="#840000" font-weight="bold">RC</text><text x="962" y="583" font-size="8" text-anchor="start" fill="#840000" font-weight="normal">RC3</text></g>
 <g data-ref="A2.2" data-pos="51"><circle cx="170" cy="626" r="2.5" fill="#840000"/><path d="M170,626 L205,614" stroke="#840000" stroke-width="1.8"/><circle cx="210" cy="626" r="2.5" fill="#840000"/><text x="160" y="616" font-size="10" text-anchor="end" fill="#840000" font-weight="bold">K8</text><text x="160" y="638" font-size="8" text-anchor="end" fill="#840000" font-weight="normal">A2.2</text></g>
 <path d="M210,626 L300,626" fill="none" stroke="#008400" stroke-width="1.6"/>
 <g data-ref="XT1" data-pos="63"><circle cx="300" cy="626" r="4" fill="#fff" stroke="#840000" stroke-width="1.2"/><text x="300" y="618" font-size="8" text-anchor="middle" fill="#840000" font-weight="normal">XT1:8</text></g>
@@ -134,8 +143,13 @@
 <path d="M1009,646 L1560,646" fill="none" stroke="#008400" stroke-width="1.6"/>
 <circle cx="1560" cy="646" r="3" fill="#008400"/>
 <g data-ref="HL11" data-pos="68"><circle cx="1000" cy="646" r="9" fill="#3b82f6" stroke="#840000" stroke-width="1.5"/><path d="M994,640 L1006,652 M994,652 L1006,640" stroke="#840000" stroke-width="1.2"/><rect x="1012" y="638" width="107" height="16" fill="#fff"/><text x="1016" y="650" font-size="9.5" text-anchor="start" fill="#840000" font-weight="bold">HL11  АП · синий</text></g>
+<circle cx="950" cy="626" r="3" fill="#008400"/>
+<circle cx="950" cy="646" r="3" fill="#008400"/>
+<g data-ref="RC4" data-pos="87"><rect x="942" y="629" width="16" height="14" fill="#fffff0" stroke="#840000" stroke-width="1.2"/><text x="950" y="639.5" font-size="7" text-anchor="middle" fill="#840000" font-weight="bold">RC</text><text x="962" y="635" font-size="8" text-anchor="start" fill="#840000" font-weight="normal">RC4</text></g>
 <circle cx="110" cy="678" r="3" fill="#008400"/>
 <path d="M110,678 L170,678" fill="none" stroke="#008400" stroke-width="1.6"/>
+<circle cx="210" cy="694" r="2.5" fill="#fff" stroke="#840000" stroke-width="1.2"/><text x="216" y="698" font-size="7.5" text-anchor="start" fill="#840000" font-weight="normal">NC</text>
+<path d="M210,696 L210,708 L125,708 L125,730 L167,730" fill="none" stroke="#008400" stroke-width="1.6"/>
 <g data-ref="A2.2" data-pos="51"><circle cx="170" cy="678" r="2.5" fill="#840000"/><path d="M170,678 L205,666" stroke="#840000" stroke-width="1.8"/><circle cx="210" cy="678" r="2.5" fill="#840000"/><text x="160" y="668" font-size="10" text-anchor="end" fill="#840000" font-weight="bold">K9</text><text x="160" y="690" font-size="8" text-anchor="end" fill="#840000" font-weight="normal">A2.2</text></g>
 <path d="M210,678 L300,678" fill="none" stroke="#008400" stroke-width="1.6"/>
 <g data-ref="XT1" data-pos="63"><circle cx="300" cy="678" r="4" fill="#fff" stroke="#840000" stroke-width="1.2"/><text x="300" y="670" font-size="8" text-anchor="middle" fill="#840000" font-weight="normal">XT1:9</text></g>
@@ -148,8 +162,9 @@
 <path d="M1009,698 L1560,698" fill="none" stroke="#008400" stroke-width="1.6"/>
 <circle cx="1560" cy="698" r="3" fill="#008400"/>
 <g data-ref="HL12" data-pos="68"><circle cx="1000" cy="698" r="9" fill="#ef4444" stroke="#840000" stroke-width="1.5"/><path d="M994,692 L1006,704 M994,704 L1006,692" stroke="#840000" stroke-width="1.2"/><rect x="1012" y="690" width="128" height="16" fill="#fff"/><text x="1016" y="702" font-size="9.5" text-anchor="start" fill="#840000" font-weight="bold">HL12  СУ1 · красный</text></g>
-<circle cx="110" cy="730" r="3" fill="#008400"/>
-<path d="M110,730 L170,730" fill="none" stroke="#008400" stroke-width="1.6"/>
+<circle cx="950" cy="678" r="3" fill="#008400"/>
+<circle cx="950" cy="698" r="3" fill="#008400"/>
+<g data-ref="RC5" data-pos="87"><rect x="942" y="681" width="16" height="14" fill="#fffff0" stroke="#840000" stroke-width="1.2"/><text x="950" y="691.5" font-size="7" text-anchor="middle" fill="#840000" font-weight="bold">RC</text><text x="962" y="687" font-size="8" text-anchor="start" fill="#840000" font-weight="normal">RC5</text></g>
 <g data-ref="A2.2" data-pos="51"><circle cx="170" cy="730" r="2.5" fill="#840000"/><path d="M170,730 L205,718" stroke="#840000" stroke-width="1.8"/><circle cx="210" cy="730" r="2.5" fill="#840000"/><text x="160" y="720" font-size="10" text-anchor="end" fill="#840000" font-weight="bold">K10</text><text x="160" y="742" font-size="8" text-anchor="end" fill="#840000" font-weight="normal">A2.2</text></g>
 <path d="M210,730 L300,730" fill="none" stroke="#008400" stroke-width="1.6"/>
 <g data-ref="XT1" data-pos="63"><circle cx="300" cy="730" r="4" fill="#fff" stroke="#840000" stroke-width="1.2"/><text x="300" y="722" font-size="8" text-anchor="middle" fill="#840000" font-weight="normal">XT1:10</text></g>
@@ -162,8 +177,13 @@
 <path d="M1009,750 L1560,750" fill="none" stroke="#008400" stroke-width="1.6"/>
 <circle cx="1560" cy="750" r="3" fill="#008400"/>
 <g data-ref="HL13" data-pos="68"><circle cx="1000" cy="750" r="9" fill="#3b82f6" stroke="#840000" stroke-width="1.5"/><path d="M994,744 L1006,756 M994,756 L1006,744" stroke="#840000" stroke-width="1.2"/><rect x="1012" y="742" width="114" height="16" fill="#fff"/><text x="1016" y="754" font-size="9.5" text-anchor="start" fill="#840000" font-weight="bold">HL13  СУ1 · синий</text></g>
+<circle cx="950" cy="730" r="3" fill="#008400"/>
+<circle cx="950" cy="750" r="3" fill="#008400"/>
+<g data-ref="RC6" data-pos="87"><rect x="942" y="733" width="16" height="14" fill="#fffff0" stroke="#840000" stroke-width="1.2"/><text x="950" y="743.5" font-size="7" text-anchor="middle" fill="#840000" font-weight="bold">RC</text><text x="962" y="739" font-size="8" text-anchor="start" fill="#840000" font-weight="normal">RC6</text></g>
 <circle cx="110" cy="782" r="3" fill="#008400"/>
 <path d="M110,782 L170,782" fill="none" stroke="#008400" stroke-width="1.6"/>
+<circle cx="210" cy="798" r="2.5" fill="#fff" stroke="#840000" stroke-width="1.2"/><text x="216" y="802" font-size="7.5" text-anchor="start" fill="#840000" font-weight="normal">NC</text>
+<path d="M210,800 L210,812 L125,812 L125,834 L167,834" fill="none" stroke="#008400" stroke-width="1.6"/>
 <g data-ref="A2.2" data-pos="51"><circle cx="170" cy="782" r="2.5" fill="#840000"/><path d="M170,782 L205,770" stroke="#840000" stroke-width="1.8"/><circle cx="210" cy="782" r="2.5" fill="#840000"/><text x="160" y="772" font-size="10" text-anchor="end" fill="#840000" font-weight="bold">K11</text><text x="160" y="794" font-size="8" text-anchor="end" fill="#840000" font-weight="normal">A2.2</text></g>
 <path d="M210,782 L300,782" fill="none" stroke="#008400" stroke-width="1.6"/>
 <g data-ref="XT1" data-pos="63"><circle cx="300" cy="782" r="4" fill="#fff" stroke="#840000" stroke-width="1.2"/><text x="300" y="774" font-size="8" text-anchor="middle" fill="#840000" font-weight="normal">XT1:11</text></g>
@@ -176,8 +196,9 @@
 <path d="M1009,802 L1560,802" fill="none" stroke="#008400" stroke-width="1.6"/>
 <circle cx="1560" cy="802" r="3" fill="#008400"/>
 <g data-ref="HL14" data-pos="68"><circle cx="1000" cy="802" r="9" fill="#ef4444" stroke="#840000" stroke-width="1.5"/><path d="M994,796 L1006,808 M994,808 L1006,796" stroke="#840000" stroke-width="1.2"/><rect x="1012" y="794" width="128" height="16" fill="#fff"/><text x="1016" y="806" font-size="9.5" text-anchor="start" fill="#840000" font-weight="bold">HL14  СУ2 · красный</text></g>
-<circle cx="110" cy="834" r="3" fill="#008400"/>
-<path d="M110,834 L170,834" fill="none" stroke="#008400" stroke-width="1.6"/>
+<circle cx="950" cy="782" r="3" fill="#008400"/>
+<circle cx="950" cy="802" r="3" fill="#008400"/>
+<g data-ref="RC7" data-pos="87"><rect x="942" y="785" width="16" height="14" fill="#fffff0" stroke="#840000" stroke-width="1.2"/><text x="950" y="795.5" font-size="7" text-anchor="middle" fill="#840000" font-weight="bold">RC</text><text x="962" y="791" font-size="8" text-anchor="start" fill="#840000" font-weight="normal">RC7</text></g>
 <g data-ref="A2.2" data-pos="51"><circle cx="170" cy="834" r="2.5" fill="#840000"/><path d="M170,834 L205,822" stroke="#840000" stroke-width="1.8"/><circle cx="210" cy="834" r="2.5" fill="#840000"/><text x="160" y="824" font-size="10" text-anchor="end" fill="#840000" font-weight="bold">K12</text><text x="160" y="846" font-size="8" text-anchor="end" fill="#840000" font-weight="normal">A2.2</text></g>
 <path d="M210,834 L300,834" fill="none" stroke="#008400" stroke-width="1.6"/>
 <g data-ref="XT1" data-pos="63"><circle cx="300" cy="834" r="4" fill="#fff" stroke="#840000" stroke-width="1.2"/><text x="300" y="826" font-size="8" text-anchor="middle" fill="#840000" font-weight="normal">XT1:12</text></g>
@@ -190,6 +211,9 @@
 <path d="M1009,854 L1560,854" fill="none" stroke="#008400" stroke-width="1.6"/>
 <circle cx="1560" cy="854" r="3" fill="#008400"/>
 <g data-ref="HL15" data-pos="68"><circle cx="1000" cy="854" r="9" fill="#3b82f6" stroke="#840000" stroke-width="1.5"/><path d="M994,848 L1006,860 M994,860 L1006,848" stroke="#840000" stroke-width="1.2"/><rect x="1012" y="846" width="114" height="16" fill="#fff"/><text x="1016" y="858" font-size="9.5" text-anchor="start" fill="#840000" font-weight="bold">HL15  СУ2 · синий</text></g>
+<circle cx="950" cy="834" r="3" fill="#008400"/>
+<circle cx="950" cy="854" r="3" fill="#008400"/>
+<g data-ref="RC8" data-pos="87"><rect x="942" y="837" width="16" height="14" fill="#fffff0" stroke="#840000" stroke-width="1.2"/><text x="950" y="847.5" font-size="7" text-anchor="middle" fill="#840000" font-weight="bold">RC</text><text x="962" y="843" font-size="8" text-anchor="start" fill="#840000" font-weight="normal">RC8</text></g>
 <circle cx="110" cy="886" r="3" fill="#008400"/>
 <path d="M110,886 L170,886" fill="none" stroke="#008400" stroke-width="1.6"/>
 <g data-ref="A2.2" data-pos="51"><circle cx="170" cy="886" r="2.5" fill="#840000"/><path d="M170,886 L205,874" stroke="#840000" stroke-width="1.8"/><circle cx="210" cy="886" r="2.5" fill="#840000"/><text x="160" y="876" font-size="10" text-anchor="end" fill="#840000" font-weight="bold">K13</text><text x="160" y="898" font-size="8" text-anchor="end" fill="#840000" font-weight="normal">A2.2</text></g>
@@ -218,11 +242,13 @@
 <path d="M110,990 L170,990" fill="none" stroke="#008400" stroke-width="1.6"/>
 <g data-ref="A2.1" data-pos="51"><circle cx="170" cy="990" r="2.5" fill="#840000"/><path d="M170,990 L205,978" stroke="#840000" stroke-width="1.8"/><circle cx="210" cy="990" r="2.5" fill="#840000"/><text x="160" y="980" font-size="10" text-anchor="end" fill="#840000" font-weight="bold">K15</text><text x="160" y="1002" font-size="8" text-anchor="end" fill="#840000" font-weight="normal">A2.1</text></g>
 <path d="M210,990 L260,990" fill="none" stroke="#008400" stroke-width="1.6"/>
-<text x="268" y="994" font-size="10" text-anchor="start" fill="#000000" font-weight="normal">не используется: GPIO5 → OpenTherm (OT_TX)</text>
+<text x="268" y="994" font-size="10" text-anchor="start" fill="#000000" font-weight="normal">не используется: GPIO32 → OpenTherm (OT_TX)</text>
 <text x="30" y="1105" font-size="9.5" text-anchor="start" font-weight="normal" fill="#000" stroke="none">Индикаторы панели — светодиодные 230 В (поз. 68), включены параллельно нагрузке после контакта реле: горят, когда реле подало фазу.</text>
 <text x="30" y="1120" font-size="9.5" text-anchor="start" font-weight="normal" fill="#000" stroke="none">Для ТЭНа и скважины индикатор параллелен катушке контактора (показывает команду); SK2 и SP1 стоят в силовой цепи контакторов (лист 3).</text>
 <text x="30" y="1135" font-size="9.5" text-anchor="start" font-weight="normal" fill="#000" stroke="none">SK1 размыкает питание M2 и его индикатора при перегреве пола. ALARM на панели — HL1 (жёлтый, предупреждение) и HL2 (красный, авария).</text>
 <text x="30" y="1150" font-size="9.5" text-anchor="start" font-weight="normal" fill="#000" stroke="none">K0 — сухой контакт на клеммы ТА котла (не 230 В), поэтому PB показывает питание котла (после QF2). SA1 «Р» подаёт L′ на M1 и M2 в обход K1, K2.</text>
+<text x="30" y="1165" font-size="9.5" text-anchor="start" font-weight="normal" fill="#000" stroke="none">RC1–RC8 (поз. 87) — 100 Ом + 0,1 мкФ X2 параллельно катушкам KM1, KM2 и обмоткам приводов, не параллельно контакту: гасят дугу и помехи.</text>
+<text x="30" y="1180" font-size="9.5" text-anchor="start" font-weight="normal" fill="#000" stroke="none">Блокировка приводов: K8, K10, K12 («закрыть») получают L′ через NC-контакт K7, K9, K11 («открыть») — обе обмотки под фазой быть не могут.</text>
 <rect x="10" y="10" width="1680" height="1180" fill="none" stroke="#000" stroke-width="1.5"/>
 <g stroke="#000" stroke-width="1" fill="none"><rect x="1300" y="1090" width="390" height="100"/><path d="M1300,1120 H1690 M1300,1150 H1690 M1600,1120 V1190 M1480,1150 V1190"/></g>
 <text x="1495" y="1111" font-size="12" text-anchor="middle" font-weight="bold" fill="#000" stroke="none">HomeSite — котельная</text>

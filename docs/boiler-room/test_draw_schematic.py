@@ -33,17 +33,21 @@ def test_relay_nets_sit_on_the_gpio_the_firmware_uses():
 
 def test_sensor_nets_match_the_pinout():
     assert PIN_NETS["IO4"] == "1WIRE" and PIN_NETS["IO15"] == "DHT"
-    assert PIN_NETS["IO34"] == "P_HEAT" and PIN_NETS["IO35"] == "P_WATER" and PIN_NETS["IO39"] == "GAS"
+    assert PIN_NETS["IO34"] == "P_HEAT" and PIN_NETS["IO35"] == "P_WATER"
+    assert "IO39" not in PIN_NETS             # the gas analyser is wireless (433 MHz → RF gateway)
 
 
 def test_logic_sheet_has_every_part_with_values():
     svg = render_logic()
     _, refs = svg_refs(svg)
-    assert {"A1", "A2.1", "A2.2", "A3", "G1", "JP1", "R1", "R2", "R3", "R4", "R5", "C1", "C2", "C3", "C4", "C5", "VD1", "VD2",
-            "X1", "X2", "X3", "X4", "X5", "X6", "X7"} <= refs
+    assert {"A1", "A2.1", "A2.2", "A3", "G1", "JP1", "R1", "R2", "R3", "R4", "R5", "C1", "C2", "C3", "C4", "C5", "C6",
+            "VD1", "VD2", "VD3", "X1", "X2", "X3", "X4", "X5", "X7"} <= refs
+    assert "X6" not in refs                   # the wired gas contact is gone
     txt = text_of(svg)
-    for needle in ("4,7 кОм", "10 кОм", "100 нФ", "100 мкФ", "+3V3", "+5V", "JD-VCC", "set_flash_voltage"):
+    for needle in ("2,2 кОм", "100 Ом", "10 кОм", "100 нФ", "10 мкФ", "100 мкФ", "+3V3", "+5V", "DC+", "DC−", "set_flash_voltage",
+                   "−V G1", "в H"):
         assert needle in txt, needle
+    assert "JD-VCC" not in txt                # H/L trigger boards: DC+ = 5 V, HIGH on IN = on
     for i in range(1, 9):
         assert f"IN{i}" in txt
     for ch in range(15):
@@ -66,6 +70,15 @@ def test_every_relay_output_has_its_panel_indicator_in_parallel():
     assert by_ch[13] == ("ALARM", "жёлтый") and by_ch[14] == ("ALARM", "красный")
 
 
+def test_inductive_loads_have_an_rc_snubber_across_them():
+    from draw_schematic import SNUBBED
+    _, refs = svg_refs(render_power())
+    assert {f"RC{i}" for i in range(1, len(SNUBBED) + 1)} <= refs
+    by_ch = {ch: loads for ch, _, loads, *_ in OUTPUTS}
+    for ch in SNUBBED:                          # contactor coils and actuator windings
+        assert any(r.startswith(("KM", "YA")) for r in by_ch[ch].split()), f"K{ch}"
+
+
 def test_two_identical_8_channel_boards_cover_every_channel_once():
     assert sorted(ch for chans in RELAY_BOARDS.values() for ch in chans) == list(range(16))
     assert all(len(chans) == 8 for chans in RELAY_BOARDS.values())
@@ -80,3 +93,11 @@ def test_a_three_point_actuator_sits_on_one_board():
             if r.startswith("YA"):
                 by_load.setdefault(r, set()).add(board[ch])
     assert set(by_load) == {"YA1", "YA2", "YA3"} and all(len(b) == 1 for b in by_load.values())
+
+
+def test_close_relays_take_phase_through_the_nc_of_their_open_relay():
+    from draw_schematic import INTERLOCK
+    by_ch = {ch: loads for ch, _, loads, *_ in OUTPUTS}
+    for open_ch, close_ch in INTERLOCK.items():
+        assert close_ch == open_ch + 1 and by_ch[open_ch] == by_ch[close_ch]   # the same actuator
+    assert "NC" in text_of(render_power())
