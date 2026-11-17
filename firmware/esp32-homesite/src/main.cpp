@@ -425,6 +425,12 @@ void setup() {
     digitalWrite(LED_PIN, LOW);
 
     config.begin();
+
+    // Relays first: every output at its OFF level before WiFi (up to 15 s) or the AP portal
+    uint8_t relayPins[16];
+    config.relayPins(relayPins);
+    relays.begin(relayPins, config.relayInvert());
+
     sensors.begin(ONE_WIRE_PIN, DHT_PIN);
     pza.begin();
 
@@ -453,11 +459,6 @@ void setup() {
     sensors.setMappings(mappings);
     Serial.print("Configured sensors: ");
     Serial.println(mappings.size());
-
-    // Initialize relays
-    uint8_t relayPins[16];
-    config.relayPins(relayPins);
-    relays.begin(relayPins, config.relayInvert());
 
     // Initialize pressure sensors (only if configured via portal)
     PressureConfig prsHeat = config.pressureHeating();
@@ -517,6 +518,7 @@ void loop() {
 
     // Valve pulses / autofill timers need sub-second resolution
     boilerLogic.tick();
+    relays.service();  // an actuator reversal held back by the open/close interlock
 
     // Heartbeat every 30s
     if (wifiUp && now - lastHeartbeat >= HEARTBEAT_INTERVAL_MS) {

@@ -1,7 +1,7 @@
 #pragma once
 #include <Arduino.h>
 
-#define PRESSURE_SAMPLES 10
+#define PRESSURE_SAMPLES 20        // × 1 ms = 20 ms window: averages out one 50 Hz period
 
 /**
  * Reads analog pressure transducers.

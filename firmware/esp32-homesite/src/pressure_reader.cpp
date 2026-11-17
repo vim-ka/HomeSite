@@ -1,7 +1,5 @@
 #include "pressure_reader.h"
 
-static const float ADC_MAX = 4095.0;
-static const float ADC_VREF = 3.3;
 
 void PressureReader::begin(uint8_t heatingPin, uint8_t waterPin) {
     _heatingPin = heatingPin;
@@ -38,15 +36,15 @@ float PressureReader::readWaterPressure() {
 }
 
 float PressureReader::readPin(uint8_t pin, float zeroV, float maxBar, float maxV) {
-    // Average multiple samples for stability
-    long sum = 0;
+    // analogReadMilliVolts() applies the per-chip eFuse calibration (Vref spread is ±6–10 %, raw/4095·3.3 ignores it).
+    // ESP32 ADC at 11 dB is linear only up to ~2.45 V (ESP-IDF ADC docs) and saturates near ~3.1 V:
+    // with a 0–3.3 V / 0–5 bar sensor readings above ~3.7 bar are approximate.
+    long sumMv = 0;
     for (int i = 0; i < PRESSURE_SAMPLES; i++) {
-        sum += analogRead(pin);
-        delayMicroseconds(200);
+        sumMv += analogReadMilliVolts(pin);
+        delayMicroseconds(1000);
     }
-    float avgRaw = (float)sum / PRESSURE_SAMPLES;
-
-    float voltage = avgRaw / ADC_MAX * ADC_VREF;
+    float voltage = (float)sumMv / PRESSURE_SAMPLES / 1000.0f;
     float pressure = (voltage - zeroV) / (maxV - zeroV) * maxBar;
 
     // Clamp to valid range

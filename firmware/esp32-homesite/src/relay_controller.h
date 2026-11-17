@@ -44,10 +44,19 @@ public:
     /// Bitmask of all relay states (bit 0 = ch0, etc.). 1 = ON.
     uint16_t getAllStates() const;
 
+    /// Call every loop(): applies an "on" that the open/close interlock is still holding back.
+    void service();
+
+    /// Open/close pairs of the three-point actuators (autofill, radiator and floor valves) never carry
+    /// L on both windings: switching one on first switches its partner off, then waits REVERSE_DEAD_MS.
+    static constexpr unsigned long REVERSE_DEAD_MS = 500;
+    static int partnerOf(uint8_t ch);
+
 private:
     uint8_t _pins[RELAY_COUNT] = {};
     bool _states[RELAY_COUNT] = {};
     bool _written[RELAY_COUNT] = {};   // what the output pins actually carry
+    unsigned long _offAt[RELAY_COUNT] = {};  // millis() when the output was last switched off
     bool _batch = false;
     bool _invert = true;
     void write(uint8_t ch, bool on);

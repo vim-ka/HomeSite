@@ -124,7 +124,7 @@ void ConfigManager::setRelayPins(const uint8_t pins[16]) {
 }
 
 bool ConfigManager::relayInvert() {
-    return _prefs.getBool("relay_inv", true);
+    return _prefs.getBool("relay_inv", DEFAULT_RELAY_INVERT);
 }
 
 void ConfigManager::setRelayInvert(bool invert) {

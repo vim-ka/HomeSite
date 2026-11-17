@@ -21,7 +21,12 @@ struct PressureConfig {
 };
 
 // Default relay pins (16 channels)
-#define DEFAULT_RELAY_PINS {13, 12, 14, 27, 26, 25, 33, 32, 16, 17, 18, 19, 21, 22, 23, 5}
+// Ordered so the wires to each relay board run as a flat ribbon: A2.1 (K0–K6, K15) from the left header,
+// A2.2 (K7–K14) from the right one in header order. K15 on GPIO32 = OpenTherm TX after the boiler swap.
+#define DEFAULT_RELAY_PINS {13, 12, 14, 27, 26, 25, 33, 16, 17, 5, 18, 19, 21, 22, 23, 32}
+// Relay modules with the H/L trigger jumper set to H: HIGH on IN = relay on (no inversion).
+// A value saved in the portal (NVS "relay_inv") overrides this — tick it for low-level (L / JD-VCC) boards.
+#define DEFAULT_RELAY_INVERT false
 // Default pressure ADC pins (ADC1 — input-only, WiFi-safe)
 #define DEFAULT_PRESSURE_HEATING_PIN 34
 #define DEFAULT_PRESSURE_WATER_PIN   35

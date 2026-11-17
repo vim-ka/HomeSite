@@ -108,7 +108,7 @@ input:focus,select:focus{outline:none;border-color:#3b82f6;box-shadow:0 0 0 3px 
   {{RELAY_PINS}}
   <div class="check-row">
     <input type="checkbox" name="relay_invert" id="relay_invert" value="1" {{RELAY_INVERT}}>
-    <label for="relay_invert">Invert logic (LOW = ON, for opto-isolated modules)</label>
+    <label for="relay_invert">Invert logic (LOW = ON: low-level trigger, jumper L / JD-VCC boards). Off for jumper H (HIGH = ON)</label>
   </div>
 </div>
 
