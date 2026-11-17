@@ -25,7 +25,7 @@ def test_cable_is_three_wires_wired_like_apc_940_0024c():
 def test_sheet_has_board_converter_cable_and_panel_supply():
     svg = render_ups_board()
     _, refs = svg_refs(svg)
-    assert {"A9", "A10", "W1", "G1"} <= refs
+    assert {"A9", "A10", "W1", "G1", "C7", "C8"} <= refs   # C7, C8: 5 V filter at the board
     txt = text_of(svg)
     for needle in ("MAX3232", "2400 8N1", "940-0024C", "+3V3", "+5V", "esp32-ups", "Лист 11"):
         assert needle in txt, needle

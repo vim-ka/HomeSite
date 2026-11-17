@@ -67,6 +67,12 @@ def render_ups_board() -> str:
     s.wire((a10_right, 440), (a10_right + 60, 440)); s.vcc(a10_right + 60, 440, "+5V")
     s.wire((a10_right, 470), (a10_right + 40, 470)); s.gnd(a10_right + 40, 470)
     s.add(Sch.t(670, 530, "+5V — отдельным проводом от клемм G1 на вывод 5V платы A9", 9, "middle"))
+    # filter at A9's 5 V input (as C1, C2 on the controller): G1 also drives the relay coils
+    for xc, ref, val, polar in ((920, "C7", "100 мкФ", True), (1000, "C8", "100 нФ", False)):
+        s.vcc(xc, 600, "+5V"); s.wire((xc, 600), (xc, 617))
+        s.part(ref, s.capacitor(xc, 625, ref, val, polar), 91)
+        s.wire((xc, 633), (xc, 645)); s.gnd(xc, 645)
+    s.add(Sch.t(960, 690, "C7, C8 — у вывода 5V платы A9", 9, "middle"))
     # the board
     devkit(s, x0=1180, y0=190, nets=UPS_NETS, notes=UPS_NOTES, ref="A9", pos=88,
            title="A9  ESP32-DevKitC (WROOM-32)", sub="прошивка esp32-ups · Wi‑Fi → MQTT")
@@ -75,7 +81,7 @@ def render_ups_board() -> str:
     return frame(s, "Плата ИБП котельной: схема принципиальная", "11", [
         "A9 читает ИБП по COM-порту через A10 (APC «Smart», 2400 8N1, UART2: IO17 → T1IN, R1OUT → IO16) и только читает — ничем не управляет.",
         "W1 — только 3 провода (1, 2, 4 на стороне ИБП); обычный COM-кабель не годится — может выключить ИБП. Распайку сверить по документации APC.",
-        "Питание: G1 → A9 5V; A10 — от +3V3 A9. USB и 5 В от G1 — не одновременно. MQTT: home/devices/{имя}/ups. Позиции 54, 88–90."])
+        "Питание: G1 → A9 5V через фильтр C7, C8; A10 — от +3V3 A9. USB и 5 В от G1 — не одновременно. MQTT: home/devices/{имя}/ups. Позиции 54, 88–91."])
 
 
 def main() -> None:
