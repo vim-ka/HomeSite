@@ -5,6 +5,7 @@ import { ExternalLink, Maximize2, Minus, Plus, X } from "lucide-react";
 import api from "@/api/client";
 import { useAuthStore } from "@/stores/authStore";
 import ControllerWiring from "./about/ControllerWiring";
+import PanelMeterWiring from "./about/PanelMeterWiring";
 import RfGatewayWiring from "./about/RfGatewayWiring";
 import UpsWiring from "./about/UpsWiring";
 
@@ -476,6 +477,10 @@ const WIRING: Partial<Record<NodeId, { title: string; render: (isDark: boolean, 
   rfGateway: {
     title: "RF-шлюз — схема подключения",
     render: (isDark, className) => <RfGatewayWiring isDark={isDark} className={className} />,
+  },
+  panelMeter: {
+    title: "Узел учёта сети — схема подключения",
+    render: (isDark, className) => <PanelMeterWiring isDark={isDark} className={className} />,
   },
 };
 

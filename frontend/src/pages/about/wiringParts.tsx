@@ -46,17 +46,29 @@ export function Wire({ d, color, w = 4 }: { d: string; color: string; w?: number
   return <path d={d} fill="none" stroke={color} strokeWidth={w} strokeLinecap="round" strokeLinejoin="round" />;
 }
 
-export function Board({ t, designator = "A1", name = "ESP32-DevKitC", antenna = "антенна — сюда, подальше от металла" }: {
+export function Board({ t, designator = "A1", name = "ESP32-DevKitC", antenna = "антенна — сюда, подальше от металла", ipex = false }: {
   t: Theme; designator?: string; name?: string; antenna?: string;
+  /** WROOM-32U: no PCB antenna, an IPEX (u.FL) socket at (796, 164) for an external antenna cable */
+  ipex?: boolean;
 }) {
   return (
     <g>
       <rect x={632} y={140} width={256} height={690} rx={10} fill="#111827" stroke="#374151" strokeWidth="2" />
-      {/* WROOM-32 module with the PCB antenna on top */}
-      <rect x={712} y={150} width={96} height={40} fill="#0b1220" />
-      <path d="M720,182 v-24 h10 v18 h10 v-18 h10 v18 h10 v-18 h10 v18 h10 v-18 h10 v24" fill="none" stroke="#d4a017" strokeWidth="2" />
-      <rect x={712} y={190} width={96} height={190} rx={3} fill="#9ca3af" stroke="#6b7280" />
-      <text x={760} y={285} textAnchor="middle" fontSize="11" fontWeight="bold" fill="#1f2937" transform="rotate(-90 760 285)">ESP32-WROOM-32</text>
+      {ipex ? (
+        <g>
+          <rect x={712} y={150} width={96} height={230} rx={3} fill="#9ca3af" stroke="#6b7280" />
+          <circle cx={796} cy={164} r={6} fill="#d4a017" stroke="#92400e" />
+          <circle cx={796} cy={164} r={2} fill="#111827" />
+        </g>
+      ) : (
+        <g>
+          {/* WROOM-32 module with the PCB antenna on top */}
+          <rect x={712} y={150} width={96} height={40} fill="#0b1220" />
+          <path d="M720,182 v-24 h10 v18 h10 v-18 h10 v18 h10 v-18 h10 v18 h10 v-18 h10 v24" fill="none" stroke="#d4a017" strokeWidth="2" />
+          <rect x={712} y={190} width={96} height={190} rx={3} fill="#9ca3af" stroke="#6b7280" />
+        </g>
+      )}
+      <text x={760} y={285} textAnchor="middle" fontSize="11" fontWeight="bold" fill="#1f2937" transform="rotate(-90 760 285)">{ipex ? "ESP32-WROOM-32U" : "ESP32-WROOM-32"}</text>
       <text x={760} y={470} textAnchor="middle" fontSize="13" fontWeight="bold" fill="#e5e7eb">{designator}</text>
       <text x={760} y={488} textAnchor="middle" fontSize="10" fill="#9ca3af">{name}</text>
       <rect x={742} y={600} width={36} height={36} rx={2} fill="#000" stroke="#4b5563" />
