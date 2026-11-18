@@ -1,7 +1,7 @@
 import { useState, useEffect, type ReactElement } from "react";
 import { useTranslation } from "react-i18next";
 import { useQuery } from "@tanstack/react-query";
-import { Maximize2, Minus, Plus, X } from "lucide-react";
+import { ExternalLink, Maximize2, Minus, Plus, X } from "lucide-react";
 import api from "@/api/client";
 import { useAuthStore } from "@/stores/authStore";
 import ControllerWiring from "./about/ControllerWiring";
@@ -399,6 +399,69 @@ function ArchitectureDiagram({ isDark, ports, selectedNode, onNodeClick }: Diagr
   );
 }
 
+// ---- Firmware: where it lives, how to flash, what to keep in mind (full text — README.md next to it) ----
+
+const REPO_TREE = "https://github.com/vim-ka/HomeSite/tree/main/";
+
+interface FirmwareInfo { path: string; steps: string[]; notes: string[] }
+
+const FIRMWARE: Partial<Record<NodeId, FirmwareInfo>> = {
+  controller: {
+    path: "firmware/esp32-homesite",
+    steps: [
+      "Один раз до монтажа: espefuse.py --port COMx set_flash_voltage 3.3V",
+      "pio run -t upload — по USB, сняв +5 В от G1 (клеммник X1)",
+      "Точка доступа HomeSite-XXXX → http://192.168.4.1: Wi‑Fi, MQTT, имя boiler_unit",
+    ],
+    notes: [
+      "«Invert logic» снята — модули реле с перемычкой H (HIGH = вкл.)",
+      "Уставки приходят с сервера; после перезагрузки шлюз досылает все",
+      "Без Wi‑Fi защиты работают, контроллер переподключается сам",
+      "Сброс настроек — BOOT 5 с. OTA нет, только USB",
+    ],
+  },
+  rfGateway: {
+    path: "firmware/esp32-rf-gateway",
+    steps: [
+      "pio run -t upload — по USB",
+      "Точка доступа RFGW-setup → http://192.168.4.1: Wi‑Fi, MQTT, имя шлюза",
+    ],
+    notes: [
+      "Датчики привязываются в админке по scan_sensors",
+      "Незнакомый протокол — raw_debug, сырые пакеты в …/rf_debug",
+      "Сброс настроек — BOOT 5 с. OTA нет, только USB",
+    ],
+  },
+};
+
+function FirmwareBlock({ fw }: { fw: FirmwareInfo }) {
+  return (
+    <div className="mt-4 border-t border-primary-200 dark:border-slate-600 pt-3">
+      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 mb-2">
+        <p className="font-semibold text-gray-800 dark:text-gray-100 text-sm">Прошивка</p>
+        <a href={REPO_TREE + fw.path} target="_blank" rel="noreferrer"
+          className="text-xs text-primary-600 dark:text-primary-400 hover:underline">
+          <code className="break-all">{fw.path}</code> — исходники и README <ExternalLink className="inline h-3 w-3 align-[-1px]" />
+        </a>
+      </div>
+      <ol className="space-y-1 mb-2 list-decimal list-inside">
+        {fw.steps.map((step, i) => (
+          <li key={i} className="text-xs text-gray-600 dark:text-gray-300">{step}</li>
+        ))}
+      </ol>
+      <p className="text-xs font-medium text-gray-700 dark:text-gray-200 mb-1">Особенности</p>
+      <ul className="space-y-1">
+        {fw.notes.map((note, i) => (
+          <li key={i} className="text-xs text-gray-500 dark:text-gray-400 flex items-start gap-1.5">
+            <span className="mt-1 h-1.5 w-1.5 rounded-full bg-amber-400 flex-shrink-0" />
+            {note}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 // ---- Wiring diagrams (pictorial, per node) ----
 
 const WIRING: Partial<Record<NodeId, { title: string; render: (isDark: boolean, className?: string) => ReactElement }>> = {
@@ -484,6 +547,7 @@ function NodeDetailCard({ nodeId, ports, isDark, onClose }: { nodeId: NodeId; po
               </li>
             ))}
           </ul>
+          {FIRMWARE[nodeId] && <FirmwareBlock fw={FIRMWARE[nodeId]!} />}
         </div>
         {wiring && (
           <button
